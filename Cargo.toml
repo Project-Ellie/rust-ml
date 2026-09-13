@@ -1,0 +1,21 @@
+[package]
+name = "rust-ml"
+version = "0.1.0"
+edition = "2021"
+description = "Machine learning in Rust with the Burn framework — MNIST curriculum and AlphaZero playground"
+license = "Apache-2.0"
+repository = "https://github.com/Project-Ellie/rust-ml"
+
+[dependencies]
+burn = { version = "0.21", features = ["flex", "train", "vision", "metrics"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+# Examples are the curriculum. Run them with:
+#   cargo run --example 01_tensors
+#   cargo run --example 02_modules
+#   ...
+# Each example is self-contained and maps to a chapter in docs/.
