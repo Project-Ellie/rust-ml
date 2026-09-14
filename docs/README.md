@@ -47,6 +47,15 @@ later by changing one type alias.
 | 12 | [The Gomoku Architecture](12-gomoku-architecture.md) | — | Full design of the AlphaZero-style agent: engine, network, MCTS, parallelism, training, runbook |
 | 13 | [The Engine Design](13-engine-design.md) | `gomoku/crates/engine` | Milestone 1 in detail: bitboards, Swap2, tactics, encoding; amends chapter 12 |
 
+## Tutorials
+
+Tutorials live in [tutorials/](tutorials/) with the same numbering as the
+design chapters. A tutorial turns a design document into guided,
+write-it-yourself slices. Current:
+
+- [13-engine-tutorial](tutorials/13-engine-tutorial/README.md) — build the
+  Gomoku engine from [chapter 13](13-engine-design.md), slice by slice.
+
 ## Prerequisites
 
 - Rust: you can read generic code, you know ownership and traits. You do not

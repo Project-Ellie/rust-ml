@@ -322,4 +322,6 @@ it in release builds.
 9. Criterion bench.
 10. Tighten visibility (`pub(crate)` sweep), rustdoc, done.
 
+Tutorial: [tutorials/13-engine-tutorial/](tutorials/13-engine-tutorial/README.md) — the build-your-own companion to this design.
+
 Back to: [Wiki home](README.md) · Previous: [Chapter 12 — The Gomoku Architecture](12-gomoku-architecture.md)
