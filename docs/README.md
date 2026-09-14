@@ -44,6 +44,7 @@ later by changing one type alias.
 | 9 | [From MNIST to AlphaZero](09-toward-alphazero.md) | — | Policy/value networks, MCTS, self-play in Burn |
 | 10 | [Papers](10-papers.md) | — | Annotated reading list with links |
 | 11 | [Pitfalls](11-pitfalls.md) | — | Known traps, including the ones this course hit |
+| 12 | [The Gomoku Architecture](12-gomoku-architecture.md) | — | Full design of the AlphaZero-style agent: engine, network, MCTS, parallelism, training, runbook |
 
 ## Prerequisites
 
