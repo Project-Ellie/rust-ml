@@ -343,6 +343,14 @@ layout gets the same benefit (cheap edge handling) without the extra two
 full rows, and the network encoding chapter keeps the planes at the true
 15×15.
 
+> **Amendment ([Chapter 13](13-engine-design.md)):** the last sentence
+> conflates two different edge problems. Stride 16 solves the *rule-side*
+> problem (shift wrap-around) only; it gives the network nothing. The
+> encoding is 17×17 with the border ring set as opponent stones (the
+> azrust design). And `Board` stores absolute colors (`black`/`white` +
+> `to_move`), not relative `me`/`you` — Swap2's non-alternating opening
+> placements require it. Swap2 itself is adopted from the start.
+
 `Board` is a small, `Clone`-cheap value type. No `Box`, no `Rc`, no
 interior mutability — MCTS clones a board per simulated move, and at our
 target of millions of simulations per second aggregate, a board that is
@@ -362,6 +370,13 @@ fn has_five(b: &Bitboard, s: u32) -> bool {
     x != [0; 4]  // plus edge masks per direction
 }
 ```
+
+> **Amendment ([Chapter 13](13-engine-design.md)):** no per-direction edge
+> masks are needed. Under the invariant "padding bits are always zero" a
+> 5-chain cannot wrap; masks are required only after complement
+> operations (`& VALID`). The production form is a staged two/four/five
+> AND that keeps shifts under 64 and detects overlines (which count as a
+> win).
 
 Four shift-and trees per move instead of scanning the board. Win
 detection, move legality (`(me | you)` bit test), and draw detection
@@ -601,6 +616,11 @@ to a strong one*, and distrust any plan more precise than that.
 ## 10. The neural network
 
 ### Input planes
+
+> **Amendment ([Chapter 13](13-engine-design.md)):** the input is
+> `[B, C, 17, 17]` — the azrust border-as-opponent encoding, reinstated.
+> Plane count (2 vs. the 4 below) is decided when the `net` crate lands;
+> the engine encoder emits `u8` plane arrays and `net` converts.
 
 Per position, the encoder emits `Tensor<B, 4>` of shape `[batch, 4, 15, 15]`:
 

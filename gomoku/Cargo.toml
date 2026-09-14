@@ -1,0 +1,18 @@
+# Gomoku workspace — the AlphaZero-style agent (docs/12-gomoku-architecture.md).
+# Independent of the rust-ml root package; Burn is pinned workspace-wide.
+
+[workspace]
+resolver = "3"
+members = ["crates/engine"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+burn = { version = "=0.21.0", default-features = false }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+proptest = "1"
+criterion = "0.5"
