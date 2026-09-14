@@ -2,56 +2,21 @@
 
 This document is the detailed design for the `engine` crate — milestone 1
 of the Gomoku build ([Chapter 12](12-gomoku-architecture.md)). It was
-agreed in dialogue before any code was written. Where it changes a choice
-made in chapter 12, the change is listed in the deviation table below,
-and chapter 12 carries an amendment note at the affected spot.
+agreed in dialogue before any code was written. Chapter 12 is the
+high-level architecture and already reflects every decision here; this
+document adds the concrete types, invariants, and test plan.
 
 ## Locked decisions
 
 | # | Decision | Reason |
 |---|---|---|
-| 1 | **Overlines count as a win** (freestyle rules) | Wolfie's call; simplest rule, consistent with chapter 3's freestyle commitment |
-| 2 | **Swap2 opening protocol from the start** | Freestyle Gomoku is a proven first-player win (chapter 3); Swap2 keeps self-play on open ground |
-| 3 | **17×17 encoding, border ring as opponent stones** | Learning-signal consistency near edges — see "Edge handling re-evaluated" below |
+| 1 | **Overlines count as a win** (freestyle rules) | Wolfie's call; simplest rule, consistent with the freestyle commitment (chapter 12, §3) |
+| 2 | **Swap2 opening protocol from the start** | Freestyle Gomoku is a proven first-player win (chapter 12, §3); Swap2 keeps self-play on open ground |
+| 3 | **17×17 encoding, border ring as opponent stones** | Learning-signal consistency near edges — the learning-side edge problem (chapter 12, §7) |
 | 4 | **Alpha-epsilon, not tabula rasa** | Hand-woven tactical detection (win-in-1, forced block, win-in-2) gives the learning curve a head start; doubles as MCTS mock evaluator and synthetic-data generator |
 | 5 | **Board stores absolute colors** | Swap2's opening places 3 non-alternating stones; a relative me/you store cannot express that |
 | 6 | **Naive reference engine** in `src/reference.rs` behind `#[cfg(any(test, feature = "testutil"))]` | Permanent differential-testing oracle, not throwaway scaffolding |
 | 7 | **Public API as tight as possible** | Visibility as enforcement (chapter 12, §6) is cheapest at creation time |
-
-## Deviations from chapter 12
-
-| Chapter-12 statement | This design |
-|---|---|
-| `Board { me, you, ... }` relative storage | Absolute `black`/`white` + `to_move` (decision 5) |
-| "stride-16 gets the same benefit … planes stay at the true 15×15" | Stride-16 solves the *rule-side* edge problem only; encoding is 17×17 with border-as-opponent (decision 3) |
-| `has_five` "plus edge masks per direction" | No direction masks needed — one zero-padding invariant instead (see below) |
-| No tactics module | `tactics` module added (decision 4) |
-| "MCTS clones a board per simulated move" | `play`/`undo` offered alongside cheap `Clone`; MCTS decides |
-
-Network-side consequences (chapter 10, to be applied when the `net`
-crate lands): input becomes `[B, C, 17, 17]`; conv FLOPs scale by
-289/225 ≈ 1.28, so ~1.33 → ~1.7 GFLOPs/eval and the chapter-9 throughput
-estimate drops from ~3,800 to ~2,950 evals/s [derived]. Policy head
-still emits 225 logits — the border is never a legal target.
-
-## Edge handling re-evaluated
-
-There are two different edge problems, and chapter 12 conflated them:
-
-- **Rule-side (compute).** Bit shifts must not wrap around row ends.
-  Stride-16 solves this: the padding column absorbs wrap-arounds.
-  Invisible to the network.
-- **Learning-side (representation).** A 15×15 plane with same-padding
-  convolutions pads with *zeros* at the border. The network sees
-  "emptiness" beyond the edge and must learn edge behavior separately
-  from center behavior. But the edge is semantically not empty: a wall
-  blocks a line exactly like an opponent stone does.
-
-The 17×17 encoding with the border ring always set in the "you" plane
-(Wolfie's azrust design) fixes the second problem: convolutions see the
-wall as opponent stones everywhere, and a line near the edge "looks"
-correctly constrained. Engine internals stay stride-16; the 17×17 border
-is an encoding-layer concern. The two never mix.
 
 ## Crate layout
 

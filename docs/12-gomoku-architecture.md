@@ -73,9 +73,14 @@ The AlphaZero system decomposes into four subsystems and one loop:
                             └─────────────────────────────────────┘
 ```
 
-- **Engine.** Knows the rules: place a stone, detect five in a row,
-  detect a full board. Pure Rust, no Burn, no GPU. Must be extremely
-  fast — MCTS touches it millions of times per second in aggregate.
+- **Engine.** Knows the rules: place a stone, detect five in a row
+  (overlines count — freestyle rules), detect a full board, run the
+  Swap2 opening protocol. It also detects tactical forcing moves
+  (immediate wins, forced blocks, double threats) — rules-level truth in
+  pure bit operations, used as a self-play fast path, as the MCTS mock
+  evaluator, and as the milestone-3 synthetic-data generator. Pure Rust,
+  no Burn, no GPU. Must be extremely fast — MCTS touches it millions of
+  times per second in aggregate.
 - **MCTS.** Turns the network's raw opinion (p, v) into a much stronger
   opinion (π, the visit-count distribution) by lookahead search. Owns one
   search tree per game move.
@@ -149,10 +154,13 @@ self-play reinforcement. It reports reaching human playing level in two
 days on one GPU (prose claim; no full match statistics given). Two
 lessons: (a) Gomoku needs far less network than Go — encouraging for our
 hardware budget; (b) a curriculum can substitute for compute early. We
-choose the purer AlphaZero path (tabula rasa, no mentor) because the
-mentor is a dependency we would have to build first — but the curriculum
-idea stays in our back pocket as a fallback if tabula-rasa learning
-stalls.
+do not go fully tabula rasa: the engine carries a small hand-woven
+tactics module (win-in-1, forced block, win-in-2 detection — pure bit
+operations, no mentor network). It gives the learning curve a head
+start, doubles as the mock evaluator for the MCTS milestone, and
+generates milestone 3's synthetic attack/defense set: AlphaGomoku's
+curriculum idea, with a mentor that is a few dozen lines of bit math we
+would build anyway for testing.
 
 ---
 
@@ -251,9 +259,10 @@ sight.
 gomoku/
 ├── Cargo.toml            # workspace, pinned burn = "=0.21.0"
 ├── crates/
-│   ├── engine/           # rules, board, moves, win detection, symmetries
-│   │                     # deps: none beyond std + rand + serde + thiserror
-│   ├── net/              # Burn model, board→planes encoding, records
+│   ├── engine/           # rules, board, moves, win detection, symmetries,
+│   │                     # tactics, Swap2 opening, board→planes encoding
+│   │                     # deps: none beyond std + serde + thiserror
+│   ├── net/              # Burn model, plane→tensor conversion, records
 │   │                     # deps: burn, engine
 │   ├── mcts/             # PUCT search tree; generic over an Evaluator trait
 │   │                     # deps: engine (NOT net — see below)
@@ -314,15 +323,20 @@ engineering, where Rust's zero-cost abstractions carry the load.
 
 ### Board representation
 
-A 15×15 board has 225 cells. We store it as **two bitboards** — one for
-the player to move, one for the opponent (the relative/canonical
-encoding: the network never sees "black" and "white", it sees "me" and
-"you", which halves the state space the policy must learn):
+A 15×15 board has 225 cells. We store it as **two bitboards in absolute
+colors** — black and white, plus a side-to-move flag. Absolute storage
+is required because our opening protocol, Swap2, places three
+non-alternating stones (2 black + 1 white) before colors are chosen; a
+relative me/you store cannot express that. The relative view — the
+network never sees "black" and "white", it sees "me" and "you", which
+halves the state space the policy must learn — is derived at encode
+time:
 
 ```rust
 pub struct Board {
-    me: Bitboard,        // stones of the player to move
-    you: Bitboard,       // stones of the opponent
+    black: Bitboard,     // absolute colors — Swap2's non-alternating
+    white: Bitboard,     //   opening cannot be stored relatively
+    to_move: Color,
     moves: Vec<u8>,      // move history, for encoding + games records
     key: u64,            // Zobrist hash, incremental
 }
@@ -337,25 +351,31 @@ force masking gymnastics at the row edges. The classic bitboard trick
 (chess engines have used it for decades) is **stride 16**: cell `r*16+c`,
 one padding column per row. Now the four directions are uniform shifts —
 1, 16, 15, 17 — and the padding column absorbs horizontal wrap-around.
-240 bits fit in `[u64; 4]` with room to spare. Wolfie's earlier azrust
-sketch used an `(n+2)²` border-as-opponent-stones encoding; the stride-16
-layout gets the same benefit (cheap edge handling) without the extra two
-full rows, and the network encoding chapter keeps the planes at the true
-15×15.
+240 bits fit in `[u64; 4]` with room to spare.
 
-> **Amendment ([Chapter 13](13-engine-design.md)):** the last sentence
-> conflates two different edge problems. Stride 16 solves the *rule-side*
-> problem (shift wrap-around) only; it gives the network nothing. The
-> encoding is 17×17 with the border ring set as opponent stones (the
-> azrust design). And `Board` stores absolute colors (`black`/`white` +
-> `to_move`), not relative `me`/`you` — Swap2's non-alternating opening
-> placements require it. Swap2 itself is adopted from the start.
+There are two different edge problems, and they want different answers:
+
+- **Rule-side (compute).** Bit shifts must not wrap around row ends.
+  Stride 16 solves this: the padding column absorbs wrap-arounds.
+  Invisible to the network.
+- **Learning-side (representation).** A 15×15 plane with same-padding
+  convolutions pads with *zeros* at the border, so the network sees
+  "emptiness" beyond the edge and must learn edge behavior separately
+  from center behavior. But the edge is semantically not empty: a wall
+  blocks a line exactly like an opponent stone does.
+
+The learning-side answer is the azrust design: the encoder emits **17×17
+planes with the border ring set as opponent stones** (chapter 10), so
+convolutions see the wall everywhere and a line near the edge "looks"
+correctly constrained. Engine internals stay stride-16; the 17×17 border
+is purely an encoding-layer concern. The two never mix.
 
 `Board` is a small, `Clone`-cheap value type. No `Box`, no `Rc`, no
-interior mutability — MCTS clones a board per simulated move, and at our
-target of millions of simulations per second aggregate, a board that is
-32-ish bytes of plain data plus a small `Vec` is the difference between
-cache-resident and allocation-bound. (If profiling later shows the
+interior mutability. MCTS needs one board state per simulated move; the
+engine offers both cheap `Clone` (32-ish bytes of plain data plus a
+small `Vec` — the difference between cache-resident and allocation-bound
+at millions of simulations per second aggregate) and `play`/`undo`.
+MCTS decides which by measurement. (If profiling later shows the
 `Vec<u8>` move history hurts, it becomes a fixed `[u8; 225]` + length —
 a one-line change behind `engine`'s visibility wall.)
 
@@ -365,22 +385,28 @@ Five in a row, direction shift `s`: a stone, and a stone at +s, +2s, +3s,
 +4s. On a bitboard that is:
 
 ```rust
-fn has_five(b: &Bitboard, s: u32) -> bool {
-    let x = b.0 & (b.0 >> s) & (b.0 >> 2*s) & (b.0 >> 3*s) & (b.0 >> 4*s);
-    x != [0; 4]  // plus edge masks per direction
+const DIRS: [u32; 4] = [1, 16, 15, 17]; // horizontal, vertical, two diagonals
+
+fn has_five_dir(b: &Bitboard, s: u32) -> bool {
+    let two  = *b & b.shr(s);          // runs of >= 2
+    let four = two & two.shr(2 * s);   // runs of >= 4
+    let five = four & four.shr(s);     // runs of >= 5
+    !five.is_zero()
 }
 ```
 
-> **Amendment ([Chapter 13](13-engine-design.md)):** no per-direction edge
-> masks are needed. Under the invariant "padding bits are always zero" a
-> 5-chain cannot wrap; masks are required only after complement
-> operations (`& VALID`). The production form is a staged two/four/five
-> AND that keeps shifts under 64 and detects overlines (which count as a
-> win).
+Two invariants make this exact. First, **padding bits are always zero**:
+every wrap path crosses a padding bit and the AND-chain dies, so no
+per-direction edge masks are needed at all — masks are required only
+after complement operations (`!occupied` sets padding bits, so
+complements immediately AND with a `VALID` mask). Second, the staged
+two/four/five AND keeps every shift under 64 (the naive five-term AND
+needs 4·17 = 68) and detects *five or more* in one pass — the freestyle
+rule we play: **overlines count as a win**.
 
 Four shift-and trees per move instead of scanning the board. Win
-detection, move legality (`(me | you)` bit test), and draw detection
-(225 moves played) are all O(1)-ish bit operations. The engine's test
+detection, move legality (`(black | white)` bit test), and draw
+detection (225 moves played) are all O(1)-ish bit operations. The engine's test
 suite (chapter 11) will hammer these with property tests against a naive
 reference implementation — the classic trick of testing fast code against
 obviously-correct slow code.
@@ -393,7 +419,10 @@ equivalent forms with identical value and identically-transformed policy.
 We implement transforms as **precomputed index permutation tables**
 (`[[u8; 225]; 8]`, built once), used for training-data augmentation:
 when the sampler draws a position, it applies one random symmetry to the
-planes *and* the policy target π. This is AlphaZero's exact usage
+planes *and* the policy target π. Transforms operate in the 15×15 space;
+the 17×17 border ring is added afterwards, and since the ring is itself
+D4-invariant, encoding commutes with symmetry exactly. This is
+AlphaZero's exact usage
 [paper — AlphaZero bakes symmetries in as augmentation, not as network
 architecture]. We deliberately do *not* average network evaluations over
 symmetries at search time (AlphaGo Zero did that in evaluation only);
@@ -401,7 +430,9 @@ it costs 8× evaluation for a marginal gain our scale cannot afford.
 
 ### Zobrist keys
 
-Random `u64` per (cell, color) pair, XORed incrementally per move.
+One `u64` per (cell, color) pair, XORed incrementally per move. The
+table is generated by a `const fn` (fixed-seed xorshift) at compile
+time — reproducible forever, and no `rand` dependency in the engine.
 Purpose: deduplication in the replay buffer and cheap position identity
 in tests. We explicitly do **not** merge transpositions inside MCTS — the
 tree stays a tree, as in AlphaZero. Transposition-table MCTS exists in
@@ -600,15 +631,14 @@ the current phase.
 
 ### What throughput to expect (order-of-magnitude, [derived])
 
-The v1 network (next chapter) costs ~1.3 GFLOPs per evaluation. Assume
+The v1 network (next chapter) costs ~1.7 GFLOPs per evaluation. Assume
 conservatively 5 effective TFLOP/s for batched inference through
-wgpu/Metal (Apple publishes no number; measure in week one): ~3,800
-evals/s. At 400 simulations per move [experiment], that is ~9–10 moves/s
-across all workers; a ~50-move game every ~6 s wall-clock; **~600–800
-games/hour**; a 25k-game iteration roughly every day and a half. Compare:
+wgpu/Metal (Apple publishes no number; measure in week one): ~2,950
+evals/s. At 400 simulations per move [experiment], that is ~7 moves/s
+across all workers; a ~50-move game every ~7 s wall-clock; **~450–600
+games/hour**; a 25k-game iteration roughly every two days. Compare:
 AlphaGomoku claims human level in two days on one (2018-era) GPU with a
-far smaller net [paper]. Our net is bigger, our hardware newer, our
-method purer — plan for *days to the first non-embarrassing agent, weeks
+far smaller net [paper]. Our net is bigger, our hardware newer — plan for *days to the first non-embarrassing agent, weeks
 to a strong one*, and distrust any plan more precise than that.
 
 ---
@@ -617,12 +647,16 @@ to a strong one*, and distrust any plan more precise than that.
 
 ### Input planes
 
-> **Amendment ([Chapter 13](13-engine-design.md)):** the input is
-> `[B, C, 17, 17]` — the azrust border-as-opponent encoding, reinstated.
-> Plane count (2 vs. the 4 below) is decided when the `net` crate lands;
-> the engine encoder emits `u8` plane arrays and `net` converts.
-
-Per position, the encoder emits `Tensor<B, 4>` of shape `[batch, 4, 15, 15]`:
+Per position, the engine's encoder emits `u8` plane arrays of shape
+`[C, 17, 17]` (Burn-free; `net` converts them to `Tensor<B, 4>` of
+shape `[batch, C, 17, 17]`). The planes are 17×17, not 15×15: the
+border ring is always set in the "you" plane, so same-padding
+convolutions read the board edge as a wall of opponent stones — exactly
+how a wall constrains lines (chapter 7, the learning-side edge
+problem). The border is never a legal move target, so the policy head
+still emits 225 logits. Plane count (2 vs. the 4 below) is finalized
+when the `net` crate lands — the store-games decision (chapter 9) keeps
+both choices retro-compatible. Starting planes: 4.
 
 | Plane | Content |
 |---|---|
@@ -638,7 +672,7 @@ history is Go-scale excess for a game lasting 30–70 moves total. The
 two last-move planes are the cheap 80% of history: they let the network
 attend to the just-played forcing move without learning to diff stone
 planes. The color plane is unnecessary (relative encoding makes
-side-to-move implicit; there is no komi). Starting planes: 4. The full
+side-to-move implicit; there is no komi). The full
 history variant (2 + 2k planes) is a registered `[experiment]` — cheap to
 try later because we store games, not planes (chapter 9).
 
@@ -647,15 +681,16 @@ try later because we store games, not planes (chapter 9).
 AlphaZero topology, scaled to Gomoku and one GPU:
 
 ```text
-[B,4,15,15]
+[B,4,17,17]
   └─ Conv2d 3×3, 4→128, same-pad ─ BN ─ ReLU
   └─ 10 × ResidualBlock:
         Conv2d 3×3 128→128 ─ BN ─ ReLU
         Conv2d 3×3 128→128 ─ BN ─ (+skip) ─ ReLU
   ├─ POLICY HEAD:  Conv2d 1×1 128→2 ─ BN ─ ReLU
-  │                flatten [B,450] ─ Linear 450→225        (logits)
+  │                flatten [B,578] ─ Linear 578→225        (logits; the border
+  │                                                         is never a legal target)
   └─ VALUE HEAD:   Conv2d 1×1 128→1 ─ BN ─ ReLU
-                   flatten [B,225] ─ Linear 225→256 ─ ReLU
+                   flatten [B,289] ─ Linear 289→256 ─ ReLU
                                     Linear 256→1 ─ tanh    ([-1,1])
 ```
 
@@ -663,10 +698,14 @@ AlphaZero topology, scaled to Gomoku and one GPU:
 
 | Configuration | Parameters | FLOPs/eval |
 |---|---|---|
-| 64ch × 6 blocks | 0.61 M | 0.20 G |
-| **128ch × 10 blocks (v1)** | **3.12 M** | **1.33 G** |
-| 192ch × 12 blocks | 8.14 M | 3.59 G |
-| 256ch × 20 blocks (ELF-class) | 23.78 M | 10.62 G |
+| 64ch × 6 blocks | 0.66 M | 0.26 G |
+| **128ch × 10 blocks (v1)** | **3.17 M** | **1.70 G** |
+| 192ch × 12 blocks | 8.19 M | 4.61 G |
+| 256ch × 20 blocks (ELF-class) | 23.83 M | 13.63 G |
+
+Convolution FLOPs scale with board area (289/225 ≈ 1.28 versus a 15×15
+input); parameters grow only in the two head linears (+45k, independent
+of body size).
 
 Why 128×10: AlphaGomoku reached human level with a *32-filter, 2-block*
 net [paper] — Gomoku is tactically shallower than Go. KataGo's
@@ -674,8 +713,8 @@ progression — (6,96) → (10,128) → (15,192) → (20,256), growing the
 network as training data accumulates [paper — KataGo] — tells us the
 right mental model: network size is a *schedule*, not a decision.
 (10,128) is KataGo's second rung and our v1: big enough to be clearly
-stronger than AlphaGomoku's net, small enough that a training step on
-batch 1024 costs ~4 GFLOPs [derived] and the replay window stays
+stronger than AlphaGomoku's net, small enough that a forward-backward
+pass on one sample costs ~5 GFLOPs [derived] and the replay window stays
 meaningful at our game rate. Blocks and channels are `net` config
 values; growing the net later = new config + warm-start from the old
 record where shapes allow.
@@ -766,9 +805,9 @@ Nothing trains until these pass. Order matters.
    (applying any D4 transform twice in inverse order = identity; policy
    vector and planes transform identically).
 2. **MCTS tactical tests**: hand-built threat puzzles (win-in-1,
-   win-in-3 forced sequences, must-block open fours) with a mock
-   evaluator. MCTS with a sane prior must solve win-in-1 at 50
-   simulations.
+   win-in-3 forced sequences, must-block open fours) with the engine's
+   tactics module as mock evaluator. MCTS with a sane prior must solve
+   win-in-1 at 50 simulations.
 3. **Network shape test + overfit test**: forward shapes on both
    backends; overfit 32 positions to >95% policy accuracy in a few
    hundred steps (proves loss, encoding, and training loop end-to-end).
@@ -784,10 +823,11 @@ Nothing trains until these pass. Order matters.
    Wgpu — recorded in the run journal either way.
 
 Risk table (top 3): Metal training correctness → gate #4 + Flex
-fallback. Tabula-rasa stall (possible in asymmetric games;
-AlphaGomoku needed a curriculum) → milestone 3's acceptance test exists
-to detect it early; fallback is AlphaGomoku-style synthetic
-attack/defense pretraining [paper]. Throughput over-optimism → the
+fallback. Learning stall (AlphaGomoku needed a curriculum) → the
+tactics module mitigates it from day one and generates the synthetic
+attack/defense set that milestone 3 trains on before self-play exists;
+that milestone's acceptance test detects a stall early [paper].
+Throughput over-optimism → the
 chapter-9 numbers are [derived]; week-one measurement recalibrates
 worker count, batch window, and sims/move before any long run.
 
@@ -802,7 +842,7 @@ Estimated effort assumes focused evenings, not DeepMind clusters.
 |---|---|---|
 | 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; `cargo bench` win-detection ≥ 50M checks/s |
 | 2 | `mcts` + mock evaluator | solves tactical suite; plays legal full games vs. uniform-random evaluator without crashing (1000 games) |
-| 3 | `net` + `train` on synthetic data | overfit test passes; learns AlphaGomoku-style synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
+| 3 | `net` + `train` on synthetic data | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
 | 4 | `selfplay` + evaluator service | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
 | 5 | **The loop, v1**: `gomoku run` phased | 10 iterations complete unattended; arena Elo of iteration *k* vs. iteration 0 is strictly, monotonically-ish increasing; first agent that beats raw-MCTS-only (>90% over 200 games) |
 | 6 | Hardening | 7-day continuous run without intervention; crash-recovery from journal verified by kill -9 drill |
