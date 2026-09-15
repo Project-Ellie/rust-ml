@@ -87,11 +87,11 @@ pub struct TrainingConfig {
     pub num_epochs: usize,
     #[config(default = 64)]
     pub batch_size: usize,
-    #[config(default = 4)]
+    #[config(default = 12)]
     pub num_workers: usize,
     #[config(default = 42)]
     pub seed: u64,
-    #[config(default = 1.0e-4)]
+    #[config(default = 3.0e-4)]
     pub learning_rate: f64,
 }
 

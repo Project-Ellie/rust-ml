@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/Project-Ellie/rust-ml"
 
 [dependencies]
-burn = { version = "0.21", features = ["flex", "train", "vision", "metrics"] }
+burn = { version = "0.21", features = ["flex", "wgpu", "train", "vision", "metrics"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 

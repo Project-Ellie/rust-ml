@@ -7,7 +7,7 @@
 //! Uses the Flex (pure-Rust CPU) backend. In `--release` one epoch takes on the
 //! order of a minute; debug builds are much slower — always train in release.
 
-use burn::backend::{Autodiff, Flex};
+use burn::backend::{Autodiff, wgpu};
 use burn::optim::AdamConfig;
 use rust_ml::model::ModelConfig;
 use rust_ml::training::{TrainingConfig, train};
@@ -17,7 +17,7 @@ fn main() {
     // its autodiff-decorated training counterpart. To train on GPU instead,
     // swap `Flex` for `Wgpu` (plus the `wgpu` feature) — nothing else in
     // the training code changes.
-    type B = Flex;
+    type B = wgpu::Wgpu;
     type AutodiffB = Autodiff<B>;
 
     let device = Default::default();
