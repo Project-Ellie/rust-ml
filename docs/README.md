@@ -55,6 +55,10 @@ write-it-yourself slices. Current:
 
 - [13-engine-tutorial](tutorials/13-engine-tutorial/README.md) — build the
   Gomoku engine from [chapter 13](13-engine-design.md), slice by slice.
+- [cli-tutorial](tutorials/cli-tutorial/README.md) — side quest (after
+  slices 2–3): a playable, non-scrolling terminal UI on *both* engine
+  boards, coded against a `dyn GameBoard` abstraction owned by the CLI.
+  The embryo of chapter 12's `gomoku play`.
 
 ## Prerequisites
 
