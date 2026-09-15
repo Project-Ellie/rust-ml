@@ -20,3 +20,7 @@ mod zobrist;
 
 #[cfg(any(test, feature = "testutil"))]
 pub mod reference;
+
+// Public surface (ch. 13, "Crate layout" — re-exports ONLY what belongs
+// to the API). Grows slice by slice.
+pub use moveset::Move;
