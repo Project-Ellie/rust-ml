@@ -658,15 +658,30 @@ with no five-in-a-row*. Think it through:
 - Row-major filling fails: on any ↘ diagonal the move index changes by
   16 per step (an even number), so same-parity — same color — stones
   line up. Five in a row, game over long before move 225.
-- A perfect **checkerboard** works: if Black sits exactly on cells with
-  `(r + c)` even and White on odd, then along *every* line in *every*
-  direction the colors alternate — the longest run anywhere is 1.
+- The obvious next idea, a **checkerboard** (Black on `r + c` even),
+  fails *for the same reason*: parity only guards rows and columns.
+  Along a diagonal, `r + c` changes by 2 (↘) or 0 (↙) per step, so its
+  parity is constant — every diagonal is monochromatic, and the main
+  diagonal is 15 Black stones. (An earlier version of this document
+  proposed the checkerboard here; the test caught it. This is why the
+  corpus exists.)
+- What works: **column stripes `BBWW BBWW …`, inverted on odd rows**.
+  Check all four directions:
+  - *Horizontal:* `BBWW` repeating — longest run 2, even with the
+    3-cell tail `BBW` at column 14.
+  - *Vertical:* odd rows are the inverse of even rows, so every column
+    strictly alternates.
+  - *Diagonals:* stepping ↘ or ↙ inverts the row *and* shifts one step
+    in the period-4 pattern. Walking the four phases gives
+    `BBWW…`, `BWWB…`, `WBBW…`, `WWBB…` — never more than 2 in a row.
 - And here is the kicker: every intermediate position is a *subset* of
   the final board, and removing stones can never create a run. So if
-  the final board has no five, no prefix of the game had one either.
-  The fill order is safe by construction.
-- Counts fit perfectly: 113 even cells for Black (moves 1, 3, …, 225),
-  112 odd cells for White. Black makes the last move.
+  the final board's longest run is 2, no prefix of the game had a five
+  either. The fill order is safe by construction.
+- Counts fit perfectly: even rows hold 8 Black / 7 White (× 8 rows
+  = 64 Black), odd rows 7 Black / 8 White (× 7 rows = 49 Black) —
+  exactly 113 Black, 112 White, matching strict alternation with
+  Black's extra move.
 
 ### RED
 
@@ -675,12 +690,15 @@ with no five-in-a-row*. Think it through:
     fn full_board_without_five_is_a_draw() {
         let mut b = Board::new();
 
-        // Split the 225 cells by checkerboard parity.
-        let mut blacks = Vec::new(); // (r + c) even — 113 cells
-        let mut whites = Vec::new(); // (r + c) odd  — 112 cells
+        // Split the 225 cells into black/white by the stripe pattern:
+        //   row pattern BBWW BBWW …, inverted on odd rows.
+        let mut blacks = Vec::new(); // 113 cells
+        let mut whites = Vec::new(); // 112 cells
         for r in 0..15u8 {
             for c in 0..15u8 {
-                if (r + c) % 2 == 0 {
+                let stripe = (c % 4) < 2;            // BBWW repeating
+                let black = stripe != (r % 2 == 1);  // inverted on odd rows
+                if black {
                     blacks.push(Move::new(r, c).unwrap());
                 } else {
                     whites.push(Move::new(r, c).unwrap());
@@ -959,7 +977,8 @@ fmt silent.
 
 **Done when you can answer without looking:** Why does only the last
 stone need checking? Why can six-in-a-row only arise by bridging? Why
-is the draw test's checkerboard provably safe at every prefix? Why does
-the `else` in front of the draw branch matter?
+does the checkerboard fail as a draw pattern — and why is the stripe
+pattern provably safe at every prefix? Why does the `else` in front of
+the draw branch matter?
 
 Next: [Slice 3 — Bitboard and Board](03-bitboard-and-board.md)
