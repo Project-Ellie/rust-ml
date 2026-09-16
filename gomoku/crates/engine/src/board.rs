@@ -1,5 +1,8 @@
 //! `Board`: absolute colors + `to_move`, play/undo, legality, status.
 //! Slice 3. See docs/13-engine-design.md, "Board".
+use crate::bitboard::{Bitboard, VALID, idx};
+use crate::moveset::Move;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
     Black,
@@ -31,83 +34,149 @@ pub enum PlayError {
     GameOver,
 }
 
-pub(crate) const fn idx(r: u8, c: u8) -> usize {
-    r as usize * 16 + c as usize
-}
-
-/// 256 bits, of which 240 are addressable cells (15 rows x 16 stride)
-/// and 225 are real board cells. Column 15 of every row plus bits
-/// 240-255 are padding - the invariant says they are ALWAYS zero.
+/// The production board. Two bitboards in ABSOLUTE colors (ch. 13,
+/// decision 5: Swap2's non-alternating opening cannot be expressed in
+/// a relative me/you store), plus side to move, status, and full
+/// move history (encoding, undo, game records).
 ///
-/// NewType over `[u64; 4]`: `Copy` (32 bytes - cheaper than a
-/// reference), and the wrapper keeps bitboard math from mixing with
-/// plain ntegers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Bitboard(pub(crate) [u64; 4]);
+/// `PartialEq` is derived for tests ("undo everything ⇒ equals
+/// `Board::new()`"); it compares bitboards, not game meaning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Board {
+    black: Bitboard,
+    white: Bitboard,
+    to_move: Color,
+    status: Status,
+    moves: Vec<Move>,
+}
 
-impl Bitboard {
-    pub(crate) const EMPTY: Bitboard = Bitboard([0; 4]);
-
-    pub(crate) fn with_bit(self, idx: usize) -> Bitboard {
-        let mut w = self.0;
-        w[idx / 64] |= 1 << (idx % 64);
-        Bitboard(w)
+impl Board {
+    pub fn new() -> Board {
+        Board {
+            black: Bitboard::EMPTY,
+            white: Bitboard::EMPTY,
+            to_move: Color::Black,
+            status: Status::Ongoing,
+            moves: Vec::new(),
+        }
     }
 
-    pub(crate) fn without_bit(self, idx: usize) -> Bitboard {
-        let mut w = self.0;
-        w[idx / 64] &= !(1 << (idx % 64));
-        Bitboard(w)
+    pub fn play(&mut self, mv: Move) -> Result<(), PlayError> {
+        if self.status != Status::Ongoing {
+            return Err(PlayError::GameOver)
+        }
+        let i = idx(mv.row(), mv.col());
+        if (self.black | self.white).test(i) {
+            return Err(PlayError::Occupied);
+        }
+        match self.to_move {
+            Color::Black => self.black = self.black.with_bit(i),
+            Color::White => self.white = self.white.with_bit(i),
+        }
+        self.moves.push(mv);
+        self.to_move = self.to_move.other();
+
+        Ok(())
     }
 
-    pub(crate) fn test(&self, idx: usize) -> bool {
-        self.0[idx / 64] & (1 << idx % 64) != 0
+    pub fn status(&self) -> Status {
+        self.status
     }
 
-    pub(crate) fn is_zero(&self) -> bool {
-        self.0 == [0; 4]
+    pub fn to_move(&self) -> Color {
+        self.to_move
     }
 
-    pub(crate) fn count(&self) -> u32 {
-        self.0.iter().map(|w| w.count_ones()).sum()
+    pub fn moves(&self) -> &[Move] {
+        &self.moves
+    }
+
+    pub fn is_legal(&self, mv: Move) -> bool {
+        self.status == Status::Ongoing &&
+            !(self.black | self.white).test(idx(mv.row(), mv.col()))
+    }
+
+    pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
+        // `!occupied` sets ALL padding bits — mask immediately.
+        // This is the one place complements are allowed, and the mask
+        // is non-negotiable (the padding invariant, ch. 13).
+        let empty = !(self.black | self.white) & VALID;
+
+        // The classic set-bit walk, word by word. `bits & (bits - 1)`
+        // clears the lowest set bit — commit it to memory, you will
+        // meet it in every bitboard codebase.
+        empty.0.into_iter().enumerate().flat_map(|(w, mut bits)| {
+            std::iter::from_fn(move || {
+                if bits == 0 {
+                    return None; // word exhausted → next word
+                }
+                let bit = bits.trailing_zeros() as usize;
+                bits &= bits - 1;
+                let i = w * 64 + bit; // stride-16 index
+                // Back across the boundary: stride-16 → (row, col) →
+                // stride-15 Move. The `unwrap` is justified by VALID:
+                // padding bits are never set in `empty`, so c < 15
+                // always. Drop the mask and this panics — LOUD, never
+                // silently wrong.
+                Some(Move::new((i / 16) as u8, (i % 16) as u8).unwrap())
+            })
+        })
+    }
+
+
+    pub(crate) fn stones(&self, color: Color) -> Bitboard {
+        match color {
+            Color::Black => self.black,
+            Color::White => self.white,
+        }
     }
 }
+
+
+
 
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::moveset::Move;
 
     #[test]
-    fn set_test_clear_on_corners_and_edges() {
-        let bb = Bitboard::EMPTY;
-        assert!(bb.is_zero());
-
-        let bb = bb.with_bit(idx(0, 0));
-        assert!(bb.test(idx(0, 0)));
-        assert!(!bb.test(idx(1, 0)));
-        assert_eq!(bb.count(), 1);
-
-        let bb = bb.
-            with_bit(idx(0, 14)).
-            with_bit(idx(14, 0)).
-            with_bit(idx(14, 14));
-        assert_eq!(bb.count(), 4);
-
-        let bb = bb.without_bit(idx(0, 0));
-        assert!(!bb.test(idx(0, 0)));
-        assert_eq!(bb.count(), 3);
+    fn new_board_has_225_legal_moves_black_to_move() {
+        let b = Board::new();
+        assert_eq!(b.status(), Status::Ongoing);
+        assert_eq!(b.to_move(), Color::Black);
+        assert_eq!(b.empty_moves().count(), 225);
+        assert!(b.moves().is_empty());
     }
 
     #[test]
-    fn bits_crossing_a_word_boundary_land_correctly() {
-        let bb = Bitboard::EMPTY.
-            with_bit(idx(3, 14)).
-            with_bit(idx(4, 0));
-        assert!(bb.test(idx(3, 14)));
-        assert!(bb.test(idx(4, 0)));
-        assert!(!bb.test(idx(4, 1)));
-        assert_eq!(bb.count(), 2);
+    fn play_places_a_stone_and_flips() {
+        let mut b = Board::new();
+        let mv = Move::new(7, 7).unwrap();
+        b.play(mv).unwrap();
+        assert_eq!(b.to_move(), Color::White);
+        assert!(!b.is_legal(mv));
+        assert_eq!(b.empty_moves().count(), 224);
+    }
+
+    #[test]
+    fn empty_moves_and_legality_track_the_stones() {
+        let mut b = Board::new();
+        let mv = Move::new(7, 7).unwrap();
+        assert!(b.is_legal(mv));
+
+        b.play(mv).unwrap();
+        assert!(!b.is_legal(mv));
+        assert_eq!(b.empty_moves().count(), 224);
+        assert!(b.empty_moves().all(|m| m != mv));
+
+        for r in 0..15u8 {
+            for c in 0..15u8 {
+                let _ = b.play(Move::new(r, c).unwrap());
+            }
+        }
+        assert_eq!(b.empty_moves().count(), 0);
     }
 }

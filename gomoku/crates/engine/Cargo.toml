@@ -17,3 +17,11 @@ serde.workspace = true
 [dev-dependencies]
 proptest.workspace = true
 criterion.workspace = true
+
+# The differential suite needs the reference engine, which only exists
+# under the `testutil` feature. `required-features` makes cargo SKIP
+# this target when the feature is off instead of failing to compile.
+# Run it with: cargo test -p engine --features testutil
+[[test]]
+name = "differential"
+required-features = ["testutil"]
