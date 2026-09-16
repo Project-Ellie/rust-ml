@@ -12,7 +12,7 @@ Why *this* slice gets a plan: the thinking is already done in
 mechanical, and mechanical is exactly what a plan should absorb.
 
 **Verified before written.** Every step below was executed in a scratch copy
-of the engine: **38 unit tests + 2 differential properties** green,
+of the engine: **39 unit tests + 2 differential properties** green,
 `clippy --all-targets --features testutil -- -D warnings` and `fmt --check`
 clean, and the differential suite green at `PROPTEST_CASES=10000` and
 `100000`. `lib.rs` was not touched — slice 3 already declared `mod win;`.
@@ -131,24 +131,58 @@ Four in a row → false. Five with a gap → false. Empty board → false. All 2
 cells (`VALID`) → true — that last one is cheap and catches a `shr` that
 drops bits at a word boundary.
 
-## Step 5 — the wrap attack, through real coordinates
+## Step 5 — the wrap attack, at both levels
+
+The phantom five lives on ONE colour's bitboard: a single colour must hold
+the whole seam pattern — `(7,12)`, `(7,13)`, `(7,14)` and `(8,0)`, `(8,1)` —
+so that the `+1` index path `124 → 125 → 126 → 127 → 128` could connect if
+padding were not zero. Two tests pin this.
+
+Bitboard level (where the claim lives):
+
+```rust
+#[test]
+fn wrap_pattern_is_not_a_five() {
+    let seam = stones(&[(7, 12), (7, 13), (7, 14), (8, 0), (8, 1)]);
+    assert!(!has_five_any(&seam));
+}
+```
+
+Board level (the regression sentinel): through alternating play one colour
+can still own the whole pattern — the opponent fills distant cells. Black
+ends with exactly the seam shape; White's four fillers are a deliberate
+4-run, not a win:
 
 ```rust
 #[test]
 fn wrap_attack_is_not_a_win() {
     let mut board = Board::new();
-    for mv in [(7, 12), (8, 0), (7, 13), (8, 1), (7, 14)] {
-        board.play(Move::new(mv.0, mv.1).unwrap()).unwrap();
+    let script = [
+        (7, 12), (0, 0),
+        (7, 13), (0, 1),
+        (7, 14), (0, 2),
+        (8, 0),  (0, 3),
+        (8, 1),
+    ];
+    for (r, c) in script {
+        board.play(Move::new(r, c).unwrap()).unwrap();
     }
     assert_eq!(board.status(), Status::Ongoing);
 }
 ```
 
-Note the alternating colours: three Black stones ending at column 14 of row 7,
-two White starting at column 0 of row 8. The `+1` path from `(7,12)` is
-`(7,12) (7,13) (7,14) (7,15) (8,0)` — and `(7,15)` is padding, always zero,
-so the AND is zero exactly there. The slice insists this test goes through
-`Board` rather than hand-set bits so it also exercises the stride-16 mapping.
+Splitting the seam cells between the two colours instead — Black
+`(7,12)/(7,13)/(7,14)`, White `(8,0)/(8,1)` — would make this test vacuous:
+no single bitboard ever contains the pattern, so even a padding-ignorant
+`has_five` would pass. (An earlier version of this plan had exactly that
+script; if your copy does, replace it.)
+
+Honest caveat: through `play` alone even the fixed test cannot fail —
+`Move` only addresses columns 0–14, and the staged AND re-includes the
+unshifted, invariant-holding operand at every stage
+([03-deep-dive/01, §6](../03-deep-dive/01-stride16-and-shr.md)). The
+sentinel fires when code that writes bits *directly* — an unmasked `!`, a
+future symmetry transform, `from_position` — violates the invariant.
 
 ## Step 6 — the two properties
 
@@ -219,7 +253,7 @@ PROPTEST_CASES=10000 cargo test -p engine --features testutil
 ```
 
 Commit: `feat(engine): staged shift-AND win detection` (the slice's own
-message). Measured on the reference solution below: 38 unit + 2 differential
+message). Measured on the reference solution below: 39 unit + 2 differential
 green at 1 / 10k / 100k cases, clippy and fmt clean, `lib.rs` unchanged.
 
 ## Optional step 10 — the neighbourhood check (2× on the play path)
@@ -444,14 +478,40 @@ mod tests {
         assert!(has_five_any(&VALID), "every cell filled");
     }
 
-    /// The wrap attack, through real coordinates: three stones ending at
-    /// column 14 of row 7, two starting at column 0 of row 8. If this
-    /// ever reports a win, the padding invariant is broken — not the test.
+    /// The wrap attack at the bitboard level: one colour holds the whole
+    /// seam pattern — (7,12), (7,13), (7,14) and (8,0), (8,1). The +1
+    /// index path 124..128 crosses padding bit 127, which is always
+    /// zero, so this must NOT be a five.
+    #[test]
+    fn wrap_pattern_is_not_a_five() {
+        let seam = stones(&[(7, 12), (7, 13), (7, 14), (8, 0), (8, 1)]);
+        assert!(!has_five_any(&seam));
+    }
+
+    /// The wrap attack through real coordinates: alternating play, but
+    /// Black owns the whole seam pattern while White fills distant
+    /// cells (a deliberate 4-run, not a win). If this ever reports a
+    /// win, the padding invariant is broken — not the test.
+    ///
+    /// Note: splitting the seam cells between the two colours would
+    /// make this test vacuous — the phantom five lives on a single
+    /// bitboard, so one colour must own the whole pattern.
     #[test]
     fn wrap_attack_is_not_a_win() {
         let mut board = Board::new();
-        for mv in [(7, 12), (8, 0), (7, 13), (8, 1), (7, 14)] {
-            board.play(Move::new(mv.0, mv.1).unwrap()).unwrap();
+        let script = [
+            (7, 12),
+            (0, 0),
+            (7, 13),
+            (0, 1),
+            (7, 14),
+            (0, 2),
+            (8, 0),
+            (0, 3),
+            (8, 1),
+        ];
+        for (r, c) in script {
+            board.play(Move::new(r, c).unwrap()).unwrap();
         }
         assert_eq!(board.status(), Status::Ongoing);
     }
@@ -593,15 +653,16 @@ mod tests {
 cargo fmt --all --check                                     clean
 cargo clippy -p engine --all-targets --features testutil -- -D warnings
                                                             clean
-cargo test -p engine --features testutil --no-fail-fast     38 passed + 2 passed
-PROPTEST_CASES=10000  ... same                              38 passed + 2 passed
-PROPTEST_CASES=100000 ... same                              38 passed + 2 passed
+cargo test -p engine --features testutil --no-fail-fast     39 passed + 2 passed
+PROPTEST_CASES=10000  ... same                              39 passed + 2 passed
+PROPTEST_CASES=100000 ... same                              39 passed + 2 passed
 ```
 
-The 38 = the 32 from slices 2–3 plus the six in `win.rs`:
+The 39 = the 32 from slices 2–3 plus the seven in `win.rs`:
 `detects_all_four_directions`, `detects_fives_along_every_edge`,
-`overlines_count_and_near_misses_do_not`, `wrap_attack_is_not_a_win`,
-`planted_runs_are_found`, `agrees_with_the_slow_oracle`. The 2 differential
+`overlines_count_and_near_misses_do_not`, `wrap_pattern_is_not_a_five`,
+`wrap_attack_is_not_a_win`, `planted_runs_are_found`,
+`agrees_with_the_slow_oracle`. The 2 differential
 properties are unchanged and now exercise `win.rs` through `Board`.
 
 ## What this slice does not do

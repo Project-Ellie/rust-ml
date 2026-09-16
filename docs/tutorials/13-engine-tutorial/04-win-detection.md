@@ -68,9 +68,14 @@ One test, one table — the failure message names the case. (This is
 4. Corner diagonals: (0,0)–(4,4) and (0,14)–(4,10)
 5. Overline: six in a row → true
 6. Near-miss: four in a row → false; broken five (gap in middle) → false
-7. **Wrap attack**: stones at columns 12–14 of row *r* and columns 0–1
-   of row *r+1* → false (this is the case the padding invariant kills;
-   if it ever passes, your invariant is broken, not the test)
+7. **Wrap attack**: one colour holds columns 12–14 of row *r* AND
+   columns 0–1 of row *r+1* → false. Test it at the bitboard level
+   (hand-set the five seam cells) and through `Board` (give Black the
+   whole pattern; White fills distant cells). Do not split the seam
+   cells between the colours — the phantom five lives on a single
+   bitboard, so an alternating script can never fail and tests nothing.
+   If the Board-level test ever reports a win, your padding invariant
+   is broken, not the test.
 8. Proptest: plant a random run of 4 at a random position/direction on
    an empty board, extend it by one more stone → detected; then plant
    random *non-line* stone sets (up to ~30 stones, rejection-sample away
