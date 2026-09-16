@@ -284,7 +284,7 @@ pub(crate) fn assert_clean(b: &Bitboard) {
 
 Why this invariant is worth its own cycle: every win-detection AND in
 slice 4 assumes a 5-chain cannot wrap around a row end. Wraps cross the
-padding column. If padding is always zero, the AND-chain dies on every
+padding column. If padding is always zero, the AND-chain is zero on every
 wrap path — no per-direction edge masks, ever. One invariant replaces
 four families of bugs.
 
@@ -687,7 +687,7 @@ impl Board {
 
 /// Consecutive set bits starting one step away from `i`, walking in
 /// `step` direction. Two termination mechanisms, both free:
-///   - the index guard stops walks at the array edge (verticals);
+///   - the index range check stops walks at the array edge (verticals);
 ///   - the PADDING INVARIANT stops horizontal/diagonal wraps: every
 ///     wrap path lands in column 15, whose bits are always zero.
 fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {

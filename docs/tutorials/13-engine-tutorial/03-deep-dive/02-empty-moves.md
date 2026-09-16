@@ -1,11 +1,11 @@
-# `empty_moves()` — why that signature, why that loop, and what `+ '_` means
+# 02 — `empty_moves()`: the signature, the loop, and `+ '_`
 
 *A paper on `Board::empty_moves` in the Gomoku engine (slice 3). Same
 approach as the `shr` paper: start from what the function is for, then
 derive the design and check every claim against measurement.*
 
-Prerequisite reading: [Stride-16 and why `shr`](01-stride16-and-shr.md)
-(stride-16 layout, guard bits, `VALID`).
+Prerequisite reading: [The stride-16 layout and the `shr` primitive](01-stride16-and-shr.md)
+(stride-16 layout, padding bits, `VALID`).
 
 ---
 
@@ -302,7 +302,7 @@ pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
 ### Four things this code is saying
 
 **a) `!occupied & VALID` is not optional.** `!occupied` sets every bit
-that is not a stone — including all 15 guard bits (column 15 of each row)
+that is not a stone — including all 15 padding bits (column 15 of each row)
 and the 16 unused bits above index 239. Without the `& VALID` the
 iterator would yield index 15 → `r=0, c=15` → `Move::new` returns `None`,
 and any unchecked conversion path would produce a *fabricated* move in
@@ -330,7 +330,7 @@ the bitboard is stride-16. The bridge:
 impl Move {
     /// Trusted path: `idx` must come from a masked bitboard, so `idx % 16 < 15`.
     pub(crate) fn from_bit_index(idx: usize) -> Move {
-        debug_assert!(idx < 240 && idx % 16 < 15, "guard/tail bits must be masked off");
+        debug_assert!(idx < 240 && idx % 16 < 15, "padding bits must be masked off");
         let r = (idx >> 4) as u8;       // / 16
         let c = (idx & 15) as u8;       // % 16
         Move(r * 15 + c)                // logical index
@@ -467,7 +467,7 @@ fn empty_moves_agrees_with_the_bitboard_count() {
 }
 
 #[test]
-fn empty_moves_never_yields_a_guard_cell() {
+fn empty_moves_never_yields_a_padding_cell() {
     // the trap of forgetting `& VALID`: index 15 would appear as (0, 15) / phantom rows
     let b = Board::new();
     for mv in b.empty_moves() {
@@ -523,7 +523,7 @@ and will rely on them: the **order is ascending logical index**
 
 ---
 
-## 7. Cheat sheet
+## 7. Summary
 
 ```text
 "how many cells are empty?"              → empty_cells().count()            (~0.6 ns)

@@ -177,7 +177,7 @@ acceptance number.
 4. `Board::new` / `play` / `to_move` — differential vs reference begins
 5. `is_legal` + `empty_moves`: count empties via `empty_cells()` (not by
    walking), and check the walk agrees — 225 − stones, deterministic
-   row-major order, no guard cells in the output
+   row-major order, no padding cells in the output
 6. win/lose/draw status — differential green on 10k games
 7. `undo`: play N moves, undo all → board equals `new()`; and after any
    random play/undo walk, differential still holds

@@ -13,11 +13,14 @@ alternatives would have been better".
 
 | # | Paper | Answers |
 |---|-------|---------|
-| 01 | [Stride-16 and why `shr`](01-stride16-and-shr.md) | Why a 256-bit right shift exists at all, why 15 rows live in a stride of 16, why one padding bit per row makes wrap-around fives impossible, and what the `0 < s < 64` contract protects. |
-| 02 | [Why `empty_moves()` looks like that](02-empty-moves.md) | Why the return type is a lazy `impl Iterator` and not a `MoveSet`/`Vec`, why the loop is over *results* rather than cells, why it is not a performance problem (measured), and what `+ '_` means now that Rust 2024 captures lifetimes implicitly. |
+| 01 | [The stride-16 layout and the `shr` primitive](01-stride16-and-shr.md) | Why a 256-bit right shift exists at all, why 15 rows live in a stride of 16, why one padding bit per row makes wrap-around fives impossible, and what the `0 < s < 64` contract protects. |
+| 02 | [`empty_moves()`: the signature, the loop, and `+ '_`](02-empty-moves.md) | Why the return type is a lazy `impl Iterator` and not a `MoveSet`/`Vec`, why the loop is over *results* rather than cells, why it is not a performance problem (measured), and what `+ '_` means now that Rust 2024 captures lifetimes implicitly. |
 
 ## Conventions for this series
 
+- **Terminology is fixed.** Concept names come from the
+  [tutorial glossary](../README.md#glossary) — papers do not coin their
+  own vocabulary.
 - **Derive, then measure.** Each paper starts from the consumer's
   question, builds the design one decision at a time, and then checks the
   claims against a measurement or a compiler experiment. Numbers are

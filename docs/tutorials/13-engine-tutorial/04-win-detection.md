@@ -34,8 +34,8 @@ decision 1) costs zero extra code.
 
 **Why no edge masks.** Re-read the "padding invariant" section of ch. 13
 before coding. Your slice-3 `assert_clean` is what makes this safe:
-every wrap path crosses a zero padding bit, and the AND-chain dies
-there. The danger is not in `has_five` — it is in any *complement* you
+every wrap path crosses a zero padding bit, and the AND is zero there.
+The danger is not in `has_five` — it is in any *complement* you
 write elsewhere. Rule: after every `!`, immediately `& VALID`.
 
 ## Rust toolbox: table-driven tests
@@ -105,14 +105,14 @@ green. Commit: `feat(engine): staged shift-AND win detection`.
 ## Deep dives
 
 The shift primitive this slice builds on — why a right shift is the right
-operation, why the guard bit makes wrapping fives impossible, and which
+operation, why the padding column makes wrapping fives impossible, and which
 hand-picked patterns are worth asserting — is derived in
-[03-deep-dive/01 — Stride-16 and why `shr`](03-deep-dive/01-stride16-and-shr.md).
+[03-deep-dive/01 — The stride-16 layout and the `shr` primitive](03-deep-dive/01-stride16-and-shr.md).
 
 Why the AND is *staged* rather than a five-term chain (and how the naive
-version lies in two of the four directions), why no per-direction edge
-masks are needed while `!occupied` definitely needs one, and how to
-benchmark this without measuring the optimizer:
+form answers incorrectly for two of the four directions), why no
+per-direction edge masks are needed while `!occupied` definitely needs
+one, and how to benchmark this without measuring the optimizer:
 [04-deep-dive/01 — The staged AND](04-deep-dive/01-staged-and-and-no-edge-masks.md).
 
 Ready to type? [04-deep-dive/02 — implementation plan](04-deep-dive/02-implementation-plan.md)

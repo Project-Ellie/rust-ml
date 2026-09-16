@@ -41,11 +41,11 @@ clean, and the differential suite green at `PROPTEST_CASES=10000` and
 | 3 | fives on every edge and corner | none — the padding invariant does it |
 | 4 | overlines count; fours and broken fives do not | none |
 | 5 | the wrap attack through `Board` | none |
-| 6 | planted runs and random sets agree with a slow oracle | none |
-| 7 | `Board::play` uses the new detector; the interim scanner dies | `board.rs` |
+| 6 | planted runs and random sets agree with the walk-based oracle | none |
+| 7 | `Board::play` uses the new detector; the walk-based oracle is deleted | `board.rs` |
 | 8 | the dead-code allows retire | `bitboard.rs` |
 | 9 | gates + commit | — |
-| 10 | *optional:* neighbourhood probe — 2× on the play path | `win.rs`, `board.rs` |
+| 10 | *optional:* neighbourhood check — 2× on the play path | `win.rs`, `board.rs` |
 
 Steps 3–6 are test-only on purpose. In a bit-trick slice most of the work is
 *proving* the shape you already derived; those tests are the ones that fail
@@ -147,7 +147,7 @@ fn wrap_attack_is_not_a_win() {
 Note the alternating colours: three Black stones ending at column 14 of row 7,
 two White starting at column 0 of row 8. The `+1` path from `(7,12)` is
 `(7,12) (7,13) (7,14) (7,15) (8,0)` — and `(7,15)` is padding, always zero,
-so the AND chain dies exactly there. The slice insists this test goes through
+so the AND is zero exactly there. The slice insists this test goes through
 `Board` rather than hand-set bits so it also exercises the stride-16 mapping.
 
 ## Step 6 — the two properties
@@ -158,13 +158,13 @@ oracle agrees.
 
 **Random sets.** `hash_set(0u8..225, 0..30)`, converted through
 `stride-16 = (i / 15) * 16 + i % 15`, asserting the bit trick agrees with the
-cell-walking oracle on every set.
+walk-based oracle on every set.
 
-The oracle is the slice-3 scanner — **keep it in the test module** after step 7
-deletes it from `board.rs`. Two implementations that disagree are a bug
-report; one implementation is a belief.
+The oracle is the slice-3 walk-based detector — **keep it in the test
+module** after step 7 deletes it from `board.rs`. Two implementations
+that disagree are a bug report.
 
-Pitfall, measured: my first version sampled `r0`/`c0` freely and used
+Pitfall, measured: an early version sampled `r0`/`c0` freely and used
 `prop_assume!` to discard runs that fell off the board. At 10k cases:
 
 ```text
@@ -178,7 +178,7 @@ did anything useful. Map the sample into the legal window instead —
 `(r0, c0) = (a, b + 4 * u8::from(dc != 1))` with `a, b in 0..11` — zero
 rejections, same coverage of the interesting cases.
 
-## Step 7 — integration: `play` switches, the interim scanner dies
+## Step 7 — integration: `play` switches, the walk-based oracle is deleted
 
 `board.rs` answers "did that win?" today with its own `DIRS`, `count_walk` and
 `wins_from`. Replace the call and delete all three:
@@ -193,8 +193,8 @@ just placed (chapter 13: "`Board::play` checks only the color just placed").
 The `i` binding stays — the occupancy test and `with_bit(i)` still need it.
 
 Gate: `cargo test -p engine --features testutil --no-fail-fast`. From this
-point the **differential suite is testing `win.rs` against the oracle** over
-random play/undo walks, which is the strongest check in the repo. Run it
+point the **differential suite is testing `win.rs` against the oracle**
+over random play/undo walks, the strongest check in the crate. Run it
 wider: `PROPTEST_CASES=10000 cargo test -p engine --features testutil`.
 
 ## Step 8 — retire the dead-code allows
@@ -222,11 +222,11 @@ Commit: `feat(engine): staged shift-AND win detection` (the slice's own
 message). Measured on the reference solution below: 38 unit + 2 differential
 green at 1 / 10k / 100k cases, clippy and fmt clean, `lib.rs` unchanged.
 
-## Optional step 10 — the neighbourhood probe (2× on the play path)
+## Optional step 10 — the neighbourhood check (2× on the play path)
 
 Not in the slice contract; take it only if you want the `play` path faster.
 Measured (paper 01, section 7): whole-board `has_five_any` **8.25 ns**, the
-probe **3.96 ns** per check.
+neighbourhood check **3.96 ns** per call.
 
 ```rust
 /// Does the stone at `i` complete a line of five? Asks only about lines
@@ -271,12 +271,14 @@ pub(crate) fn wins_by_placing(b: &Bitboard, i: usize) -> bool {
 
 Wire it in as `if crate::win::wins_by_placing(&self.stones(self.to_move), i)`,
 and pin it with an equivalence test — assert, on every move of a scripted
-game, that the probe's answer equals `board.status() == Status::Won(mover)`.
-The probe is only legitimate if it is *exactly* equivalent on `play`.
+game, that the neighbourhood check's answer equals
+`board.status() == Status::Won(mover)`. The check is only legitimate if it
+is *exactly* equivalent on `play`.
 
-Consequence to expect: with `play` on the probe, `has_five_any` has no caller
-until MCTS asks "is this leaf terminal?", so it needs a narrow allow with that
-comment. Both configurations compile and are clippy-clean — but exactly one of
+Consequence to expect: with `play` on the neighbourhood check, `has_five_any`
+has no caller until MCTS asks "is this leaf terminal?", so it needs a narrow
+allow with that comment. Both configurations compile and are clippy-clean —
+but exactly one of
 the two detectors should be the one `play` calls.
 
 ## Optional step 11 — slice 9's benchmark (not now)
@@ -342,7 +344,7 @@ mod tests {
     use crate::moveset::Move;
     use proptest::prelude::*;
 
-    /// The slice-3 interim detector, kept here as a slow oracle: it walks
+    /// The slice-3 walk-based detector, kept here as the oracle: it walks
     /// cells, so it is immune to the bit-level traps this module lives on.
     fn count_walk(b: &Bitboard, s: u32) -> bool {
         let (dr, dc) = match s {
@@ -457,7 +459,7 @@ mod tests {
     proptest! {
         /// Plant a run of five inside the window where it fits, and a
         /// four-run: the four must NOT be a five, the five must be found,
-        /// and the slow oracle must agree.
+        /// and the walk-based oracle must agree.
         ///
         /// Note the sampling: `a`/`b` are mapped into the legal start
         /// window instead of sampled freely plus `prop_assume!`. Assuming
@@ -480,7 +482,7 @@ mod tests {
             prop_assert_eq!(has_five_any(&five), count_walk(&five, DIRS[dir]));
         }
 
-        /// Random stone sets: the bit trick and the cell-walking oracle
+        /// Random stone sets: the bit trick and the walk-based oracle
         /// must agree on every one of them.
         #[test]
         fn agrees_with_the_slow_oracle(cells in proptest::collection::hash_set(0u8..225, 0..30)) {
@@ -512,7 +514,7 @@ mod tests {
 -
 -/// Consecutive set bits starting one step away from `i`, walking in
 -/// `step` direction. Two termination mechanisms, both free:
--///   - the index guard stops walks at the array edge (verticals);
+-///   - the index range check stops walks at the array edge (verticals);
 -///   - the PADDING INVARIANT stops horizontal/diagonal wraps: every
 -///     wrap path lands in column 15, whose bits are always zero.
 -fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {
@@ -609,4 +611,4 @@ properties are unchanged and now exercise `win.rs` through `Board`.
 - No criterion bench and no committed numbers — slice 9.
 - No incremental/stateful detector. `has_five_any` is a fresh query per call;
   MCTS copies boards and asks the question cold, which is why the whole-board
-  shape exists next to the probe.
+  shape exists next to the neighbourhood check.

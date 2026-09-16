@@ -43,6 +43,46 @@ The slice files still withhold implementations; plans are opt-in.
   refresh; skip if fresh. Deeper training-side concepts (AdamW, soft
   cross-entropy, LR schedules) arrive with the net/train tutorials.
 
+## Glossary
+
+Fixed terminology for the whole tutorial. Every slice, deep dive, and
+implementation plan uses exactly these names for these concepts.
+
+- **Stride-16 layout** — the mapping `idx(r, c) = r * 16 + c` from board
+  cells to bit indices: 15 rows of 15 cells, each row stored in a 16-bit
+  slot of a `[u64; 4]` (256 bits total, 240 addressable, 225 real cells).
+- **Padding bits** — the 31 bit positions that are not board cells: the
+  **padding column** (column 15 of every row, 15 bits) and the
+  **high padding** (bits 240–255, 16 bits).
+- **Padding invariant** — padding bits are always zero, for every
+  bitboard the engine produces. It is what terminates runs at row ends
+  without per-direction edge masks.
+- **VALID** — the mask of the 225 real cells. Required after every `!`,
+  because a complement sets all padding bits.
+- **Mover** — the side that placed the last stone.
+- **5-window** — five consecutive bit indices along one direction
+  (`i, i+s, i+2s, i+3s, i+4s`).
+- **Overline** — a run of six or more stones. Counts as a win (chapter
+  13, decision 1).
+- **Wrap** — an index path that crosses a row boundary while staying in
+  the flat index space (e.g. `(7,14) → (7,15) → (8,0)` along `+1`).
+- **Phantom five** — a 5-window whose cells are not collinear on the
+  board, possible only across a wrap. The padding invariant makes them
+  impossible in engine-produced bitboards.
+- **Staged AND** — the 2→4→5 shift-AND construction of `has_five`
+  (`b & b.shr(s)`, then `& shr(2s)`, then `& shr(s)`), which keeps every
+  shift below 64.
+- **Whole-board check** — `has_five_any`: "does a five exist anywhere
+  in this bitboard?" The MCTS shape.
+- **Neighbourhood check** — `wins_by_placing`: "did the stone just
+  placed complete a five?" The `Board::play` shape.
+- **Walk-based oracle** — a win detector that walks cells and counts
+  neighbours: the reference engine's algorithm, the slice-3 interim
+  detector in `board.rs`, and the test oracle kept in `win.rs`'s tests.
+  Slow, obviously correct, and the thing the staged AND must agree with.
+- **Differential test** — a property test asserting that the fast
+  engine and the reference engine agree on every ply of random games.
+
 ## The slices
 
 | # | File | You build | Slice of ch. 13 |
