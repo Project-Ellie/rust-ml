@@ -56,9 +56,10 @@ write-it-yourself slices. Current:
 - [13-engine-tutorial](tutorials/13-engine-tutorial/README.md) — build the
   Gomoku engine from [chapter 13](13-engine-design.md), slice by slice.
   Chapters that need it grow a `NN-deep-dive/` folder with derivation
-  papers behind their contracts (first:
-  [03-deep-dive](tutorials/13-engine-tutorial/03-deep-dive/README.md) —
-  the stride-16 shift and the `empty_moves()` signature).
+  papers behind their contracts: [03-deep-dive](tutorials/13-engine-tutorial/03-deep-dive/README.md)
+  (the stride-16 shift and the `empty_moves()` signature) and
+  [04-deep-dive](tutorials/13-engine-tutorial/04-deep-dive/README.md)
+  (why win detection stages its AND and needs no edge masks).
 - [cli-tutorial](tutorials/cli-tutorial/README.md) — side quest (after
   slices 2–3): a playable, non-scrolling terminal UI on *both* engine
   boards, coded against a `dyn GameBoard` abstraction owned by the CLI.

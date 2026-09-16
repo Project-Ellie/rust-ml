@@ -102,9 +102,17 @@ engine's loops.
 Corpus + proptest green, differential from slice 3 still green, gates
 green. Commit: `feat(engine): staged shift-AND win detection`.
 
+## Deep dives
+
 The shift primitive this slice builds on — why a right shift is the right
 operation, why the guard bit makes wrapping fives impossible, and which
 hand-picked patterns are worth asserting — is derived in
 [03-deep-dive/01 — Stride-16 and why `shr`](03-deep-dive/01-stride16-and-shr.md).
+
+Why the AND is *staged* rather than a five-term chain (and how the naive
+version lies in two of the four directions), why no per-direction edge
+masks are needed while `!occupied` definitely needs one, and how to
+benchmark this without measuring the optimizer:
+[04-deep-dive/01 — The staged AND](04-deep-dive/01-staged-and-and-no-edge-masks.md).
 
 Next: [Slice 5 — Zobrist keys](05-zobrist.md)

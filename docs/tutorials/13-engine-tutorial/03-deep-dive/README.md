@@ -28,4 +28,6 @@ alternatives would have been better".
   disagreement is a bug in one of them — fix it and say so (that is what
   paper 02 did to `13-engine-design.md`).
 - **One folder per chapter that needs one.** Any chapter can grow a
-  `NN-deep-dive/` folder; papers are numbered in reading order.
+  `NN-deep-dive/` folder; papers are numbered in reading order. The
+  sibling for slice 4 is [04-deep-dive](../04-deep-dive/README.md) —
+  win detection, where the same padding invariant pays for itself again.

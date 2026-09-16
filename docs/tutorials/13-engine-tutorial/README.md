@@ -26,7 +26,8 @@ not a failure.
 ## Conventions used in these files
 
 - **Deep dives** — `NN-deep-dive/` folders hang off the chapter they
-deepen (first: [03-deep-dive](03-deep-dive/README.md)). A chapter tells
+deepen (so far: [03-deep-dive](03-deep-dive/README.md), then
+[04-deep-dive](04-deep-dive/README.md)). A chapter tells
 you *what* to build; a deep dive derives *why it is shaped that way*,
 with measured numbers and compiler experiments. Read them after the
 chapter, when a contract raises a "why this type?" question.
