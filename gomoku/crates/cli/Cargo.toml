@@ -10,4 +10,5 @@ name = "gomoku"
 path = "src/main.rs"
 
 [dependencies]
-engine = { path = "../engine", features = ["testutil"]}
+crossterm.workspace = true
+engine = { path = "../engine", features = ["testutil"] }

@@ -1,26 +1,25 @@
-//! Board rendering - pure functions, no I/O
+//! Board rendering — pure functions, no I/O.
 
 use crate::board::GameBoard;
-use engine::{Board, Color, Move, Status};
-
-fn cell(glyph: char) -> String {
-    format!(" {glyph} ")
-}
+use crossterm::style::Stylize;
+use engine::{Color, Move, Status};
 
 fn glyph(stone: Option<Color>) -> char {
     match stone {
         None => '.',
-        Some(Color::White) => 'o',
         Some(Color::Black) => 'x',
+        Some(Color::White) => 'o',
     }
 }
 
-/// The board as 19 lines of exactly 53 characters each:
-/// ruler, border, 15 labeled rows, border, ruler.
-pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
+/// Shared layout: 53-char lines — row label, bar, 15 three-char cells,
+/// bar, row label — inside a ruler/border frame. `paint(glyph,
+/// is_last_move)` produces one cell's 3 visible characters.
+fn render_with(board: &dyn GameBoard, paint: impl Fn(char, bool) -> String) -> Vec<String> {
     let ruler: String = (0..15).map(|c| format!("{c:^3}")).collect();
     let ruler = format!("    {ruler}    "); // 4 + 45 + 4
     let border = format!("   +{}+   ", "-".repeat(45)); // '+' under the '|'
+    let last = board.moves().last().copied();
 
     let mut lines = Vec::with_capacity(19);
     lines.push(ruler.clone());
@@ -29,7 +28,7 @@ pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
         let mut line = format!("{row:>2} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
-            line.push_str(&cell(glyph(board.stone_at(mv))));
+            line.push_str(&paint(glyph(board.stone_at(mv)), Some(mv) == last));
         }
         line.push_str(&format!("| {row:<2}"));
         lines.push(line);
@@ -37,6 +36,34 @@ pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
     lines.push(border);
     lines.push(ruler);
     lines
+}
+
+/// Plain ASCII: tests, `--plain`, piping into a file.
+pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
+    render_with(board, |g, is_last| {
+        if is_last {
+            format!("[{g}]")
+        } else {
+            format!(" {g} ")
+        }
+    })
+}
+
+/// ANSI-coloured: the alternate-screen UI.
+pub fn render_styled(board: &dyn GameBoard) -> Vec<String> {
+    render_with(board, |g, is_last| {
+        let styled = match g {
+            '.' => ".".dark_grey(),
+            'x' => "x".cyan().bold(),
+            'o' => "o".yellow(),
+            _ => unreachable!("glyph is one of . x o"),
+        };
+        if is_last {
+            format!("[{styled}]")
+        } else {
+            format!(" {styled} ")
+        }
+    })
 }
 
 /// One line of context for below the board.
@@ -79,25 +106,29 @@ mod tests {
     }
 
     #[test]
-    fn black_stone_lands_in_its_cell() {
+    fn last_move_wears_brackets() {
         let mut board = board_for(EngineKind::Fast);
-        board.play(Move::new(7, 7).unwrap()).unwrap();
+        board.play(Move::new(7, 7).unwrap()).unwrap(); // x — last move
+        board.play(Move::new(7, 8).unwrap()).unwrap(); // o — now last
 
         let lines = render_lines(&*board);
         let row7 = &lines[2 + 7]; // line 0 ruler, line 1 border
+        // 4-char gutter, then 3 bytes per column.
         assert_eq!(&row7[25..28], " x ");
+        assert_eq!(&row7[28..31], "[o]");
     }
 
     #[test]
-    fn white_reply_lands_next_to_it() {
+    fn brackets_follow_an_undo() {
         let mut board = board_for(EngineKind::Fast);
         board.play(Move::new(7, 7).unwrap()).unwrap();
         board.play(Move::new(7, 8).unwrap()).unwrap();
+        board.undo();
 
         let lines = render_lines(&*board);
         let row7 = &lines[2 + 7];
-        assert_eq!(&row7[25..28], " x ");
-        assert_eq!(&row7[28..31], " o ");
+        assert_eq!(&row7[25..28], "[x]"); // the bracket walks back
+        assert_eq!(&row7[28..31], " . ");
     }
 
     #[test]
