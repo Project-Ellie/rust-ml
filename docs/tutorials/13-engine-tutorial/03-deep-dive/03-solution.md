@@ -249,12 +249,30 @@ impl Not for Bitboard {
 }
 ```
 
-And the `VALID` mask — built by a `const` block, evaluated at compile
-time (same trick as the Zobrist table in slice 5):
+And the `VALID` mask. Each row contributes 15 set bits (columns 0–14)
+plus one zero (the padding column) — that is `0x7FFF` per 16-bit slot,
+four rows per word, and word 3 holds only rows 12–14:
 
 ```rust
 /// All 225 real cells set, all padding bits zero. The one mask that
 /// makes complements safe: `!occupied & VALID`.
+///
+/// 0x7FFF per row slot = 15 cells (bits 0–14) + padding bit 15 clear;
+/// word 3 holds rows 12–14, and bits 240–255 stay zero.
+pub(crate) const VALID: Bitboard = Bitboard([
+    0x7FFF_7FFF_7FFF_7FFF, // rows 0–3
+    0x7FFF_7FFF_7FFF_7FFF, // rows 4–7
+    0x7FFF_7FFF_7FFF_7FFF, // rows 8–11
+    0x0000_7FFF_7FFF_7FFF, // rows 12–14
+]);
+```
+
+The literals are the recommended form: the mask is data, and the test
+(`VALID.count() == 225`, `assert_clean(&VALID)`) guards it. If you want
+to *derive* the constants instead of trusting them, this const-evaluated
+loop is equivalent (compile-time only, zero runtime cost):
+
+```rust
 pub(crate) const VALID: Bitboard = {
     let mut w = [0u64; 4];
     let mut r = 0usize;
@@ -269,7 +287,11 @@ pub(crate) const VALID: Bitboard = {
     }
     Bitboard(w)
 };
+```
 
+Pick the literals; keep the derivation in your head (or in a comment).
+
+```rust
 /// The crate's single most valuable assertion: padding bits are zero.
 /// Checked in tests after random operation sequences (and, in slice 4,
 /// by proptest). `#[cfg(test)]` — it does not exist in release builds.
@@ -937,20 +959,14 @@ impl Not for Bitboard {
     }
 }
 
-pub(crate) const VALID: Bitboard = {
-    let mut w = [0u64; 4];
-    let mut r = 0usize;
-    while r < 15 {
-        let mut c = 0usize;
-        while c < 15 {
-            let i = r * 16 + c;
-            w[i / 64] |= 1 << (i % 64);
-            c += 1;
-        }
-        r += 1;
-    }
-    Bitboard(w)
-};
+/// 0x7FFF per row slot = 15 cells (bits 0–14) + padding bit 15 clear;
+/// word 3 holds rows 12–14, and bits 240–255 stay zero.
+pub(crate) const VALID: Bitboard = Bitboard([
+    0x7FFF_7FFF_7FFF_7FFF, // rows 0–3
+    0x7FFF_7FFF_7FFF_7FFF, // rows 4–7
+    0x7FFF_7FFF_7FFF_7FFF, // rows 8–11
+    0x0000_7FFF_7FFF_7FFF, // rows 12–14
+]);
 
 #[cfg(test)]
 pub(crate) fn assert_clean(b: &Bitboard) {
