@@ -1,8 +1,8 @@
 //! Naive array-based reference engine — the differential-testing oracle.
 //! Slice 2. Compiled only for tests and the `testutil` feature.
 
+use crate::board::{Color, PlayError, Status};
 use crate::moveset::Move;
-use crate::board::{Color, Status, PlayError};
 
 /// One board cell. Private - the outside world sees `Option<Color`
 /// through `stone_at`; the `Cell` representation is our business.
@@ -421,7 +421,15 @@ mod tests {
     fn undo_replays_history_without_the_last_move() {
         let mut b = Board::new();
         let script = [
-            (7, 3), (0, 0), (7, 4), (0, 2), (7, 5), (0, 4), (7, 6), (0, 6), (7, 7),
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 4),
+            (7, 6),
+            (0, 6),
+            (7, 7),
         ];
         for (r, c) in script {
             b.play(Move::new(r, c).unwrap()).unwrap();

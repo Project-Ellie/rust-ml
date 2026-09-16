@@ -33,13 +33,19 @@ impl Bitboard {
     }
 
     pub(crate) fn test(&self, idx: usize) -> bool {
-        self.0[idx / 64] & (1 << idx % 64) != 0
+        self.0[idx / 64] & (1 << (idx % 64)) != 0
     }
 
+    // The three methods below are what slice 4's staged win detection
+    // consumes — `count`/`is_zero` to inspect results, `shr` as the
+    // shift-AND primitive. Nothing in the crate uses them yet, hence the
+    // narrow allows; drop them when `win.rs` lands.
+    #[allow(dead_code)]
     pub(crate) fn is_zero(&self) -> bool {
         self.0 == [0; 4]
     }
 
+    #[allow(dead_code)]
     pub(crate) fn count(&self) -> u32 {
         self.0.iter().map(|w| w.count_ones()).sum()
     }
@@ -47,6 +53,7 @@ impl Bitboard {
     /// Logical right shift of the whole 256-bit value by `s`,
     /// `0 < s < 64`. Bits shifted past the top are lost (fine: they
     /// are padding or beyond).
+    #[allow(dead_code)]
     pub(crate) fn shr(&self, s: u32) -> Bitboard {
         // THE TRAP: `x << 64` on u64 is a panic in debug builds and
         // SILENT GARBAGE in release (the hardware masks the shift
@@ -99,15 +106,8 @@ impl Not for Bitboard {
     type Output = Bitboard;
 
     fn not(self) -> Bitboard {
-        Bitboard([
-            !self.0[0],
-            !self.0[1],
-            !self.0[2],
-            !self.0[3],
-        ])
+        Bitboard([!self.0[0], !self.0[1], !self.0[2], !self.0[3]])
     }
-
-
 }
 
 /// Observe the bit index: 15 is left in the bit order but right-most in the visual representation
@@ -119,11 +119,12 @@ pub(crate) const VALID: Bitboard = Bitboard([
     0x0000_7FFF_7FFF_7FFF,
 ]);
 
-
 #[cfg(test)]
 pub(crate) fn assert_clean(b: &Bitboard) {
-    assert!((*b & !VALID).is_zero(),
-    "padding invariant violated: {b:?} has bits outside the 225 real cells")
+    assert!(
+        (*b & !VALID).is_zero(),
+        "padding invariant violated: {b:?} has bits outside the 225 real cells"
+    )
 }
 
 #[cfg(test)]
@@ -140,10 +141,10 @@ mod tests {
         assert!(!bb.test(idx(1, 0)));
         assert_eq!(bb.count(), 1);
 
-        let bb = bb.
-            with_bit(idx(0, 14)).
-            with_bit(idx(14, 0)).
-            with_bit(idx(14, 14));
+        let bb = bb
+            .with_bit(idx(0, 14))
+            .with_bit(idx(14, 0))
+            .with_bit(idx(14, 14));
         assert_eq!(bb.count(), 4);
 
         let bb = bb.without_bit(idx(0, 0));
@@ -153,9 +154,7 @@ mod tests {
 
     #[test]
     fn bits_crossing_a_word_boundary_land_correctly() {
-        let bb = Bitboard::EMPTY.
-            with_bit(idx(3, 14)).
-            with_bit(idx(4, 0));
+        let bb = Bitboard::EMPTY.with_bit(idx(3, 14)).with_bit(idx(4, 0));
         assert!(bb.test(idx(3, 14)));
         assert!(bb.test(idx(4, 0)));
         assert!(!bb.test(idx(4, 1)));

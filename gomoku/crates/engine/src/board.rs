@@ -67,7 +67,6 @@ fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {
     n
 }
 
-
 impl Board {
     pub fn new() -> Board {
         Board {
@@ -81,7 +80,7 @@ impl Board {
 
     pub fn play(&mut self, mv: Move) -> Result<(), PlayError> {
         if self.status != Status::Ongoing {
-            return Err(PlayError::GameOver)
+            return Err(PlayError::GameOver);
         }
         let i = idx(mv.row(), mv.col());
         if (self.black | self.white).test(i) {
@@ -123,8 +122,7 @@ impl Board {
     }
 
     pub fn is_legal(&self, mv: Move) -> bool {
-        self.status == Status::Ongoing &&
-            !(self.black | self.white).test(idx(mv.row(), mv.col()))
+        self.status == Status::Ongoing && !(self.black | self.white).test(idx(mv.row(), mv.col()))
     }
 
     pub fn undo(&mut self) {
@@ -167,7 +165,6 @@ impl Board {
         })
     }
 
-
     pub(crate) fn stones(&self, color: Color) -> Bitboard {
         match color {
             Color::Black => self.black,
@@ -176,14 +173,14 @@ impl Board {
     }
 }
 
-
-
-
-
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use std::iter::Once;
     use super::*;
     use crate::moveset::Move;
 
@@ -245,10 +242,7 @@ mod tests {
         }
         assert_eq!(b.status(), Status::Won(Color::Black));
 
-        assert_eq!(
-            b.play(Move::new(13, 13).unwrap()),
-            Err(PlayError::GameOver)
-        )
+        assert_eq!(b.play(Move::new(13, 13).unwrap()), Err(PlayError::GameOver))
     }
 
     #[test]
@@ -268,7 +262,15 @@ mod tests {
     fn undo_the_winning_move_unwins_the_game() {
         let mut b = Board::new();
         let script = [
-            (7, 3), (0, 0), (7, 4), (0, 2), (7, 5), (0, 4), (7, 6), (0, 6), (7, 7),
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 4),
+            (7, 6),
+            (0, 6),
+            (7, 7),
         ];
         for (r, c) in script {
             b.play(Move::new(r, c).unwrap()).unwrap();
@@ -281,5 +283,4 @@ mod tests {
         assert!(b.is_legal(Move::new(7, 7).unwrap()));
         assert_eq!(b.moves.len(), 8);
     }
-
 }
