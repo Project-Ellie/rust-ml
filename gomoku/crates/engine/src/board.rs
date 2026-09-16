@@ -171,6 +171,17 @@ impl Board {
             Color::White => self.white,
         }
     }
+
+    pub fn stone_at(&self, mv: Move) -> Option<Color> {
+        let idx = mv.row() as usize * 16 + mv.col() as usize;
+        if self.black.test(idx) {
+            Some(Color::Black)
+        } else if self.white.test(idx) {
+            Some(Color::White)
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for Board {
@@ -182,7 +193,7 @@ impl Default for Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::moveset::Move;
+    use crate::{reference, Color, Move, Status};
 
     #[test]
     fn new_board_has_225_legal_moves_black_to_move() {
@@ -282,5 +293,22 @@ mod tests {
         assert_eq!(b.to_move(), Color::Black);
         assert!(b.is_legal(Move::new(7, 7).unwrap()));
         assert_eq!(b.moves.len(), 8);
+    }
+
+    #[test]
+    fn stone_at_impls_agree_for_all_positions() {
+        let mut fast = Board::new();
+        let mut naive = reference::Board::new();
+        for &(r, c) in &[(7u8, 7u8), (0, 14), (14, 0), (3, 11)] {
+            let mv = Move::new(r, c).unwrap();
+            assert_eq!(fast.play(mv), naive.play(mv));
+        }
+        for r in 0..15 {
+            for c in 0..15 {
+                let mv = Move::new(r, c).unwrap();
+                assert_eq!(fast.stone_at(mv), naive.stone_at(mv), "at ({r}, {r})");
+            }
+        }
+        assert_eq!(fast.status(), Status::Ongoing);
     }
 }

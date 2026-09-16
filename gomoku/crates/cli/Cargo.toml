@@ -1,0 +1,13 @@
+[package]
+name = "cli"
+description = "Terminal frontend: play Gomoku on either engine board"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "gomoku"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = "../engine", features = ["testutil"]}
