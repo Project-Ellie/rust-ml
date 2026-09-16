@@ -25,6 +25,11 @@ not a failure.
 
 ## Conventions used in these files
 
+- **Deep dives** — `NN-deep-dive/` folders hang off the chapter they
+deepen (first: [03-deep-dive](03-deep-dive/README.md)). A chapter tells
+you *what* to build; a deep dive derives *why it is shaped that way*,
+with measured numbers and compiler experiments. Read them after the
+chapter, when a contract raises a "why this type?" question.
 - **Rust toolbox** — short sections on the language idioms the slice
   needs (const fn, operator traits, PhantomData, ...). You know basic
   Rust; these boxes cover the specific moves each slice requires.
@@ -39,7 +44,7 @@ not a failure.
 |---|------|-----------|------------------|
 | 1 | [The workspace](01-the-workspace.md) | — (already scaffolded; orient yourself) | 1 |
 | 2 | [The reference engine](02-the-reference-engine.md) | `Move`, naive `reference.rs` + corpus | 2 |
-| 3 | [Bitboard and Board](03-bitboard-and-board.md) | `Bitboard`, `Board`, differential tests | 3 |
+| 3 | [Bitboard and Board](03-bitboard-and-board.md) | `Bitboard`, `Board`, differential tests · [deep dives](03-deep-dive/README.md) | 3 |
 | 4 | [Win detection](04-win-detection.md) | `has_five`, edge/overline corpus | 4 |
 | 5 | [Zobrist keys](05-zobrist.md) | const table, incremental key, undo | 5 |
 | 6 | [Symmetry and encoding](06-symmetry-and-encoding.md) | D4 tables, 17×17 planes | 6 |

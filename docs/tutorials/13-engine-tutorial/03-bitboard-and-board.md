@@ -37,6 +37,7 @@ impl Board {
     pub fn play(&mut self, mv: Move) -> Result<(), PlayError>;
     pub fn undo(&mut self);                     // caller guarantees non-empty
     pub fn is_legal(&self, mv: Move) -> bool;
+    pub(crate) fn empty_cells(&self) -> Bitboard;   // bulk: !occupied & VALID
     pub fn status(&self) -> Status;
     pub fn to_move(&self) -> Color;
     pub fn stones(&self, color: Color) -> /* &Bitboard or iterator — your call */;
@@ -49,6 +50,39 @@ Same rules as the reference. `Color`/`Status`/`PlayError` move out of
 `reference.rs` into shared module(s) — both engines use them. Win
 detection: for now, a *simple* version is fine (slice 4 gives it the
 full treatment); the differential harness is the point of this slice.
+
+**The two empty-cell primitives, and the contract of the lazy one.** Two
+kinds of question get asked about empty cells, so there are two answers:
+
+- *bulk* ("how many are empty?", "which empties are inside this mask?") —
+  `empty_cells()`, bit-level, `pub(crate)` because it returns the private
+  `Bitboard`. Counting is four popcounts; complements are dirtied by `!`,
+  so it must `& VALID`.
+- *enumeration* ("give me the empty cells one at a time") —
+  `empty_moves()`, public, **lazy**: it walks the complement 64 cells at a
+  time (`trailing_zeros`, `bits &= bits - 1`) and yields `Move`s in
+  ascending logical index (row-major, deterministic — self-play
+  reproducibility depends on that).
+
+Enumerating lazily is the whole point: a caller that wants the next empty
+cell should not pay for all 225. When a caller *does* want all of them as
+a value, that is one line, and the set type is the eager projection:
+
+```rust
+// in moveset.rs — the eager path is a projection of the lazy one
+impl FromIterator<Move> for MoveSet {
+    fn from_iter<T: IntoIterator<Item = Move>>(iter: T) -> MoveSet {
+        let mut set = MoveSet::EMPTY;
+        for mv in iter { set.insert(mv); }
+        set
+    }
+}
+
+// caller: let empties: MoveSet = board.empty_moves().collect();
+```
+
+Which to use, and why the iterator is the primitive rather than the set:
+[deep dive 02](03-deep-dive/02-empty-moves.md).
 
 ## Rust toolbox
 
@@ -82,7 +116,19 @@ the *complement* within `VALID` across four words.
 
 **`impl Iterator<Item = Move> + '_` return.** Returning `impl Trait`
 hides the concrete iterator type (a long `Map<Filter<...>>` you never
-want to write). The `+ '_` ties it to `&self`'s lifetime.
+want to write). The `+ '_` ties it to `&self`'s lifetime — the iterator
+is a *view* of the board, not a snapshot, so this will not compile:
+
+```rust
+for mv in board.empty_moves() { board.play(mv).unwrap(); }  // E0502
+```
+
+On edition 2024 the capture happens implicitly (`+ '_` is redundant to the
+compiler, kept for documentation and edition-portability; pre-2024 it is
+`E0700`). Being opaque also means only the promised capabilities are
+available — `.len()` needs `ExactSizeIterator`, which is not in the
+bounds, so implement `size_hint` if you want `collect` to preallocate.
+The full reasoning: [deep dive 02](03-deep-dive/02-empty-moves.md).
 
 ## The differential harness (the real deliverable)
 
@@ -124,10 +170,14 @@ acceptance number.
 1. `Bitboard` set/test/clear on corners and edges; `count`
 2. operator impls; `VALID` has exactly 225 bits; padding invariant holds
    for `VALID & !VALID == 0` (write `assert_clean` and use it)
-3. `shr` correctness on hand-picked patterns (a stone at (0,0) shifted
-   by 1, 15, 16, 17 lands where you expect)
+3. `shr` correctness on hand-picked patterns — use `(1,1)` and a
+   word-boundary stone like `(4,0)` (a stone at `(0,0)` is the bottom of
+   the address space, so every shift discards it). Worked patterns:
+   [deep dive 01](03-deep-dive/01-stride16-and-shr.md)
 4. `Board::new` / `play` / `to_move` — differential vs reference begins
-5. `is_legal` + `empty_moves` (count empties = 225 − stones)
+5. `is_legal` + `empty_moves`: count empties via `empty_cells()` (not by
+   walking), and check the walk agrees — 225 − stones, deterministic
+   row-major order, no guard cells in the output
 6. win/lose/draw status — differential green on 10k games
 7. `undo`: play N moves, undo all → board equals `new()`; and after any
    random play/undo walk, differential still holds
@@ -141,6 +191,18 @@ acceptance number.
   move un-wins the game.
 - Keep `Bitboard` `pub(crate)`. If a test needs it, the test belongs in
   `bitboard.rs`'s own `#[cfg(test)]` module, not in `tests/`.
+
+## Deep dives
+
+Two papers derive this slice's primitives from first principles, with
+measured numbers and compiler experiments behind every claim:
+
+- [01 — Stride-16 and why `shr`](03-deep-dive/01-stride16-and-shr.md):
+  the shift primitive, the padding invariant, and why a wrap-around five
+  is impossible.
+- [02 — Why `empty_moves()` looks like that](03-deep-dive/02-empty-moves.md):
+  the lazy-iterator signature, the loop over results, the `+ '_` story,
+  and where the bulk (`empty_cells`) path wins.
 
 ## Done when
 

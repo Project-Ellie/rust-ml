@@ -102,4 +102,9 @@ engine's loops.
 Corpus + proptest green, differential from slice 3 still green, gates
 green. Commit: `feat(engine): staged shift-AND win detection`.
 
+The shift primitive this slice builds on — why a right shift is the right
+operation, why the guard bit makes wrapping fives impossible, and which
+hand-picked patterns are worth asserting — is derived in
+[03-deep-dive/01 — Stride-16 and why `shr`](03-deep-dive/01-stride16-and-shr.md).
+
 Next: [Slice 5 — Zobrist keys](05-zobrist.md)
