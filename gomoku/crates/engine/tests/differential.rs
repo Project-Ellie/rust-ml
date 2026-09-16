@@ -19,13 +19,13 @@ proptest!(
         let mut naive = reference::Board::new();
         for p in cells {
             let mv = Move::new((p / 15) as u8, (p % 15) as u8).unwrap();
-            if naive.status() != Status::Ongoing {
-                break;
-            }
-            let fast_r = fast.play(mv);
+            prop_assert_eq!(fast.status(), naive.status());   // same outcome before the ply
+            if fast.status() != Status::Ongoing { break; }
+            let fast_r  = fast.play(mv);
             let naive_r = naive.play(mv);
-            prop_assert_eq!(fast_r.is_ok(), naive_r.is_ok())
-        }
+            prop_assert_eq!(fast_r.is_ok(), naive_r.is_ok()); // same legality
+            prop_assert_eq!(fast.status(), naive.status());   // same outcome after it
+            prop_assert_eq!(fast.to_move(), naive.to_move())
+       }
     }
-
-}
+);

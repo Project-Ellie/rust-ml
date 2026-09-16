@@ -50,6 +50,24 @@ pub struct Board {
     moves: Vec<Move>,
 }
 
+const DIRS: [i32; 4] = [1, 16, 15, 17];
+
+/// Consecutive set bits starting one step away from `i`, walking in
+/// `step` direction. Two termination mechanisms, both free:
+///   - the index guard stops walks at the array edge (verticals);
+///   - the PADDING INVARIANT stops horizontal/diagonal wraps: every
+///     wrap path lands in column 15, whose bits are always zero.
+fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {
+    let mut n = 0;
+    let mut x = i as i32 + step;
+    while (0..240).contains(&x) && stones.test(x as usize) {
+        n += 1;
+        x += step;
+    }
+    n
+}
+
+
 impl Board {
     pub fn new() -> Board {
         Board {
@@ -74,9 +92,22 @@ impl Board {
             Color::White => self.white = self.white.with_bit(i),
         }
         self.moves.push(mv);
+
+        if self.wins_from(i, self.to_move) {
+            self.status = Status::Won(self.to_move);
+        } else if self.moves.len() == 225 {
+            self.status = Status::Draw;
+        }
+
         self.to_move = self.to_move.other();
 
         Ok(())
+    }
+
+    fn wins_from(&self, i: usize, color: Color) -> bool {
+        let stones = self.stones(color);
+        DIRS.iter()
+            .any(|&s| 1 + count_walk(stones, i, s) + count_walk(stones, i, -s) >= 5)
     }
 
     pub fn status(&self) -> Status {
@@ -177,6 +208,32 @@ mod tests {
                 let _ = b.play(Move::new(r, c).unwrap());
             }
         }
-        assert_eq!(b.empty_moves().count(), 0);
+        assert_eq!(b.empty_moves().count(), 225 - b.moves.len());
+        assert_eq!(b.status(), Status::Won(Color::White))
+    }
+
+    #[test]
+    fn horizontal_five_wins() {
+        let mut b = crate::reference::Board::new();
+        let script = [
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 4),
+            (7, 6),
+            (0, 6),
+            (7, 7),
+        ];
+        for (r, c) in script {
+            b.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        assert_eq!(b.status(), Status::Won(Color::Black));
+
+        assert_eq!(
+            b.play(Move::new(13, 13).unwrap()),
+            Err(PlayError::GameOver)
+        )
     }
 }

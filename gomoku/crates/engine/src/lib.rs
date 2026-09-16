@@ -23,5 +23,5 @@ pub mod reference;
 
 // Public surface (ch. 13, "Crate layout" — re-exports ONLY what belongs
 // to the API). Grows slice by slice.
-pub use board::{Color, PlayError, Status};
+pub use board::{Board, Color, PlayError, Status};
 pub use moveset::Move;
