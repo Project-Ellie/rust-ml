@@ -1,23 +1,24 @@
 # Chapter 6 — Polish
 
-Optional, short, and each item stands alone. Four upgrades, in
+Optional, short, and each item stands alone. Three upgrades, in
 order of usefulness:
 
-1. **Row labels** — the board numbers its rows on the left and right,
-   mirroring the column rulers. (You asked for top and bottom; after
-   typing `7 7` blind a few times you'll want these.)
-2. **Last-move marker** — the most recent stone shows as `[x]`
+1. **Last-move marker** — the most recent stone shows as `[x]`
    instead of ` x `, so you always see what just happened.
-3. **Colors** — dim dots, bright stones. ANSI color via crossterm's
+2. **Colors** — dim dots, bright stones. ANSI color via crossterm's
    `Stylize`, applied only in the alternate-screen draw path.
-4. **Undo** — a `u` command that takes back the last move. Both engine
+3. **Undo** — a `u` command that takes back the last move. Both engine
    boards support it, so the trait gains one method and the UI gains one
    command; it is the only item here that touches game state rather than
    pixels. Full solution at the end.
 
+(Row labels used to be the first item here. They moved into chapter 3
+along with the frame: a board you can read without counting is not
+polish, it is the minimum.)
+
 ## Rust toolbox
 
-**One renderer, two paints.** Items 2 and 3 tempt you into two
+**One renderer, two paints.** Items 1 and 2 tempt you into two
 near-identical `render_lines` copies (plain for tests and `--plain`,
 styled for the alt screen). Resist with a closure parameter:
 
@@ -33,29 +34,32 @@ case). `render_lines` and `render_styled` become one-liners over it.
 `dyn`, no allocation, fully inlined.
 
 **Why tests keep the plain renderer.** ANSI escape codes are bytes:
-a styled line is no longer 51 bytes and `&line[24..27]` is no longer
+a styled line is no longer 53 bytes and `&line[25..28]` is no longer
 a cell. The plain path keeps honest, sliceable strings; the styled
 path is verified by eye (or with snapshot tests, later).
 
-## Exercise 1+2 — labels and marker
+## Exercise 1 — the last-move marker
 
-Change `render_lines` so:
+Chapter 3 already frames and labels the board; the one thing missing
+is memory of the previous move. Change `render_lines` so the cell of
+`board.moves().last()` renders as `[x]` / `[o]`
 
-- each row is `{row:>2} ` + 45 chars of cells + ` {row:<2}`
-- the ruler gains 3 spaces of padding on each side
-- every line is now **51** characters
-- the cell of `board.moves().last()` renders as `[x]` / `[o]`
+That is the whole exercise. It costs no new geometry: the brackets
+replace the two spaces around the glyph rather than adding to them, so
+every line stays 53 characters and the chapter-3 byte offsets
+(`4 + 3*c .. 7 + 3*c`) still describe the cells.
 
-Update the chapter-3 tests: column `c` now lives at bytes
-`3 + 3*c .. 3 + 3*c + 3`, and the *last played* stone wears brackets.
+(Once you refactor to the `paint` closure below, the `cell` helper from
+chapter 3 has no callers left — delete it rather than silencing the
+warning.)
 
-## Exercise 3 — colors
+## Exercise 2 — colors
 
 Add `render_styled` (same layout, styled cells), switch `draw` in
 `ui.rs` to it, leave `run_plain` on the plain renderer — piping
 `--plain` output into a file should stay ANSI-free.
 
-## Exercise 4 — an undo command
+## Exercise 3 — an undo command
 
 Contract, in four small pieces:
 
@@ -90,9 +94,9 @@ Three things that make this easy, and worth noticing:
 
 ## Done when
 
-The alt-screen UI shows labeled rows, a bracketed last move, and
-colored stones; `u` takes back the last move and says so; `cargo test
--p cli` is green; `--plain` output is still plain ASCII.
+The alt-screen UI shows the framed, labeled board, a bracketed last
+move, and colored stones; `u` takes back the last move and says so;
+`cargo test -p cli` is green; `--plain` output is still plain ASCII.
 
 Back to: [Side quest home](README.md) · then continue tutorial 13,
 [slice 4](../13-engine-tutorial/04-win-detection.md)
@@ -105,7 +109,7 @@ Every snippet below is verified against the real engine: 15 `cli` tests,
 `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 clean, and scripted `--plain` / alternate-screen games including undo.
 
-### `crates/cli/src/render.rs` — final version (all three items)
+### `crates/cli/src/render.rs` — final version (marker + colors)
 
 ```rust
 //! Board rendering — pure functions, no I/O.
@@ -122,25 +126,29 @@ fn glyph(stone: Option<Color>) -> char {
     }
 }
 
-/// Shared layout: 51-char lines — row label, 15 three-char cells,
-/// row label — framed by padded rulers. `paint(glyph, is_last_move)`
+/// Shared layout: 53-char lines — row label, bar, 15 three-char
+/// cells, bar, row label — inside a ruler/border frame.
+/// `paint(glyph, is_last_move)`
 /// produces one cell's 3 visible characters.
 fn render_with(board: &dyn GameBoard, paint: impl Fn(char, bool) -> String) -> Vec<String> {
     let ruler: String = (0..15).map(|c| format!("{c:^3}")).collect();
-    let ruler = format!("   {ruler}   ");
+    let ruler = format!("    {ruler}    ");
+    let border = format!("   +{}+   ", "-".repeat(45));
     let last = board.moves().last().copied();
 
-    let mut lines = Vec::with_capacity(17);
+    let mut lines = Vec::with_capacity(19);
     lines.push(ruler.clone());
+    lines.push(border.clone());
     for row in 0..15u8 {
-        let mut line = format!("{row:>2} ");
+        let mut line = format!("{row:>2} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
             line.push_str(&paint(glyph(board.stone_at(mv)), Some(mv) == last));
         }
-        line.push_str(&format!(" {row:<2}"));
+        line.push_str(&format!("| {row:<2}"));
         lines.push(line);
     }
+    lines.push(border);
     lines.push(ruler);
     lines
 }
@@ -193,19 +201,22 @@ mod tests {
     use crate::board::{board_for, EngineKind};
 
     #[test]
-    fn empty_board_is_seventeen_ruled_lines() {
+    fn empty_board_is_ruled_and_framed() {
         let board = board_for(EngineKind::Naive);
         let lines = render_lines(&*board);
 
-        assert_eq!(lines.len(), 17);
-        assert!(lines.iter().all(|l| l.chars().count() == 51));
+        assert_eq!(lines.len(), 19);
+        assert!(lines.iter().all(|l| l.chars().count() == 53));
 
-        let ruler = "    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14    ";
+        let ruler = "     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14     ";
+        let border = "   +---------------------------------------------+   ";
         assert_eq!(lines[0], ruler);
-        assert_eq!(lines[16], ruler);
+        assert_eq!(lines[1], border);
+        assert_eq!(lines[17], border);
+        assert_eq!(lines[18], ruler);
 
-        for (row, line) in lines[1..16].iter().enumerate() {
-            let expected = format!("{row:>2} {} {row:<2}", " . ".repeat(15));
+        for (row, line) in lines[2..17].iter().enumerate() {
+            let expected = format!("{row:>2} |{}| {row:<2}", " . ".repeat(15));
             assert_eq!(line, &expected);
         }
     }
@@ -217,10 +228,10 @@ mod tests {
         board.play(Move::new(7, 8).unwrap()).unwrap(); // o — now last
 
         let lines = render_lines(&*board);
-        let row7 = &lines[1 + 7]; // line 0 is the ruler
-        // 3-char left gutter, then 3 bytes per column.
-        assert_eq!(&row7[24..27], " x ");
-        assert_eq!(&row7[27..30], "[o]");
+        let row7 = &lines[2 + 7]; // line 0 ruler, line 1 border
+        // 4-char gutter, then 3 bytes per column.
+        assert_eq!(&row7[25..28], " x ");
+        assert_eq!(&row7[28..31], "[o]");
     }
 
     #[test]
@@ -257,7 +268,7 @@ mod tests {
 (plus `use crate::render::{render_styled, status_line};` — keep
 `render_lines` imported for `run_plain`.)
 
-### Exercise 4 solution — `undo`
+### Exercise 3 solution — `undo`
 
 The trait gains one method; everything else is a forward or one arm.
 
@@ -375,9 +386,9 @@ fn brackets_follow_an_undo() {
     board.undo();
 
     let lines = render_lines(&*board);
-    let row7 = &lines[1 + 7];
-    assert_eq!(&row7[24..27], "[x]"); // the bracket walks back
-    assert_eq!(&row7[27..30], " . ");
+    let row7 = &lines[2 + 7];
+    assert_eq!(&row7[25..28], "[x]"); // the bracket walks back
+    assert_eq!(&row7[28..31], " . ");
 }
 
 // ui.rs — the empty-history path is a message, not a panic

@@ -67,8 +67,8 @@ slice-3-complete engine.
 
 Chapters 1–4 give you a working, scrolling version. Chapter 5 is the
 "double cool" one: alternate screen, fixed layout, zero scrolling.
-Chapter 6 is optional polish (row labels, last-move marker, colors, and
-an `undo` command).
+Chapter 6 is optional polish (last-move marker, colors, and an
+`undo` command).
 
 ## The chapters
 
@@ -76,10 +76,10 @@ an `undo` command).
 |---|------|-----------|
 | 1 | [The CLI crate](01-the-cli-crate.md) | workspace wiring, engine re-exports, `Board::stone_at` |
 | 2 | [The GameBoard trait](02-the-gameboard-trait.md) | object-safe trait, adapters, `Box<dyn>` factory |
-| 3 | [Rendering](03-rendering.md) | pure render function, 3-char cells, rulers |
+| 3 | [Rendering](03-rendering.md) | pure render function, 3-char cells, ASCII frame, four-sided rulers |
 | 4 | [The game loop](04-the-game-loop.md) | command parser, scrolling REPL, playable |
 | 5 | [The alternate screen](05-alternate-screen.md) | crossterm, RAII guard, draw-in-place UI |
-| 6 | [Polish](06-polish.md) | row labels, colors, last-move marker, undo command |
+| 6 | [Polish](06-polish.md) | last-move marker, colors, undo command |
 
 ## Commands cheat sheet
 

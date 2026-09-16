@@ -14,7 +14,7 @@ window you're reading this in.
    wraps them in `EnterAlternateScreen` / `LeaveAlternateScreen`.
 2. **Cursor addressing.** Instead of printing line after line (which
    scrolls at the bottom edge), you *teleport* the cursor:
-   `MoveTo(0, 0)`, print the frame, `MoveTo(0, 21)`, print the
+   `MoveTo(0, 0)`, print the frame, `MoveTo(0, 22)`, print the
    prompt. Nothing ever reaches the bottom edge; nothing scrolls.
 3. **RAII guard.** The alternate screen must be left on *every* exit
    path — early return, `Err`, even panic. A struct whose `Drop`
@@ -63,11 +63,17 @@ pub fn run_ui(board: Box<dyn GameBoard>, kind: EngineKind) -> io::Result<()>;
 Layout constants (fits any 80×24 terminal):
 
 ```text
-rows  0..=16   the board (render_lines: ruler + 15 rows + ruler)
-row   18       status line
-row   19       message line
-row   21       "> " prompt   (echo of Enter lands on 22 — still on screen)
+rows  0..=18   the board (render_lines: ruler, border, 15 rows,
+               border, ruler)
+row   20       status line
+row   21       message line
+row   22       "> " prompt   (echo of Enter lands on 23 — the last row)
 ```
+
+The board grew from 17 to 19 lines in chapter 3, so the lower rows
+moved down by two. Row 23 is the *bottom* row of a 24-row terminal:
+parking the prompt on 22 and letting the echo land on 23 is the
+tightest layout that still cannot scroll.
 
 `main.rs` gains `--plain` to keep the chapter-4 loop as a fallback,
 and the run becomes:
@@ -96,7 +102,7 @@ let result = if plain { ui::run_plain(...) } else { ui::run_ui(...) };
   needed). The fix is a signal handler or raw mode; the real binary's
   problem, not this tutorial's. Quit with `q`.
 - **Terminal smaller than 24 rows.** The layout is fixed; a tiny
-  terminal wraps the 45-char lines and everything looks broken.
+  terminal wraps the 53-char lines and everything looks broken.
   Detecting size (`crossterm::terminal::size`) and refusing politely
   is a fine extra; chapter 6 keeps the simple path.
 - **`panic!` in the draw path** shows as *nothing* — the alt screen
@@ -206,9 +212,9 @@ pub fn run_plain(mut board: Box<dyn GameBoard>, kind: EngineKind) -> io::Result<
 
 // -------------------------------------------------- alternate-screen UI
 
-const STATUS_ROW: u16 = 18;
-const MESSAGE_ROW: u16 = 19;
-const PROMPT_ROW: u16 = 21;
+const STATUS_ROW: u16 = 20;
+const MESSAGE_ROW: u16 = 21;
+const PROMPT_ROW: u16 = 22;
 
 /// Enters the alternate screen; leaving is this value's `Drop` —
 /// so every exit path (early return, `?`, panic unwind) restores
