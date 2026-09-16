@@ -40,7 +40,8 @@ impl Board {
     pub(crate) fn empty_cells(&self) -> Bitboard;   // bulk: !occupied & VALID
     pub fn status(&self) -> Status;
     pub fn to_move(&self) -> Color;
-    pub fn stones(&self, color: Color) -> /* &Bitboard or iterator — your call */;
+    pub(crate) fn stones(&self, color: Color) -> Bitboard; // Bitboard is pub(crate):
+                                                           // stones cannot be pub (E0446)
     pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_;
     pub fn moves(&self) -> &[Move];
 }
@@ -93,9 +94,10 @@ Impl for the value type (not references) is fine here: `Bitboard` is 32
 bytes and `Copy`... wait — should `Bitboard` be `Copy`? Yes: `[u64; 4]`
 is `Copy`, so derive it. Small `Copy` types make operator impls painless.
 
-**The shift-by-64 trap.** `x << 64` on `u64` is *undefined behavior
-avoided by a panic* in debug builds (overflow checks) — and silent
-garbage in release. `shr` must never receive `s == 0` or `s >= 64`.
+**The shift-by-64 trap.** `x << 64` on `u64` is defined but wrong: a
+panic in debug builds (overflow checks), and in release the shift
+amount is masked to 6 bits, so `<< 64` silently behaves like `<< 0`.
+`shr` must never receive `s == 0` or `s >= 64`.
 Guard with `debug_assert!(s > 0 && s < 64)` — free in release, loud in
 tests. This is why slice 4's staged AND exists (ch. 13).
 

@@ -190,8 +190,10 @@ pub fn forced_blocks(b: &Board) -> MoveSet {
     immediate_wins(b, b.to_move().other())
 }
 
-/// Moves creating >= 2 immediate wins for `side` (open four, four-three):
-/// unanswerable — the win-in-2 detector.
+/// Moves after which `side` has >= 2 immediate wins (open four, double
+/// four): unanswerable. v1 gap: a four-three has exactly one immediate
+/// win now, so this criterion does not catch it — the full win-in-2
+/// search is out of scope for the engine milestone.
 pub fn double_threats(b: &Board, side: Color) -> MoveSet { /* same primitive */ }
 ```
 

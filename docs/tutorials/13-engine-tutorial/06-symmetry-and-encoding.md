@@ -73,7 +73,8 @@ decision, not a trick — write it in a doc comment.
    naive check — your choice, say which in a comment)
 5. `encode` on `Board::new()`: `me` all zero, `you` has exactly the
    64-cell border ring set (17·4 − 4 = 64)
-6. A stone at (0, 0) lands at index `1 * 17 + 1 = 18` of the right plane
+6. A stone of the side to move at (0, 0) lands at index `1 * 17 + 1 = 18`
+   of `me` (an opponent stone at (0, 0) lands in `you` instead)
 7. **The commutation property** (the deliverable): for random boards and
    all 8 symmetries, `encode(transform(b))` equals `encode(b)` with its
    inner 15×15 region permuted by `sym.permute` and the border re-added.

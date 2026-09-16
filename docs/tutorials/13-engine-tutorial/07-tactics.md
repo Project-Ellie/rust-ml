@@ -30,8 +30,11 @@ pub fn immediate_wins(b: &Board, side: Color) -> MoveSet;
 /// Cells the side to move MUST play — the opponent's immediate wins.
 pub fn forced_blocks(b: &Board) -> MoveSet;
 
-/// Moves that create >= 2 immediate wins for `side` (open four,
-/// four-three): unanswerable next move — the win-in-2 detector.
+/// Moves after which `side` has >= 2 immediate wins: open fours and
+/// double fours — unanswerable next move.
+/// Known v1 gap: a four-three has exactly ONE immediate win now (the
+/// three matures next ply), so this criterion does not catch it; the
+/// full win-in-2 search is out of scope for the engine milestone.
 pub fn double_threats(b: &Board, side: Color) -> MoveSet;
 ```
 
@@ -39,7 +42,9 @@ pub fn double_threats(b: &Board, side: Color) -> MoveSet;
 hypothetically (`stones.with(mv)` — value semantics, no mutation), run
 `has_five_any`. `double_threats` reuses it: for each candidate move of
 `side`, build the hypothetical board and count `immediate_wins` — two or
-more means the opponent cannot block both.
+more means the opponent cannot block both. Note that this criterion
+catches open fours (two winning cells) and double fours, but not the
+four-three (one winning cell now); see the doc comment.
 
 ## Rust toolbox: a readable puzzle corpus with an ASCII parser
 

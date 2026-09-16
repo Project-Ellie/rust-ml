@@ -218,12 +218,12 @@ a phantom five.
 
 All four directions, checked:
 
-| direction `s` | would-be phantom neighbour | index arithmetic | stopped by |
+| direction `s` | cells a wrap would wrongly connect | index arithmetic | stopped by |
 |---|---|---|---|
-| 1 | `(r,14) → (r+1,0)` | `16r+14 → 16r+15` | row `r`'s padding bit (15) |
+| 1 | `(r,14) ↔ (r+1,0)` | `16r+14 → 16r+15 (padding) → 16r+16` | row `r`'s padding bit (15) |
 | 16 | — | `16r+c → 16(r+1)+c` | nothing needed (pure stride) |
-| 15 | `(r,0) → (r-1,1)` | `16r+0 → 16r+15` | row `r`'s padding bit (15) |
-| 17 | `(r,14) → (r+2,0)` | `16r+14 → 16(r+1)+15` | row `r+1`'s padding bit (15) |
+| 15 | `(r,0) ↔ (r+1,14)` | `16r → 16r+15 (padding) → 16r+30` | row `r`'s padding bit (15) |
+| 17 | `(r,14) ↔ (r+3,0)` | `16r+14 → 16(r+1)+15 (padding) → 16r+48` | row `r+1`'s padding bit (15) |
 
 Because padding bits are **always zero**, the phantom pairing is zero in
 the AND. Verified: four stones at row 0, columns 11–14 plus a stone at

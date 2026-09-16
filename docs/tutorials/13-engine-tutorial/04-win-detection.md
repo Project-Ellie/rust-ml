@@ -97,8 +97,9 @@ engine's loops.
 ## Pitfalls
 
 - `shr(2 * s)` with `s = 17` is 34 — fine. Never write `shr(4 * s)`.
-- The wrap-attack test (7) must use *real* coordinates through `Board`,
-  not hand-set bits, so it also exercises the stride-16 mapping.
+- The wrap attack (7) needs both levels: the bitboard-level test is where
+  the claim lives; the `Board`-level sentinel must go through *real*
+  coordinates, so it also exercises the stride-16 mapping.
 - Do not "optimize" the staged AND before the slice-9 benchmark. Measure
   first.
 

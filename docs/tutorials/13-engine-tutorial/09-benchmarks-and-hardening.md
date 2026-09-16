@@ -12,9 +12,21 @@ Design: ch. 13, "Test plan"; acceptance: ch. 12, §13 milestone 1.
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_has_five(c: &mut Criterion) {
-    // build one realistic mid-game bitboard (~60 stones)
+    // Several DISTINCT mid-game bitboards (~60 stones each). The input
+    // must genuinely change per call, or the optimizer hoists/folds the
+    // call and you measure the optimizer instead (04-deep-dive/01,
+    // appendix). black_box the slice and the accumulator, never the
+    // individual call — a per-call barrier breaks vectorization and
+    // inflates the number ~8x.
+    let boards: Vec<Bitboard> = make_midgame_boards(); // several distinct, ~60 stones each
     c.bench_function("has_five_any", |b| {
-        b.iter(|| has_five_any(black_box(&board)))
+        b.iter(|| {
+            let mut acc = 0u64;
+            for bb in black_box(&boards) {
+                acc ^= has_five_any(bb) as u64;
+            }
+            black_box(acc)
+        })
     });
 }
 

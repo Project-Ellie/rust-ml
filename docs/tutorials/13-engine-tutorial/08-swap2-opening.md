@@ -10,9 +10,10 @@ machine"; background: ch. 12, §3.
 2. Player B chooses: play **White**, play **Black**, or **place two
    more stones** (one Black, one White).
 3. If B placed two more, player A chooses a color.
-4. Normal alternating play begins; White (whoever holds it) moves next
-   after Black from here on out as usual — i.e., the side to move after
-   the opening is determined by stone counts, not by who chose.
+4. Normal alternating play begins. The side to move is determined by
+   stone counts, not by who chose: after every branch the counts differ
+   by exactly one (2B+1W or 3B+2W), so White — the color with fewer
+   stones — moves first, whoever holds it.
 
 (Verify step 4's phrasing against your reference implementation while
 coding — the invariant that matters: after the opening, counts differ by
@@ -58,9 +59,12 @@ impl Swap2<FinalChoice> {
 ```rust
 /// Builds a board from an arbitrary valid position (opening hand-off).
 /// Errors: overlapping colors, stone counts inconsistent with `to_move`.
-pub fn from_position(black: /* stone set */, white: /* ... */, to_move: Color)
+pub fn from_position(black: &[Move], white: &[Move], to_move: Color)
     -> Result<Board, PositionError>;
 ```
+
+(`&[Move]`, not bitboards: `Bitboard` is `pub(crate)`, so the public
+entry point takes move lists and builds the bitboards internally.)
 
 `from_position` computes the Zobrist key from scratch (`compute_key`)
 and validates counts: |#black − #white| ≤ 1, with `to_move` the color
@@ -95,8 +99,8 @@ flow is fixed and linear — typestate is the right tool.
 ## TDD checklist
 
 1. Happy path, branch 1: place 2B + 1W → `finish` → `take_white` →
-   `Board` with correct stones, `to_move == Black` (3 stones played,
-   Black moved twice... verify the count rule by hand first)
+   `Board` with correct stones, `to_move == White` (counts are 2B+1W;
+   the color with fewer stones moves)
 2. Branch 2: → `take_black`
 3. Branch 3: → `place_two_more` → place 1B + 1W → `finish` →
    `take_black` / `take_white`

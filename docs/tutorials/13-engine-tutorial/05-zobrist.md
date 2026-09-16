@@ -8,7 +8,7 @@ move — and undoes for free. Design: ch. 13, "Zobrist, compile-time".
 `zobrist.rs` (`pub(crate)`):
 
 ```rust
-pub(crate) const STONE: [[u64; 225]; 2];  // [color][cell] -> random u64
+pub(crate) const ZOBRIST: [[u64; 225]; 2];  // [color][cell] -> random u64
 pub(crate) const SIDE_TO_MOVE: u64;
 
 /// From-scratch key — the ground truth the incremental key must match.
@@ -21,7 +21,7 @@ pub(crate) fn compute_key(black: &Bitboard, white: &Bitboard, to_move: Color) ->
 pub fn zobrist(&self) -> u64;
 ```
 
-`play` XORs in `STONE[color][cell]` and `SIDE_TO_MOVE`; `undo` XORs the
+`play` XORs in `ZOBRIST[color][cell]` and `SIDE_TO_MOVE`; `undo` XORs the
 same values back out.
 
 ## Rust toolbox
@@ -33,7 +33,7 @@ const fn xorshift(mut x: u64) -> u64 {
     x ^= x << 13; x ^= x >> 7; x ^= x << 17; x
 }
 
-pub(crate) const STONE: [[u64; 225]; 2] = {
+pub(crate) const ZOBRIST: [[u64; 225]; 2] = {
     let mut table = [[0u64; 225]; 2];
     let mut state = 0x9E37_79B9_7F4A_7C15;
     let mut i = 0;
@@ -70,7 +70,7 @@ storing positions.
 
 ## TDD checklist
 
-1. `STONE` contains no zeros and no duplicates (a `#[cfg(test)]` scan —
+1. `ZOBRIST` contains no zeros and no duplicates (a `#[cfg(test)]` scan —
    with 450 random u64s, duplicates would signal a broken generator)
 2. `compute_key` differs between: same stones, different side to move
 3. Two boards built by *different move orders* reaching the same

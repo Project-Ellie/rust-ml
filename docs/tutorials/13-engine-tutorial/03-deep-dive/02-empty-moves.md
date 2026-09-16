@@ -290,7 +290,7 @@ impl Iterator for EmptyMoves<'_> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let here = self.bits.count_ones() as usize;
-        (here, Some(here + 64 * (4 - self.word)))   // exact impl possible, see below
+        (here, Some(here + 64 * (4 - self.word)))   // upper bound: bits here plus all unloaded words
     }
 }
 

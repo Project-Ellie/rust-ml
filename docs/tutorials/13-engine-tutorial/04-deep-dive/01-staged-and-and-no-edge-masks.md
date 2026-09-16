@@ -118,7 +118,8 @@ test) ≈ **53 word ops**. Measured: **1.90 ns** for one direction,
 **8.25 ns** for all four — about 6 word ops per cycle, which indicates
 LLVM keeps the four words in two SIMD registers and shifts two at a
 time. The `[u64; 4]` shape is exactly 256 bits, and 256 bits is exactly
-two NEON vectors on this machine.
+two NEON vectors on this machine. (53 word ops in 1.90 ns is ≈ 6 ops
+per cycle at ~4.5 GHz, ≈ 8.5 cycles per direction.)
 
 ---
 
@@ -154,14 +155,15 @@ exhaustion over the whole index space, all four directions:
   + 165 vertical + 121 + 121 diagonal).
 
 **The padding column's value, measured.** The same enumeration with
-stride 15 (no padding column) and the same `DIRS` table:
+stride 15 (no padding column; the same visual directions are now
+`s = 1, 15, 14, 16` — the direction table is stride-specific, see below):
 
 ```text
-stride 15, no padding column  -> phantom 5-windows per direction: {1: 56, 16: 161, 15: 165, 17: 157}
-stride 16, padding column     -> phantom 5-windows per direction: {1: 0, 16: 0, 15: 0, 17: 0}
+stride 15 (s = 1, 15, 14, 16) -> phantom 5-windows per direction: {1: 56, 15: 0, 14: 48, 16: 40}
+stride 16 (s = 1, 16, 15, 17) -> phantom 5-windows per direction: {1: 0, 16: 0, 15: 0, 17: 0}
 ```
 
-539 phantom fives without the padding column, zero with it. One unused
+144 phantom fives without the padding column, zero with it. One unused
 bit per row removes the entire category of edge handling.
 
 One consequence: **the `DIRS` table is stride-specific, not geometric.**
@@ -267,7 +269,7 @@ noise.
   are masked, so it answers incorrectly for two of four directions in
   release builds. The staged AND (`s, 2s, s`) keeps every shift under
   64 — and is the shortest addition chain to 5.
-- The padding invariant removes per-direction edge masks: 539 phantom
+- The padding invariant removes per-direction edge masks: 144 phantom
   fives without it, 0 with it, on the same enumeration.
 - A mask is still required after every `!`; the counterexample is the
   wrap pattern in the complement domain, where a padding bit connects

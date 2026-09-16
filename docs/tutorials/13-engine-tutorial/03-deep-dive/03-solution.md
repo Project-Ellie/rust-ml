@@ -193,7 +193,7 @@ impl Bitboard {
     #[test]
     fn valid_has_225_bits_and_clean_padding() {
         assert_eq!(VALID.count(), 225);
-        assert!((VALID & !VALID).is_zero());
+        assert_eq!((!VALID).count(), 31); // exactly the 31 padding bits
         assert_clean(&VALID);
     }
 
@@ -563,10 +563,12 @@ on move acceptance. First differential green.
         let mut b = Board::new();
         let mv = Move::new(7, 7).unwrap();
         assert!(b.is_legal(mv));
+        assert_eq!(b.empty_cells().count(), 225); // bulk query agrees
 
         b.play(mv).unwrap();
         assert!(!b.is_legal(mv));
         assert_eq!(b.empty_moves().count(), 224);
+        assert_eq!(b.empty_cells().count(), 224); // bulk and lazy agree
         assert!(b.empty_moves().all(|m| m != mv));
 
         // After a full game the iterator is empty — and terminates
@@ -588,11 +590,18 @@ on move acceptance. First differential green.
             && !(self.black | self.white).test(idx(mv.row(), mv.col()))
     }
 
+    /// All empty cells as a bitboard: the bulk query (slice 7's tactics
+    /// uses it; `empty_moves` is the lazy enumeration of the same set).
+    ///
+    /// `!occupied` sets ALL padding bits — mask immediately. This is
+    /// the one place complements are allowed, and the mask is
+    /// non-negotiable (the padding invariant, ch. 13).
+    pub(crate) fn empty_cells(&self) -> Bitboard {
+        !(self.black | self.white) & VALID
+    }
+
     pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
-        // `!occupied` sets ALL padding bits — mask immediately.
-        // This is the one place complements are allowed, and the mask
-        // is non-negotiable (the padding invariant, ch. 13).
-        let empty = !(self.black | self.white) & VALID;
+        let empty = self.empty_cells();
 
         // The classic set-bit walk, word by word. `bits & (bits - 1)`
         // clears the lowest set bit — commit it to memory, you will
@@ -700,6 +709,9 @@ impl Board {
     /// deliberately the SAME algorithm as the oracle, reading bits
     /// instead of array cells. Slice 4 swaps in the staged-AND bit
     /// version; the harness must stay green through that swap.
+    /// (`wins_from` is the walk-based forerunner of the glossary's
+    /// *neighbourhood check*; slice 4's optional `wins_by_placing`
+    /// is the bit-parallel version of the same shape.)
     fn wins_from(&self, i: usize, color: Color) -> bool {
         let stones = self.stones(color);
         DIRS.iter()
@@ -978,8 +990,8 @@ pub(crate) fn assert_clean(b: &Bitboard) {
 
 #[cfg(test)]
 mod tests {
-    // 6 tests: corners/edges, word boundary, operators, VALID,
-    // assert_clean catches dirty, shr (+word-seam carry)
+    // 7 tests: corners/edges, word boundary, operators, VALID,
+    // assert_clean catches dirty, shr moves stones, shr carries over a seam
 }
 ```
 
@@ -1081,8 +1093,15 @@ impl Board {
             && !(self.black | self.white).test(idx(mv.row(), mv.col()))
     }
 
+    /// All empty cells as a bitboard: the bulk query; `empty_moves` is
+    /// the lazy enumeration of the same set. `!` sets all padding bits,
+    /// so the `& VALID` mask is non-negotiable.
+    pub(crate) fn empty_cells(&self) -> Bitboard {
+        !(self.black | self.white) & VALID
+    }
+
     pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
-        let empty = !(self.black | self.white) & VALID;
+        let empty = self.empty_cells();
         empty.0.into_iter().enumerate().flat_map(|(w, mut bits)| {
             std::iter::from_fn(move || {
                 if bits == 0 {
@@ -1140,7 +1159,7 @@ fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {
 
 #[cfg(test)]
 mod tests {
-    // 5 tests: new board, play flips, empty_moves/legality,
+    // 6 tests: new board, play flips, empty_moves/legality (+empty_cells),
     // horizontal five + game-over, undo×2
 }
 ```

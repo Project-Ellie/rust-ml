@@ -12,7 +12,7 @@ Why *this* slice gets a plan: the thinking is already done in
 mechanical, and mechanical is exactly what a plan should absorb.
 
 **Verified before written.** Every step below was executed in a scratch copy
-of the engine: **39 unit tests + 2 differential properties** green,
+of the engine: **38 unit tests + 2 differential properties** green,
 `clippy --all-targets --features testutil -- -D warnings` and `fmt --check`
 clean, and the differential suite green at `PROPTEST_CASES=10000` and
 `100000`. `lib.rs` was not touched — slice 3 already declared `mod win;`.
@@ -29,8 +29,8 @@ clean, and the differential suite green at `PROPTEST_CASES=10000` and
   your to-do list for step 8.
 - `win.rs` already exists as the two-line stub and `lib.rs` already has
   `mod win;`. You are filling in a file, not wiring a module.
-- Baseline: `cargo test -p engine --features testutil` → 32 unit + 2
-  differential.
+- Baseline: `cargo test -p engine --features testutil` → 31 unit + 2
+  differential (2 Move + 16 reference + 7 bitboard + 6 board).
 
 ## The build order
 
@@ -253,7 +253,7 @@ PROPTEST_CASES=10000 cargo test -p engine --features testutil
 ```
 
 Commit: `feat(engine): staged shift-AND win detection` (the slice's own
-message). Measured on the reference solution below: 39 unit + 2 differential
+message). Measured on the reference solution below: 38 unit + 2 differential
 green at 1 / 10k / 100k cases, clippy and fmt clean, `lib.rs` unchanged.
 
 ## Optional step 10 — the neighbourhood check (2× on the play path)
@@ -653,12 +653,13 @@ mod tests {
 cargo fmt --all --check                                     clean
 cargo clippy -p engine --all-targets --features testutil -- -D warnings
                                                             clean
-cargo test -p engine --features testutil --no-fail-fast     39 passed + 2 passed
-PROPTEST_CASES=10000  ... same                              39 passed + 2 passed
-PROPTEST_CASES=100000 ... same                              39 passed + 2 passed
+cargo test -p engine --features testutil --no-fail-fast     38 passed + 2 passed
+PROPTEST_CASES=10000  ... same                              38 passed + 2 passed
+PROPTEST_CASES=100000 ... same                              38 passed + 2 passed
 ```
 
-The 39 = the 32 from slices 2–3 plus the seven in `win.rs`:
+The 38 = the 31 from slices 2–3 (2 Move + 16 reference + 7 bitboard +
+6 board) plus the seven in `win.rs`:
 `detects_all_four_directions`, `detects_fives_along_every_edge`,
 `overlines_count_and_near_misses_do_not`, `wrap_pattern_is_not_a_five`,
 `wrap_attack_is_not_a_win`, `planted_runs_are_found`,
