@@ -193,7 +193,7 @@ impl Default for Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{reference, Color, Move, Status};
+    use crate::{Color, Move, Status, reference};
 
     #[test]
     fn new_board_has_225_legal_moves_black_to_move() {

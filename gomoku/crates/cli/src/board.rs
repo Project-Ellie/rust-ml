@@ -1,7 +1,7 @@
 use engine::{Color, Move, PlayError, Status};
 
 pub trait GameBoard {
-    fn play (&mut self, mv: Move) -> Result<(), PlayError>;
+    fn play(&mut self, mv: Move) -> Result<(), PlayError>;
     fn status(&self) -> Status;
     fn to_move(&self) -> Color;
     fn stone_at(&self, mv: Move) -> Option<Color>;
@@ -32,7 +32,7 @@ impl GameBoard for NaiveBoard {
     }
 
     fn name(&self) -> &'static str {
-       "naive"
+        "naive"
     }
 }
 
@@ -64,7 +64,10 @@ impl GameBoard for FastBoard {
     }
 }
 #[derive(Debug, Clone, Copy)]
-pub enum EngineKind { Naive, Fast }
+pub enum EngineKind {
+    Naive,
+    Fast,
+}
 
 pub fn board_for(kind: EngineKind) -> Box<dyn GameBoard> {
     match kind {
@@ -98,9 +101,8 @@ mod tests {
     #[test]
     fn playerror_travels_through_the_trait() {
         let mut b = board_for(EngineKind::Fast);
-        let mv = Move::new(7,7).unwrap();
+        let mv = Move::new(7, 7).unwrap();
         b.play(mv).unwrap();
         assert_eq!(b.play(mv), Err(PlayError::Occupied));
     }
 }
-
