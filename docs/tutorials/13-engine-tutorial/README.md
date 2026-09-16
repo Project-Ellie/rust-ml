@@ -31,6 +31,10 @@ deepen (so far: [03-deep-dive](03-deep-dive/README.md), then
 you *what* to build; a deep dive derives *why it is shaped that way*,
 with measured numbers and compiler experiments. Read them after the
 chapter, when a contract raises a "why this type?" question.
+- **Implementation plans** — where a slice's thinking is already done, its
+`NN-deep-dive/` folder may also grow a step-by-step build plan ending in the
+reference solution (first: [04-deep-dive/02](04-deep-dive/02-implementation-plan.md)).
+The slice files still withhold implementations; plans are opt-in.
 - **Rust toolbox** — short sections on the language idioms the slice
   needs (const fn, operator traits, PhantomData, ...). You know basic
   Rust; these boxes cover the specific moves each slice requires.

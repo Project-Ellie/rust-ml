@@ -115,4 +115,8 @@ masks are needed while `!occupied` definitely needs one, and how to
 benchmark this without measuring the optimizer:
 [04-deep-dive/01 — The staged AND](04-deep-dive/01-staged-and-and-no-edge-masks.md).
 
+Ready to type? [04-deep-dive/02 — implementation plan](04-deep-dive/02-implementation-plan.md)
+turns this slice into red→green steps and ends with the complete reference
+solution.
+
 Next: [Slice 5 — Zobrist keys](05-zobrist.md)
