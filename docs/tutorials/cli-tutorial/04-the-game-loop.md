@@ -31,6 +31,10 @@ Accepted syntax:
 | `h`, `help`, `?` | show usage |
 | `q`, `quit`, `exit` | leave |
 
+(`u` / `undo` is deliberately absent here: taking moves back is
+[chapter 6](06-polish.md)'s optional exercise, because both boards
+already support it and it is easier to add once the loop is working.)
+
 `crates/cli/src/ui.rs`:
 
 ```rust

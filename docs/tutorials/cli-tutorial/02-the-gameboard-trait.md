@@ -67,10 +67,17 @@ Both `impl GameBoard for …` blocks are one-line forwards — that's the
 point. If you find yourself writing logic in an adapter, the
 abstraction is leaking.
 
-Note what is **not** on the trait: `new` (not object-safe),
-`undo` (the reference board doesn't have it — the trait is the
-*intersection* of both APIs), and `is_legal` (the UI plays optimistically
-and shows the `PlayError`; friendlier, and one less method to agree on).
+Note what is **not** on the trait: `new` (not object-safe — the factory
+handles it) and `is_legal` (the UI plays optimistically and shows the
+`PlayError`; friendlier, and one less method to agree on).
+
+`undo` is a *scope* decision rather than a limitation: **both** boards
+have it (the oracle replays the history minus the last move; the bitboard
+board clears the bit and re-opens the game), so the trait could carry it —
+and [chapter 6](06-polish.md) adds it as an exercise. Until then the core
+trait stays as small as the specified UI needs. One contract to know when
+you do add it: both implementations **panic on an empty history**, so any
+UI path must check `moves().is_empty()` first.
 
 ## The test that sells it
 

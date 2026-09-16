@@ -67,7 +67,8 @@ slice-3-complete engine.
 
 Chapters 1–4 give you a working, scrolling version. Chapter 5 is the
 "double cool" one: alternate screen, fixed layout, zero scrolling.
-Chapter 6 is optional polish.
+Chapter 6 is optional polish (row labels, last-move marker, colors, and
+an `undo` command).
 
 ## The chapters
 
@@ -78,7 +79,7 @@ Chapter 6 is optional polish.
 | 3 | [Rendering](03-rendering.md) | pure render function, 3-char cells, rulers |
 | 4 | [The game loop](04-the-game-loop.md) | command parser, scrolling REPL, playable |
 | 5 | [The alternate screen](05-alternate-screen.md) | crossterm, RAII guard, draw-in-place UI |
-| 6 | [Polish](06-polish.md) | row labels, colors, last-move marker |
+| 6 | [Polish](06-polish.md) | row labels, colors, last-move marker, undo command |
 
 ## Commands cheat sheet
 
@@ -93,5 +94,5 @@ cargo test -p cli                         # render + parser tests
 ## Done when
 
 You can start the tool on either board, play a full game to a win,
-see it announced, restart with `new`, and quit with `q` — all without
-the terminal scrolling a single line.
+see it announced, take moves back with `u`, restart with `new`, and
+quit with `q` — all without the terminal scrolling a single line.
