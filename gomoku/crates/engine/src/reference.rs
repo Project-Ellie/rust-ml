@@ -2,21 +2,7 @@
 //! Slice 2. Compiled only for tests and the `testutil` feature.
 
 use crate::moveset::Move;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Color {
-    Black,
-    White,
-}
-
-impl Color {
-    pub fn other(self) -> Color {
-        match self {
-            Color::Black => Color::White,
-            Color::White => Color::Black,
-        }
-    }
-}
+use crate::board::{Color, Status, PlayError};
 
 /// One board cell. Private - the outside world sees `Option<Color`
 /// through `stone_at`; the `Cell` representation is our business.
@@ -24,22 +10,6 @@ impl Color {
 enum Cell {
     Empty,
     Stone(Color),
-}
-
-/// Game state. An enum, not bool flags
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    Ongoing,
-    Won(Color),
-    Draw,
-}
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum PlayError {
-    #[error("Cell is already occupied.")]
-    Occupied,
-    #[error("Game is already over.")]
-    GameOver,
 }
 
 /// the naive board 15x15 cells + full move history
