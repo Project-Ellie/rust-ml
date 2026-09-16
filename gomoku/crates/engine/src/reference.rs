@@ -93,6 +93,20 @@ impl Board {
     pub fn moves(&self) -> &[Move] {
         &self.moves
     }
+
+    /// Undoes the last move by REPLAYING the remaining history onto a
+    /// fresh board. O(n) where the fast undo is O(1) — and obviously
+    /// correct, which is the only virtue an oracle needs.
+    pub fn undo(&mut self) {
+        self.moves.pop().expect("undo with non-empty history");
+        // A prefix of a legal game is always replayable: a game ends
+        // only ON its winning/drawing move, and we just removed it.
+        let history = self.moves.clone();
+        *self = Board::new();
+        for mv in history {
+            self.play(mv).expect("replaying a valid history");
+        }
+    }
 }
 
 impl Default for Board {
@@ -401,5 +415,22 @@ mod tests {
             .map(|&(r, c)| Move::new(r, c).unwrap())
             .collect();
         assert_eq!(b.moves(), expected.as_slice());
+    }
+
+    #[test]
+    fn undo_replays_history_without_the_last_move() {
+        let mut b = Board::new();
+        let script = [
+            (7, 3), (0, 0), (7, 4), (0, 2), (7, 5), (0, 4), (7, 6), (0, 6), (7, 7),
+        ];
+        for (r, c) in script {
+            b.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        assert_eq!(b.status(), Status::Won(Color::Black));
+
+        b.undo();
+        assert_eq!(b.status(), Status::Ongoing);
+        assert_eq!(b.stone_at(Move::new(7, 7).unwrap()), None);
+        assert_eq!(b.moves().len(), 8);
     }
 }

@@ -127,6 +127,19 @@ impl Board {
             !(self.black | self.white).test(idx(mv.row(), mv.col()))
     }
 
+    pub fn undo(&mut self) {
+        let mv = self.moves.pop().expect("undo with empty history");
+        let i = idx(mv.row(), mv.col());
+        match self.to_move.other() {
+            Color::Black => self.black = self.black.without_bit(i),
+            Color::White => self.white = self.white.without_bit(i),
+        }
+        self.to_move = self.to_move.other(); // flip back
+        // Undoing the winning move un-wins the game; undoing into a
+        // would-be draw likewise reopens it. Ongoing is always right.
+        self.status = Status::Ongoing;
+    }
+
     pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
         // `!occupied` sets ALL padding bits — mask immediately.
         // This is the one place complements are allowed, and the mask
@@ -170,6 +183,7 @@ impl Board {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::Once;
     use super::*;
     use crate::moveset::Move;
 
@@ -236,4 +250,36 @@ mod tests {
             Err(PlayError::GameOver)
         )
     }
+
+    #[test]
+    fn undo_everything_returns_a_pristine_board() {
+        let mut b = Board::new();
+        let script = [(5, 6), (5, 7), (4, 6), (3, 6)];
+        for (r, c) in script {
+            b.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        for _ in 0..script.len() {
+            b.undo();
+        }
+        assert_eq!(b, Board::new());
+    }
+
+    #[test]
+    fn undo_the_winning_move_unwins_the_game() {
+        let mut b = Board::new();
+        let script = [
+            (7, 3), (0, 0), (7, 4), (0, 2), (7, 5), (0, 4), (7, 6), (0, 6), (7, 7),
+        ];
+        for (r, c) in script {
+            b.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        assert_eq!(b.status(), Status::Won(Color::Black));
+
+        b.undo();
+        assert_eq!(b.status(), Status::Ongoing);
+        assert_eq!(b.to_move(), Color::Black);
+        assert!(b.is_legal(Move::new(7, 7).unwrap()));
+        assert_eq!(b.moves.len(), 8);
+    }
+
 }
