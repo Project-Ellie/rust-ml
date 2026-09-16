@@ -209,6 +209,6 @@ measured numbers and compiler experiments behind every claim:
 Differential 10k green including undo walks; gates green.
 Commit: `feat(engine): bitboard Board with differential tests`.
 
-Worked solution with the full TDD path: [03-solution.md](03-solution.md) — read, understand, then type it yourself.
+Worked solution with the full TDD path: [03-solution.md](03-deep-dive/03-solution.md) — read, understand, then type it yourself.
 
 Next: [Slice 4 — Win detection](04-win-detection.md)

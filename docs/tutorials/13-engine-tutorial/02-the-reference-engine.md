@@ -119,6 +119,6 @@ examples: clever systems are validated against boring truths.
 All 12 behaviors green, `cargo clippy -- -D warnings` clean,
 `cargo fmt` clean. Commit: `feat(engine): naive reference engine + corpus`.
 
-Worked solution with the full TDD path: [02-solution.md](02-solution.md) — read, understand, then type it yourself.
+Worked solution with the full TDD path: [02-solution.md](03-deep-dive/02-solution.md) — read, understand, then type it yourself.
 
 Next: [Slice 3 — Bitboard and Board](03-bitboard-and-board.md)

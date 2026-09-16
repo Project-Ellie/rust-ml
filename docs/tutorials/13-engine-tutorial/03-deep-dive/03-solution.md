@@ -1,7 +1,7 @@
 # Slice 3 — Solutions: bitboard and Board
 
 This is the full, commented solution set for
-[Slice 3](03-bitboard-and-board.md), walking the TDD path cycle by
+[Slice 3](../03-bitboard-and-board.md), walking the TDD path cycle by
 cycle. Same protocol as slice 2:
 
 1. Read the cycle's **RED** test; say out loud which behavior it pins.
@@ -1137,7 +1137,7 @@ mod tests {
   guards it.
 - `lib.rs`: `pub use board::{Board, Color, PlayError, Status};` and
   `pub use moveset::Move;`.
-- `Cargo.toml`: the `[[test]]` block with `required-features`.
+- `../../../../Cargo.toml`: the `[[test]]` block with `required-features`.
 - `tests/differential.rs`: two `proptest!` blocks (10k games;
   1k undo walks) as written in cycles 4/6/7.
 
@@ -1161,4 +1161,4 @@ and `s >= 64` — and what does the hardware do if you try? Why is
 unconditionally? Why does the integration test need `testutil` while
 the unit tests do not?
 
-Next: [Slice 4 — Win detection](04-win-detection.md)
+Next: [Slice 4 — Win detection](../04-win-detection.md)

@@ -1,7 +1,7 @@
 # Slice 2 — Solutions: the reference engine
 
 This is the full, commented solution set for
-[Slice 2](02-the-reference-engine.md), walking the TDD path cycle by
+[Slice 2](../02-the-reference-engine.md), walking the TDD path cycle by
 cycle. Use it the way you promised:
 
 1. Read a cycle's **RED** test. Make sure you can say out loud *why*
@@ -981,4 +981,4 @@ does the checkerboard fail as a draw pattern — and why is the stripe
 pattern provably safe at every prefix? Why does the `else` in front of
 the draw branch matter?
 
-Next: [Slice 3 — Bitboard and Board](03-bitboard-and-board.md)
+Next: [Slice 3 — Bitboard and Board](../03-bitboard-and-board.md)
