@@ -64,6 +64,10 @@ write-it-yourself slices. Current:
   slices 2–3): a playable, non-scrolling terminal UI on *both* engine
   boards, coded against a `dyn GameBoard` abstraction owned by the CLI.
   The embryo of chapter 12's `gomoku play`.
+- [mcts-primer](tutorials/mcts-primer/README.md) — reading document, not
+  a build tutorial: how Monte Carlo Tree Search works in this project,
+  how the tree integrates the engine and the evaluation network, and
+  what milestone 2 (the `mcts` crate) must implement.
 
 ## Prerequisites
 
