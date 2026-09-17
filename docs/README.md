@@ -47,6 +47,7 @@ later by changing one type alias.
 | 12 | [The Gomoku Architecture](12-gomoku-architecture.md) | — | Full design of the AlphaZero-style agent: engine, network, MCTS, parallelism, training, runbook |
 | 13 | [The Engine Design](13-engine-design.md) | `gomoku/crates/engine` | Milestone 1 in detail: bitboards, tactics + TSS, Swap2, encoding |
 | 14 | [Openings, External Data, and the Supervised Curriculum](14-openings-and-supervised-curriculum.md) | — | Swap2 as value arithmetic; the self-play opening procedure; verified external data; supervised phases (decisions D1–D5) |
+| 15 | [The Silver Solution](15-alphazero-silver-solution.md) | — | Essay: the AlphaZero algorithm, why it works, architecture, SGD vs Adam, the loss function, and the math papers behind it |
 
 ## Tutorials
 
