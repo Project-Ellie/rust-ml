@@ -50,23 +50,6 @@ pub struct Board {
     moves: Vec<Move>,
 }
 
-const DIRS: [i32; 4] = [1, 16, 15, 17];
-
-/// Consecutive set bits starting one step away from `i`, walking in
-/// `step` direction. Two termination mechanisms, both free:
-///   - the index guard stops walks at the array edge (verticals);
-///   - the PADDING INVARIANT stops horizontal/diagonal wraps: every
-///     wrap path lands in column 15, whose bits are always zero.
-fn count_walk(stones: Bitboard, i: usize, step: i32) -> usize {
-    let mut n = 0;
-    let mut x = i as i32 + step;
-    while (0..240).contains(&x) && stones.test(x as usize) {
-        n += 1;
-        x += step;
-    }
-    n
-}
-
 impl Board {
     pub fn new() -> Board {
         Board {
@@ -92,7 +75,7 @@ impl Board {
         }
         self.moves.push(mv);
 
-        if self.wins_from(i, self.to_move) {
+        if crate::win::has_any_five(&self.stones(self.to_move)) {
             self.status = Status::Won(self.to_move);
         } else if self.moves.len() == 225 {
             self.status = Status::Draw;
@@ -101,12 +84,6 @@ impl Board {
         self.to_move = self.to_move.other();
 
         Ok(())
-    }
-
-    fn wins_from(&self, i: usize, color: Color) -> bool {
-        let stones = self.stones(color);
-        DIRS.iter()
-            .any(|&s| 1 + count_walk(stones, i, s) + count_walk(stones, i, -s) >= 5)
     }
 
     pub fn status(&self) -> Status {
@@ -236,7 +213,7 @@ mod tests {
 
     #[test]
     fn horizontal_five_wins() {
-        let mut b = crate::reference::Board::new();
+        let mut b = reference::Board::new();
         let script = [
             (7, 3),
             (0, 0),

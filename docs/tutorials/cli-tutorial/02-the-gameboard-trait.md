@@ -7,6 +7,8 @@ behind a factory function.
 This is the chapter your question was about — so first, the ground
 rules that make `dyn` work *at all*.
 
+
+
 ## Rust toolbox
 
 **Object safety.** A trait can become `dyn Trait` only if every

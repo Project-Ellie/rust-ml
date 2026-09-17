@@ -2,3 +2,10 @@
 /gomoku/target
 /artifacts
 .idea/
+
+# macOS
+.DS_Store
+
+# proptest failure persistence
+proptest-regressions/
+*.proptest-regressions
