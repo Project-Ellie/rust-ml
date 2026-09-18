@@ -123,16 +123,20 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-16 — update this section as work lands)
+## Current status (verified 2026-09-17 — update this section as work lands)
 
 **Milestone 1 (engine) in progress.** Done:
 
 - Workspace + `engine` skeleton (slice 1).
 - `Move`, naive `reference.rs` + corpus (slice 2).
 - `Bitboard` + `Board` with play/undo/status/legality/`empty_moves`
-  (slice 3) — win detection is currently the **walk-based interim**
-  detector inside `board.rs` (`count_walk`), correct but not the fast
-  staged-AND version.
+  (slice 3).
+- Staged shift-AND win detection in `win.rs`, integrated into
+  `Board::play` (slice 4) — overlines count, padding invariant kills
+  wrap fives, no edge masks.
+- Incremental Zobrist keys (slice 5): compile-time `const fn` table in
+  `zobrist.rs`, `Board::zobrist()` updated in O(1) by play/undo,
+  `compute_key` from-scratch ground truth, 10k-walk roundtrip proptest.
 - Differential harness (`tests/differential.rs`, feature-gated
   `testutil`): 10k random games + 1k undo walks vs the oracle.
 - **CLI side quest complete**: playable human-vs-human terminal UI on
@@ -144,15 +148,14 @@ Stub files awaiting their slices (currently doc-comment only):
 
 | Slice | File | What lands there |
 |---|---|---|
-| 4 | `win.rs` | staged-AND `has_five`, edge/overline corpus |
-| 5 | `zobrist.rs` | const table, incremental key, undo roundtrip |
 | 6 | `symmetry.rs`, `encode.rs` | D4 tables, 17×17 planes |
 | 7 | `tactics.rs` | `MoveSet`, immediate wins / forced blocks / double threats |
 | 8 | `opening.rs` | Swap2 typestate machine |
 | 9 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
 
-Verified: `cargo test -p engine` → 32 tests green; `cargo build -p cli`
-green. Full differential: `cargo test -p engine --features testutil`.
+Verified: `cargo test -p engine` → 47 tests green; `cargo build -p cli`
+green. Full differential: `cargo test -p engine --features testutil`
+→ 2 properties green.
 
 Milestones 2–7 (mcts, net+train on synthetic data, selfplay service,
 the phased loop, hardening, upgrades) have not started — no code exists

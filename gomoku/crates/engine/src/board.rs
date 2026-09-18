@@ -2,6 +2,7 @@
 //! Slice 3. See docs/13-engine-design.md, "Board".
 use crate::bitboard::{Bitboard, VALID, idx};
 use crate::moveset::Move;
+use crate::zobrist;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -48,6 +49,7 @@ pub struct Board {
     to_move: Color,
     status: Status,
     moves: Vec<Move>,
+    key: u64, // the zobrist key
 }
 
 impl Board {
@@ -58,7 +60,12 @@ impl Board {
             to_move: Color::Black,
             status: Status::Ongoing,
             moves: Vec::new(),
+            key: 0, // empty board is black to move, and black starts with 0
         }
+    }
+
+    pub fn zobrist(&self) -> u64 {
+        self.key
     }
 
     pub fn play(&mut self, mv: Move) -> Result<(), PlayError> {
@@ -81,6 +88,8 @@ impl Board {
             self.status = Status::Draw;
         }
 
+        self.key ^= zobrist::key_for(self.to_move, mv.index());
+        self.key ^= zobrist::WHITE_TO_MOVE;
         self.to_move = self.to_move.other();
 
         Ok(())
@@ -109,6 +118,9 @@ impl Board {
             Color::Black => self.black = self.black.without_bit(i),
             Color::White => self.white = self.white.without_bit(i),
         }
+
+        self.key ^= zobrist::key_for(self.to_move.other(), mv.index());
+        self.key ^= zobrist::WHITE_TO_MOVE;
         self.to_move = self.to_move.other(); // flip back
         // Undoing the winning move un-wins the game; undoing into a
         // would-be draw likewise reopens it. Ongoing is always right.
