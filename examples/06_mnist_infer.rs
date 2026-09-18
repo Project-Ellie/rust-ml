@@ -7,8 +7,8 @@
 
 use burn::backend::Flex;
 use burn::data::dataloader::DataLoaderBuilder;
-use burn::data::dataset::Dataset;
 use burn::data::dataset::vision::MnistDataset;
+use burn::data::dataset::Dataset;
 use burn::prelude::*;
 use burn::record::{CompactRecorder, Recorder};
 use rust_ml::data::MnistBatcher;

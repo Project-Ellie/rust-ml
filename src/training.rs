@@ -28,8 +28,8 @@ use burn::{
     record::CompactRecorder,
     tensor::backend::AutodiffBackend,
     train::{
-        ClassificationOutput, InferenceStep, Learner, SupervisedTraining, TrainOutput, TrainStep,
         metric::{AccuracyMetric, LossMetric},
+        ClassificationOutput, InferenceStep, Learner, SupervisedTraining, TrainOutput, TrainStep,
     },
 };
 

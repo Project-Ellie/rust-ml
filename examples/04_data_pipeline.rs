@@ -7,10 +7,10 @@
 //! On first run this downloads MNIST (~10 MB) into a cache directory.
 
 use burn::backend::Flex;
-use burn::data::dataloader::DataLoaderBuilder;
 use burn::data::dataloader::batcher::Batcher;
-use burn::data::dataset::Dataset;
+use burn::data::dataloader::DataLoaderBuilder;
 use burn::data::dataset::vision::MnistDataset;
+use burn::data::dataset::Dataset;
 use rust_ml::data::{MnistBatch, MnistBatcher};
 use rust_ml::inference::print_digit;
 

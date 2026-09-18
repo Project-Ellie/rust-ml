@@ -7,10 +7,10 @@
 //! Uses the Flex (pure-Rust CPU) backend. In `--release` one epoch takes on the
 //! order of a minute; debug builds are much slower — always train in release.
 
-use burn::backend::{Autodiff, wgpu};
+use burn::backend::{wgpu, Autodiff};
 use burn::optim::AdamConfig;
 use rust_ml::model::ModelConfig;
-use rust_ml::training::{TrainingConfig, train};
+use rust_ml::training::{train, TrainingConfig};
 
 fn main() {
     // Backend selection is a pair of type aliases: the compute backend, and

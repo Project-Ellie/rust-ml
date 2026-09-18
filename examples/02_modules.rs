@@ -8,7 +8,7 @@ use burn::backend::Flex;
 use burn::module::Module;
 use burn::nn::{Linear, LinearConfig, Relu};
 use burn::record::CompactRecorder;
-use burn::tensor::{Tensor, backend::Backend};
+use burn::tensor::{backend::Backend, Tensor};
 
 type B = Flex;
 

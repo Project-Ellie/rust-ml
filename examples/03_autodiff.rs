@@ -47,10 +47,8 @@ fn main() {
 
     // Training data: 64 samples of (x, 2x+1).
     let xs: Vec<f32> = (0..64).map(|i| i as f32 / 16.0 - 2.0).collect();
-    let x_train = Tensor::<B, 2>::from_data(
-        burn::tensor::TensorData::new(xs.clone(), [64, 1]),
-        &device,
-    );
+    let x_train =
+        Tensor::<B, 2>::from_data(burn::tensor::TensorData::new(xs.clone(), [64, 1]), &device);
     let y_train = x_train.clone().mul_scalar(2.0).add_scalar(1.0);
 
     let lr = 0.05;
