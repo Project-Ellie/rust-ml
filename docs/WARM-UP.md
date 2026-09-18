@@ -66,7 +66,7 @@ rust-ml/                    root package "rust-ml" (the MNIST curriculum)
   (dynamic batching ≤128 / ≤2 ms) → trainer; **phased v1** (self-play →
   train → arena, one GPU), continuous mode is a designed-in upgrade.
   Replay buffer **stores games** (~60 B each), not planes — sampler
-  replays + encodes + applies one random D4 symmetry on the fly.
+  replays + encodes + applies one random D4 transform on the fly.
   Network v1: 4 input planes at **17×17** (border ring = opponent
   stones), 128ch × 10 residual blocks (3.17 M params), policy 225
   logits + tanh value head. Loss `(z−v)² − πᵀlog p + c‖θ‖²`, AdamW
@@ -113,10 +113,12 @@ Fixed glossary (tutorial README has the full version):
   compile time (no `rand` dep, reproducible forever); incremental XOR in
   play/undo; used for replay-buffer dedup and test identity — NOT for
   MCTS transposition merging (the tree stays a tree, as in AlphaZero).
-- **Symmetry**: D4 group, 8 const permutation tables `[[u8; 225]; 8]`,
+- **Transforms** (D4 group): 8 const permutation tables `[[u8; 225]; 8]`,
   applied in 15×15 space at sample time (augmentation, never baked into
   the net, never averaged at search time). Key property: **encode
-  commutes with symmetry** (the 17×17 border ring is D4-invariant).
+  commutes with every transform** (the 17×17 border ring is D4-invariant).
+  Terminology: the 8 group elements are *transforms*; a *symmetry* is a
+  transform that maps a given position to itself.
 - **Swap2 as typestate**: `Placing3 → FirstChoice → (Placing2) →
   FinalChoice → Board::from_position` — invalid transitions are compile
   errors.

@@ -5,17 +5,25 @@ symmetry group, and the 17×17 border-as-opponent plane encoding.
 Design: ch. 13, "Encoding" and "Move and MoveSet"; ch. 12, §7
 "Symmetry".
 
+**A word on words.** The eight elements of D4 are *transforms* —
+functions from positions to positions. A *symmetry* is not a thing but
+a relationship: transform T is a symmetry **of a position p** when
+T(p) = p. The type below is therefore `Transform`; when these docs say
+a position "has a symmetry", they mean it is a fixed point of some
+transform. (The group itself keeps its mathematical name: the symmetry
+group of the square.)
+
 ## Contract
 
 `symmetry.rs`:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Symmetry { Id, Rot90, Rot180, Rot270, Flip, FlipRot90, FlipRot180, FlipRot270 }
+pub enum Transform { Id, Rot90, Rot180, Rot270, Flip, FlipRot90, FlipRot180, FlipRot270 }
 
-impl Symmetry {
-    pub const ALL: [Symmetry; 8];
-    pub fn inverse(self) -> Symmetry;
+impl Transform {
+    pub const ALL: [Transform; 8];
+    pub fn inverse(self) -> Transform;
     pub fn transform_move(self, mv: Move) -> Move;
     /// Permute 225 logical cells (planes, policy vectors).
     pub fn permute<T: Copy>(self, cells: &[T; 225]) -> [T; 225];
@@ -65,8 +73,8 @@ decision, not a trick — write it in a doc comment.
 
 1. `Rot90` four times = `Id` on a hand-picked move; same for `Flip`
    twice
-2. `sym.inverse()` actually inverts: for all 8 symmetries and a few
-   moves, `sym.inverse().transform_move(sym.transform_move(mv)) == mv`
+2. `t.inverse()` actually inverts: for all 8 transforms and a few
+   moves, `t.inverse().transform_move(t.transform_move(mv)) == mv`
 3. Proptest: step 2 for *all* moves 0..225
 4. Win preservation: random won positions (plant a five, fill the rest
    randomly) stay won under all 8 transforms (drive both engines or the
@@ -76,7 +84,7 @@ decision, not a trick — write it in a doc comment.
 6. A stone of the side to move at (0, 0) lands at index `1 * 17 + 1 = 18`
    of `me` (an opponent stone at (0, 0) lands in `you` instead)
 7. **The commutation property** (the deliverable): for random boards and
-   all 8 symmetries, `encode(transform(b))` equals `encode(b)` with its
+   all 8 transforms, `encode(transform(b))` equals `encode(b)` with its
    inner 15×15 region permuted by `sym.permute` and the border re-added.
    Write a small helper `permute_planes17` in the *test* that does the
    naive thing; assert equality.
@@ -87,7 +95,7 @@ position *means*.
 
 ## ML refresh: augmentation and equivariance
 
-**Why 8 symmetries.** Every Gomoku position has 8 equivalent forms with
+**Why 8 transforms.** Every Gomoku position has 8 equivalent forms with
 identical value and identically-permuted policy. Sampling one random
 transform per training example is 8× data for free — AlphaZero's exact
 usage. It also forces the network to spend zero capacity learning "the

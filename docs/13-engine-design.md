@@ -25,7 +25,7 @@ crates/engine/
 ├── Cargo.toml          # deps: thiserror, serde. dev: proptest, criterion
 └── src/
     ├── lib.rs          # re-exports ONLY: Board, Move, Color, Outcome,
-    │                   #   PlayError, Symmetry, MoveSet, tactics::*, encode::*, Swap2
+    │                   #   PlayError, Transform, MoveSet, tactics::*, encode::*, Swap2
     ├── bitboard.rs     # pub(crate): stride-16 [u64;4], shifts, iterators
     ├── board.rs        # Board: play/undo, legality, status
     ├── win.rs          # has_five (overline counts — decision 1)
@@ -248,11 +248,11 @@ pub struct Planes {
 pub fn encode(b: &Board) -> Planes;
 ```
 
-Symmetry stays in 15×15 space (`[[u8; 225]; 8]` const tables — `u8`
+Transforms stay in 15×15 space (`[[u8; 225]; 8]` const tables — `u8`
 suffices) and the border is added *after* transformation: the border
-ring is D4-invariant, so `encode(sym(b)) == embed(sym15(stones))` holds
-exactly. That gives the key property test: **encode commutes with
-symmetry**. Planes as `u8` arrays keep the engine Burn-free; `net`
+ring is D4-invariant, so `encode(t(b)) == embed(t15(stones))` holds
+exactly. That gives the key property test: **encode commutes with every
+transform**. Planes as `u8` arrays keep the engine Burn-free; `net`
 converts them to tensors. Chapter 10's last-move planes (planes 2–3) are
 a five-line addition reading `moves.last()` — decide 2-vs-4 planes when
 the `net` crate lands; the store-games decision (chapter 9) keeps both
@@ -275,7 +275,7 @@ it in release builds.
 | Fast vs. naive: legality/status/outcome per ply, 10k random games | proptest differential |
 | Undo: play/undo random walks == pristine board, key roundtrip | proptest |
 | Zobrist incremental == from-scratch | proptest |
-| Symmetry: inverse roundtrip, win preserved, encode commutes | proptest |
+| Transforms: inverse roundtrip, win preserved, encode commutes | proptest |
 | Tactics puzzle corpus + differential vs naive | unit + proptest |
 | Swap2: scripted protocol sequences + invalid inputs rejected | unit |
 | `has_five` ≥ 50M checks/s, play/undo throughput | criterion (built last) |
@@ -287,7 +287,7 @@ it in release builds.
 3. `Bitboard` + `Board` (play/undo/status) — differential tests green.
 4. `win.rs` edge corpus + padding invariant.
 5. Zobrist.
-6. Symmetry + encode + commutation property.
+6. Transforms + encode + commutation property.
 7. Tactics.
 8. Swap2 typestate.
 9. Criterion bench.

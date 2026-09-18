@@ -418,14 +418,14 @@ rotations, and their mirrors — 8 transforms. Every position has 8
 equivalent forms with identical value and identically-transformed policy.
 We implement transforms as **precomputed index permutation tables**
 (`[[u8; 225]; 8]`, built once), used for training-data augmentation:
-when the sampler draws a position, it applies one random symmetry to the
+when the sampler draws a position, it applies one random transform to the
 planes *and* the policy target π. Transforms operate in the 15×15 space;
 the 17×17 border ring is added afterwards, and since the ring is itself
-D4-invariant, encoding commutes with symmetry exactly. This is
+D4-invariant, encoding commutes with every transform exactly. This is
 AlphaZero's exact usage
 [paper — AlphaZero bakes symmetries in as augmentation, not as network
 architecture]. We deliberately do *not* average network evaluations over
-symmetries at search time (AlphaGo Zero did that in evaluation only);
+transforms at search time (AlphaGo Zero did that in evaluation only);
 it costs 8× evaluation for a marginal gain our scale cannot afford.
 
 ### Zobrist keys
