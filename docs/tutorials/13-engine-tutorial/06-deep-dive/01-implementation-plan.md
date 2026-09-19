@@ -122,6 +122,14 @@ a quarter turn *r* and a mirror flip *f*, with relations
 r⁴ = e        f² = e        f·r = r⁻¹·f
 ```
 
+One convention, pinned now: our quarter turn is **counterclockwise**
+in screen coordinates (rows point down), i.e. the math/numpy reading
+of "rot90" — the upper-left corner moves to the lower-left. The group
+axioms don't care which way *r* turns (a clockwise primitive generates
+the same 8 elements with Rot90 ↔ Rot270 swapped), but the *name*
+`Rot90` makes a promise, and a formula that breaks it is a bug that
+compiles. Step 1 pins the choice with a corner test.
+
 The third relation is the interesting one: it says the group is *not*
 commutative — flip-then-rotate differs from rotate-then-flip — and it
 tells you exactly *how* they differ. Every element has a normal form:
@@ -241,6 +249,25 @@ hand-picked off-center, off-axis move (`(3, 11)` — remember the orbit
 lesson: center and axis cells are degenerate test subjects).
 
 GREEN when both chains return `(3, 11)`.
+
+Then pin the convention you just chose — one corner cycle, so the
+direction of `rot90` is a tested fact and not an assumption:
+
+```rust
+#[test]
+fn rot90_cycles_corners_counterclockwise() {
+    let (ul, ur, ll, lr) = (mv(0, 0), mv(0, 14), mv(14, 0), mv(14, 14));
+    let r = Transform::Rot90;
+    assert_eq!(r.transform_move(ul), ll);   // counterclockwise: UL → LL
+    assert_eq!(r.transform_move(ll), lr);
+    assert_eq!(r.transform_move(lr), ur);
+    assert_eq!(r.transform_move(ur), ul);
+}
+```
+
+If this test is red while the group laws are green, your formula and
+your convention disagree — check the comment on the reference
+`rot90` in Part 4 before "fixing" the wrong side.
 
 ### Step 2 — tables, and the group made visible
 
@@ -370,11 +397,16 @@ pub enum Transform {
     FlipRot270,
 }
 
-/// Where the stone at logical cell `i` GOES under a quarter turn:
-/// (r, c) → (c, 14 − r).
+/// Where the stone at logical cell `i` GOES under a counterclockwise
+/// quarter turn: (r, c) → (14 − c, r). Corner cycle: UL → LL → LR → UR.
+/// (The clockwise twin, (r, c) → (c, 14 − r), is an equally valid
+/// generator — but it is NOT what the name `Rot90` promises, and
+/// mixing the two in one file is the trap this comment exists to
+/// disarm. Pick one convention; formula, comment, and corner test
+/// must all tell the same story.)
 const fn rot90(i: u8) -> u8 {
     let (r, c) = (i / 15, i % 15);
-    c * 15 + (14 - r)
+    (14 - c) * 15 + r
 }
 
 /// Where the stone at logical cell `i` GOES under a mirror flip of the
