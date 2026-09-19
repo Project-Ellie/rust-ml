@@ -598,13 +598,13 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 7. The gapped-four trap.
+    // 7. The gapped-four / double-threat trap.
     //
     // A doctored proof claims a win through a defender block that does
     // not actually work. `verify_line` enumerates every block and rejects
     // the proof because the suffix fails against the other block.
     #[test]
-    fn gapped_four_trap_rejects_refuted_line() {
+    fn double_threat_maker_rejects_doctored_long_line() {
         // Black plays (7,7). It creates two gapped fours whose winning
         // cells are (7,6) and (6,7). The real position is a double threat,
         // so the only sound proof is the one-move line [(7,7)]. A doctored
@@ -650,6 +650,109 @@ mod tests {
             ],
         };
         assert!(!verify_line(&b, &doctored));
+    }
+
+    // A genuine gapped-four refutation: the attacker creates a single
+    // threat with two distinct defender blocks (two immediate winning
+    // cells), and a proof that proceeds through one of them must be
+    // rejected when the other one refutes it. The position below is a
+    // double threat, so the sound proof is the one-move line; the value
+    // of the test is that a doctored multi-move line is caught.
+    #[test]
+    fn gapped_four_refutation_rejects_doctored_line() {
+        // Black to move. Playing (7,7) creates a gapped four along row 7
+        // (winning cell (7,6)) and a gapped four along column 7 (winning
+        // cell (6,7)). Either block wins the game for White if the line
+        // is dragged out, so any proof longer than [(7,7)] is unsound.
+        let b = board_from_ascii(
+            "
+            O . . . O . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . O . . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . X X . . X . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            O . O . O . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::Black);
+        let proof = prove_forced_win(
+            &b,
+            Color::Black,
+            SearchBudget {
+                max_nodes: 2000,
+                max_depth: 6,
+            },
+        );
+        let proof = proof.expect("proven double threat");
+        assert_eq!(proof.line, vec![Move::new(7, 7).unwrap()]);
+        assert!(verify_line(&b, &proof));
+
+        // Doctor a proof that claims the win goes through (7,6) and then
+        // (6,7). After (7,7) the position is terminal, so the verifier
+        // rejects any line longer than one move; the other block (6,7)
+        // is the refuting alternative.
+        let doctored = Proof {
+            winner: Color::Black,
+            line: vec![
+                Move::new(7, 7).unwrap(),
+                Move::new(7, 6).unwrap(), // one valid block
+                Move::new(6, 7).unwrap(), // would win only after the first block
+            ],
+        };
+        assert!(!verify_line(&b, &doctored));
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Defender-wins-first: a threat never matures if the defender
+    // already has an immediate win.
+    #[test]
+    fn defender_wins_first_kills_attacker_branch() {
+        // White has an open four on row 7; Black has a tempting closed-four
+        // maker on column 7. Black to move can create a threat, but White
+        // replies with an immediate win, so `prove_forced_win` for Black
+        // returns None.
+        let b = board_from_ascii(
+            "
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . O O O O . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . X . . . . . . .
+            . . . . . . . . . . . . . . .
+            X . . . . . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::Black);
+        assert!(!forced_blocks(&b).is_empty(), "White has an immediate win");
+        assert!(
+            prove_forced_win(
+                &b,
+                Color::Black,
+                SearchBudget {
+                    max_nodes: 2000,
+                    max_depth: 6,
+                }
+            )
+            .is_none(),
+            "Black's threat never matures because White wins first"
+        );
     }
 
     // ------------------------------------------------------------------

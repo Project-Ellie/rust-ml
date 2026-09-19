@@ -221,9 +221,12 @@ pub fn naive_double_threats(b: &crate::board::Board, side: Color) -> MoveSet {
 /// rows (blank lines are tolerated, so raw-string literals can
 /// indent). Stone counts must be reachable by alternating play from
 /// Black: equal counts (Black to move — Black wins ties) or one more
-/// X (White to move). The position must be non-terminal; a completed
-/// five (overlines included) aborts the replay with a panic.
-/// Panics on malformed input — test code is allowed to panic.
+/// X (White to move). The parser is strict: it replays stones in
+/// parse order and rejects counts that are not alternating-replay
+/// reachable (e.g., 2 Black with 0 White). The position must be
+/// non-terminal; a completed five (overlines included) aborts the
+/// replay with a panic. Panics on malformed input — test code is
+/// allowed to panic.
 pub fn board_from_ascii(rows: &str) -> crate::board::Board {
     let mut xs: Vec<(u8, u8)> = Vec::new();
     let mut os: Vec<(u8, u8)> = Vec::new();

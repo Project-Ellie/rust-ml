@@ -326,6 +326,37 @@ mod tests {
     }
 
     #[test]
+    fn double_threat_accepted_even_when_opponent_wins_first() {
+        // v1 simplification 2: a double threat is still reported even
+        // though the opponent has an immediate win and would play it
+        // before the threat matures. The turn-order truth lives in
+        // `forced_blocks`: Black to move is ALREADY in trouble because
+        // White has an open four.
+        let b = board_from_ascii(
+            "
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . O O O O . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            X . X . X . X . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::Black);
+        assert_eq!(forced_blocks(&b), set_of(&[(7, 3), (7, 8)]));
+        assert_eq!(double_threats(&b, Color::Black), set_of(&[(12, 3)]));
+    }
+
+    #[test]
     fn double_threat_in_the_corner() {
         // Two threes hugging the edges. Playing the CORNER (0,0) makes
         // two fours whose only open ends are (0,4) and (4,0) — the
