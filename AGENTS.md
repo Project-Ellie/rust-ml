@@ -46,9 +46,9 @@ engine design: `docs/13-engine-design.md`.
 
 ## Status snapshot
 
-Milestone 1 (engine): slices 1–5 done (reference oracle, bitboard
-Board, win detection, Zobrist, differential harness) + CLI side quest
-complete. Slices 6–10 pending (symmetry/encode, tactics, TSS oracle,
-Swap2, benches — see ch. 13 build order). Details and verification commands:
-[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-16----update-this-section-as-work-lands).
-Keep that section current as slices land.
+Milestone 1 (engine): COMPLETE — all 10 slices done (oracle, bitboard
+Board, win detection, Zobrist, symmetry/encode, tactics, TSS prover,
+Swap2, benches) + CLI side quest with Swap2 hotseat flow and TSS proof
+overlay. Details and verification commands:
+[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-19----update-this-section-as-work-lands).
+Keep that section current as work lands.

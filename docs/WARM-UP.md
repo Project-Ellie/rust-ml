@@ -126,9 +126,9 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-17 — update this section as work lands)
+## Current status (verified 2026-09-19 — update this section as work lands)
 
-**Milestone 1 (engine) in progress.** Done:
+**Milestone 1 (engine) COMPLETE.** Done:
 
 - Workspace + `engine` skeleton (slice 1).
 - `Move`, naive `reference.rs` + corpus (slice 2).
@@ -148,27 +148,44 @@ Fixed glossary (tutorial README has the full version):
   case counts — generate from the complement instead (prop_flat_map).
 - Differential harness (`tests/differential.rs`, feature-gated
   `testutil`): 10k random games + 1k undo walks vs the oracle.
+- Tactics (slice 7): `MoveSet`, `immediate_wins` / `forced_blocks` /
+  `double_threats` (hypothetical-placement, no pattern matching), naive
+  line-scan oracles + ASCII puzzle parser in `reference.rs`,
+  differential proptest. v1 simplifications documented (four-three
+  blind spot, opponent-wins-first accepted, immediate wins excluded
+  from double threats).
+- Threat-space search (slice 8): `prove_forced_win` / `verify_line` in
+  `tss.rs` — bounded prover (attacker threats vs defender forced
+  blocks, defender-wins-first check) + verifier that enumerates EVERY
+  defender block (gapped fours). Soundness gate green: 100% of emitted
+  proofs verify, incl. at PROPTEST_CASES=2000; differential vs a
+  depth-bounded reference adjudicator green.
+- Swap2 opening (slice 9): `Swap2<Placing3|FirstChoice|Placing2|
+  FinalChoice>` typestate + `Board::from_position` (overlap/count
+  validation, from-scratch Zobrist). Opening-built and play-built
+  boards share keys (tested).
+- Benchmarks + hardening (slice 10): criterion bench — `has_five_any`
+  ≈8.5 ns/call (bar ≤20 ns), play/undo ≈8 ns/op; `#![deny(missing_docs)]`
+  public-surface lock.
 - **CLI side quest complete**: playable human-vs-human terminal UI on
   both boards (`--engine naive|fast`), alternate-screen no-scroll UI
   (crossterm), undo/restart, via a `dyn GameBoard` trait owned by the
   CLI crate (the engine itself deliberately has no shared trait).
+- **CLI demo features**: hotseat Swap2 opening flow (default; party
+  switches for accept-or-add-2 and color choice, undo by replaying the
+  placement log — `--no-swap2` skips) and a TSS overlay (`t` key):
+  the verified forced-win line rendered as numbered cells (attacker
+  plain, defender bracketed), verdict line included. `--engine naive`
+  is a default-on cargo feature (`naive-engine`); lean builds use
+  `--no-default-features`.
 
-Stub files awaiting their slices (currently doc-comment only):
+Verified: `cargo test -p engine --features testutil` → 92 unit + 5
+differential + 2 doc-tests green; `cargo test -p cli` → 27 green;
+`cargo bench -p engine` meets the milestone-1 bar.
 
-| Slice | File | What lands there |
-|---|---|---|
-| 7 | `tactics.rs` | `MoveSet`, immediate wins / forced blocks / double threats |
-| 8 | `tss.rs` | bounded threat-space prover + line verifier |
-| 9 | `opening.rs` | Swap2 typestate machine |
-| 10 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
-
-Verified: `cargo test -p engine` → 55 tests green; `cargo build -p cli`
-green. Full differential: `cargo test -p engine --features testutil`
-→ 2 properties green.
-
-Milestones 2–7 (mcts, net+train on synthetic data, selfplay service,
-the phased loop, hardening, upgrades) have not started — no code exists
-beyond `engine` and `cli`.
+Milestones 2–8 (mcts, net+train on synthetic data, TSS anchor set,
+selfplay service, the phased loop, hardening, upgrades) have not
+started — no code exists beyond `engine` and `cli`.
 
 ## How the tutorials work (respect the pedagogy)
 
@@ -194,7 +211,8 @@ cargo run --release --example 05_mnist_train -- 1   # 1-epoch smoke test
 cargo test -p engine                    # unit tests
 cargo test -p engine --features testutil   # + differential suite (10k games)
 PROPTEST_CASES=10000 cargo test -p engine  # more property iterations
-cargo run -p cli                        # play! (--engine naive|fast, --plain)
+cargo run -p cli                        # play! Swap2 opening + 't' for TSS overlay
+                                      # (--engine naive|fast, --plain, --no-swap2)
 ```
 
 ## Roadmap beyond milestone 1
