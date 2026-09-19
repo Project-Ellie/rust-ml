@@ -9,6 +9,10 @@ license.workspace = true
 name = "gomoku"
 path = "src/main.rs"
 
+[features]
+default = ["naive-engine"]
+naive-engine = ["engine/testutil"]
+
 [dependencies]
 crossterm.workspace = true
-engine = { path = "../engine", features = ["testutil"] }
+engine = { path = "../engine" }

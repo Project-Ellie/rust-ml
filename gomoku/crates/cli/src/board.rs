@@ -28,8 +28,10 @@ pub trait GameBoard {
 }
 
 /// The naive oracle, wrapped so UI extras have a home.
+#[cfg(feature = "naive-engine")]
 pub struct NaiveBoard(engine::reference::Board);
 
+#[cfg(feature = "naive-engine")]
 impl GameBoard for NaiveBoard {
     fn play(&mut self, mv: Move) -> Result<(), PlayError> {
         self.0.play(mv)
@@ -106,12 +108,14 @@ impl GameBoard for FastBoard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineKind {
+    #[cfg(feature = "naive-engine")]
     Naive,
     Fast,
 }
 
 pub fn board_for(kind: EngineKind) -> Box<dyn GameBoard> {
     match kind {
+        #[cfg(feature = "naive-engine")]
         EngineKind::Naive => Box::new(NaiveBoard(engine::reference::Board::new())),
         EngineKind::Fast => Box::new(FastBoard(engine::Board::new())),
     }
@@ -122,6 +126,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "naive-engine")]
     fn both_boards_agree_through_the_trait() {
         let mut boards: Vec<Box<dyn GameBoard>> =
             vec![board_for(EngineKind::Naive), board_for(EngineKind::Fast)];
@@ -148,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "naive-engine")]
     fn undo_travels_through_the_trait_on_both_boards() {
         for kind in [EngineKind::Naive, EngineKind::Fast] {
             let mut board = board_for(kind);
