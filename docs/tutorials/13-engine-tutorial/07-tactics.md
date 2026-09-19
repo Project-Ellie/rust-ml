@@ -33,8 +33,8 @@ pub fn forced_blocks(b: &Board) -> MoveSet;
 /// Moves after which `side` has >= 2 immediate wins: open fours and
 /// double fours — unanswerable next move.
 /// Known v1 gap: a four-three has exactly ONE immediate win now (the
-/// three matures next ply), so this criterion does not catch it; the
-/// full win-in-2 search is out of scope for the engine milestone.
+/// three matures next ply), so this criterion does not catch it; deeper
+/// forced wins belong to slice 10's bounded prover (`tss.rs`).
 pub fn double_threats(b: &Board, side: Color) -> MoveSet;
 ```
 
@@ -100,7 +100,9 @@ positions, available from day one:
 - as an optional **fast path** in self-play (immediate win → play it,
   skip search — a config knob, measured as `[experiment]`),
 - as the generator for the milestone-3 synthetic attack/defense set
-  (AlphaGomoku's curriculum, our registered fallback).
+  (AlphaGomoku's curriculum, our registered fallback) — and as the move
+  generator for slice 10's threat-space prover, whose verified forced
+  wins become the milestone-4 anchor set.
 
 How strongly these priors blend into training, and whether that blend
 decays as the network matures, is a training-time decision — the engine

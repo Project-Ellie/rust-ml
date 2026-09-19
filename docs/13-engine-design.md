@@ -17,6 +17,7 @@ document adds the concrete types, invariants, and test plan.
 | 5 | **Board stores absolute colors** | Swap2's opening places 3 non-alternating stones; a relative me/you store cannot express that |
 | 6 | **Naive reference engine** in `src/reference.rs` behind `#[cfg(any(test, feature = "testutil"))]` | Permanent differential-testing oracle, not throwaway scaffolding |
 | 7 | **Public API as tight as possible** | Visibility as enforcement (chapter 12, §6) is cheapest at creation time |
+| 8 | **TSS oracle in the engine; soundness over completeness** | The bounded threat-space prover emits only machine-verified forced-win lines; a missed win costs coverage, a wrong label poisons training (chapter 12, §12 item 3) |
 
 ## Crate layout
 
@@ -25,7 +26,9 @@ crates/engine/
 ├── Cargo.toml          # deps: thiserror, serde. dev: proptest, criterion
 └── src/
     ├── lib.rs          # re-exports ONLY: Board, Move, Color, Outcome,
-    │                   #   PlayError, Transform, MoveSet, tactics::*, encode::*, Swap2
+    │                   #   PlayError, Transform, MoveSet, tactics::*,
+    │                   #   tss::{Proof, SearchBudget, prove_forced_win, verify_line},
+    │                   #   encode::*, Swap2
     ├── bitboard.rs     # pub(crate): stride-16 [u64;4], shifts, iterators
     ├── board.rs        # Board: play/undo, legality, status
     ├── win.rs          # has_five (overline counts — decision 1)
@@ -33,6 +36,7 @@ crates/engine/
     ├── symmetry.rs     # D4 group, const tables
     ├── moveset.rs      # public set-of-moves type (logical indexing)
     ├── tactics.rs      # immediate wins, forced blocks, double threats
+    ├── tss.rs          # bounded threat-space search: prover + line verifier
     ├── opening.rs      # Swap2 as a typestate machine
     ├── encode.rs       # 17×17 planes, border-as-opponent, no Burn
     └── reference.rs    # #[cfg(any(test, feature = "testutil"))] naive oracle
@@ -192,8 +196,8 @@ pub fn forced_blocks(b: &Board) -> MoveSet {
 
 /// Moves after which `side` has >= 2 immediate wins (open four, double
 /// four): unanswerable. v1 gap: a four-three has exactly one immediate
-/// win now, so this criterion does not catch it — the full win-in-2
-/// search is out of scope for the engine milestone.
+/// win now, so this criterion does not catch it — deeper forced wins
+/// are what slice 10's bounded prover (`tss.rs`) is for.
 pub fn double_threats(b: &Board, side: Color) -> MoveSet { /* same primitive */ }
 ```
 
@@ -201,6 +205,62 @@ Cost: ~225 × ~60 ops ≈ 13k ops per call — fine at leaf expansion, not
 per PUCT step. Test corpus: hand-built puzzles (win-in-1, must-block,
 double threat, near-misses) plus differential checks against the naive
 engine's line scanner.
+
+## Threat-space search — the proving oracle
+
+Tactics detects what is true *now*; threat-space search (TSS) proves
+what is *forced*. It is a bounded, recursive prover built directly on
+the tactics primitives: the attacker's candidate moves are the cells
+that create a threat (hypothetical placement + threat detection, the
+same bit trick), the defender's replies are the forced blocks, so the
+defender's branching factor is ~1 and the search stays tiny. Where the
+prover succeeds it certifies "this side wins by force from here" and
+returns the line — win-in-3, win-in-5, VCF-style sequences that slice 7
+deliberately does not attempt.
+
+```rust
+/// A certified forced win: the winning side and one forcing sequence,
+/// alternating moves, starting with `winner`'s threat.
+pub struct Proof { pub winner: Color, pub line: Vec<Move> }
+
+/// Hard caps. Exhausting the budget means "no proof" — never "loss".
+pub struct SearchBudget { pub max_nodes: u32, pub max_depth: u8 }
+
+/// `Some` = certified forced win for `side`. `None` = not proven within
+/// budget; says NOTHING about the position's true value.
+pub fn prove_forced_win(b: &Board, side: Color, budget: SearchBudget) -> Option<Proof>;
+
+/// The soundness net: replays the line while enumerating every defender
+/// alternative at each defender turn (cheap — replies are forced) and
+/// confirms the attacker wins against all of them. Every Proof passes
+/// this before it may become a training label.
+pub fn verify_line(b: &Board, proof: &Proof) -> bool;
+```
+
+Three rules keep the oracle trustworthy:
+
+1. **Soundness over completeness.** `None` is always acceptable; a wrong
+   `Some` never is. A missed win costs puzzle coverage; a wrong label
+   poisons the value head with false certainty.
+2. **Every label is machine-verified.** Generation emits `(position,
+   Proof)` only after `verify_line` passes, and the milestone-4
+   acceptance gate re-checks proofs against brute-force adjudication on
+   shallow random positions.
+3. **Budgets, not guarantees.** The search is capped in nodes and depth;
+   difficulty beyond the cap is simply unlabeled, which the milestone-4
+   mixture tolerates by design.
+
+A verified proof becomes training data as: root position `s`; policy
+target = the forcing move (each attacker position along the line is also
+emitted, same winner); value target `z = ±1` — exact, not bootstrapped.
+These samples form the *anchor set*: permanent (outside the replay
+window, no eviction), a small [experiment] fraction of every batch from
+milestone 4 onward. Puzzle roots come from random play and Swap2
+openings at first, from self-play games later. Cost: attacker branching
+is limited to threat-generating cells and defender branching is ~1, so a
+capped proof attempt is microseconds to milliseconds [derived] —
+generating 10k verified puzzles is background noise next to one
+training step.
 
 ## Swap2 as a typestate machine
 
@@ -277,6 +337,7 @@ it in release builds.
 | Zobrist incremental == from-scratch | proptest |
 | Transforms: inverse roundtrip, win preserved, encode commutes | proptest |
 | Tactics puzzle corpus + differential vs naive | unit + proptest |
+| TSS: 100% of emitted proofs pass `verify_line`; brute-force adjudication agrees on shallow positions | proptest differential |
 | Swap2: scripted protocol sequences + invalid inputs rejected | unit |
 | `has_five` ≥ 50M checks/s, play/undo throughput | criterion (built last) |
 
@@ -291,7 +352,8 @@ it in release builds.
 7. Tactics.
 8. Swap2 typestate.
 9. Criterion bench.
-10. Tighten visibility (`pub(crate)` sweep), rustdoc, done.
+10. TSS oracle (`tss.rs`): prover + verifier, soundness gate green.
+11. Tighten visibility (`pub(crate)` sweep), rustdoc, done.
 
 Tutorial: [tutorials/13-engine-tutorial/](tutorials/13-engine-tutorial/README.md) — the build-your-own companion to this design.
 

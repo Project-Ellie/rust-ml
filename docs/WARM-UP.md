@@ -70,14 +70,15 @@ rust-ml/                    root package "rust-ml" (the MNIST curriculum)
   Network v1: 4 input planes at **17×17** (border ring = opponent
   stones), 128ch × 10 residual blocks (3.17 M params), policy 225
   logits + tanh value head. Loss `(z−v)² − πᵀlog p + c‖θ‖²`, AdamW
-  1e-4, warmup+cosine LR. Milestones 1–7 with acceptance tests (ch. 12
+  1e-4, warmup+cosine LR. Milestones 1–8 with acceptance tests (ch. 12
   §13). Every number is labelled [paper] / [derived] / [experiment] —
   and the appendix holds an **honesty ledger** of folklore traps
   (c_puct is NOT in the DeepMind papers — 1.5 is ELF's value; AlphaZero
   publishes no replay-window size; AGZ used 1600 sims, AlphaZero 800).
 - **[13-engine-design.md](13-engine-design.md)** — milestone 1 in
   detail. Locked decisions: overlines win; Swap2 from the start; 17×17
-  encoding with border-as-opponent; alpha-epsilon tactics; absolute
+  encoding with border-as-opponent; alpha-epsilon tactics + bounded TSS
+  oracle (soundness over completeness, machine-verified labels); absolute
   color storage (Swap2's non-alternating opening breaks relative
   stores); naive reference engine kept permanently behind
   `#[cfg(any(test, feature = "testutil"))]` as differential oracle;
@@ -154,6 +155,7 @@ Stub files awaiting their slices (currently doc-comment only):
 | 7 | `tactics.rs` | `MoveSet`, immediate wins / forced blocks / double threats |
 | 8 | `opening.rs` | Swap2 typestate machine |
 | 9 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
+| 10 | `tss.rs` | bounded threat-space prover + line verifier |
 
 Verified: `cargo test -p engine` → 47 tests green; `cargo build -p cli`
 green. Full differential: `cargo test -p engine --features testutil`
@@ -193,9 +195,11 @@ cargo run -p cli                        # play! (--engine naive|fast, --plain)
 ## Roadmap beyond milestone 1
 
 MCTS with mock evaluator → net+train on tactics-generated synthetic data
-→ 14-worker self-play with batched evaluator (≥400 games/h target) →
-phased `gomoku run` loop with arena Elo tracking → hardening (7-day
-runs, crash recovery) → registered upgrades one at a time (playout-cap
-randomization, global-pooling heads, continuous mode, net growth,
-forced playouts, auxiliary targets). After that: applications around the
-lab — a game server, and Wolfie's dream physical Gomoku board.
+→ TSS oracle + proven-label anchor set (≥10k verified forced-win
+puzzles) → 14-worker self-play with batched evaluator (≥400 games/h
+target) → phased `gomoku run` loop with arena Elo tracking → hardening
+(7-day runs, crash recovery) → registered upgrades one at a time
+(playout-cap randomization, global-pooling heads, continuous mode, net
+growth, forced playouts, auxiliary targets, TSS inside MCTS). After
+that: applications around the lab — a game server, and Wolfie's dream
+physical Gomoku board.

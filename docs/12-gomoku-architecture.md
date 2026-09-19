@@ -78,8 +78,12 @@ The AlphaZero system decomposes into four subsystems and one loop:
   Swap2 opening protocol. It also detects tactical forcing moves
   (immediate wins, forced blocks, double threats) — rules-level truth in
   pure bit operations, used as a self-play fast path, as the MCTS mock
-  evaluator, and as the milestone-3 synthetic-data generator. Pure Rust,
-  no Burn, no GPU. Must be extremely fast — MCTS touches it millions of
+  evaluator, and as the milestone-3 synthetic-data generator. On top of
+  those detections sits a bounded **threat-space search** (TSS): a
+  recursive prover over forcing sequences that certifies "this side wins
+  by force" and returns the winning line — the extended tactical
+  interface whose proven ±1 labels enrich training (milestone 4). Pure
+  Rust, no Burn, no GPU. Must be extremely fast — MCTS touches it millions of
   times per second in aggregate.
 - **MCTS.** Turns the network's raw opinion (p, v) into a much stronger
   opinion (π, the visit-count distribution) by lookahead search. Owns one
@@ -140,10 +144,13 @@ large for brute force.
    general method that discovers structure. The scientific interest is in
    the generality — the same code should play any two-player perfect-
    information board game after changing the engine crate.
-3. *It gives us a free oracle.* Solved positions and threat-sequence
-   puzzles are perfect test data. An agent that cannot win a won position
-   in one threat sequence has a bug, and we can test for that before any
-   learning happens.
+3. *It gives us a free oracle — twice.* Solved positions and
+   threat-sequence puzzles are perfect test data: an agent that cannot
+   win a won position in one threat sequence has a bug, and we can test
+   for that before any learning happens. And the search itself, run
+   bounded and trusted only where it *proves* a forced win, emits exact
+   labels — policy = the forcing move, value = rules-truth ±1. That is
+   the anchor set milestone 4 adds to training (§13).
 
 **What the Gomoku AI literature adds.** AlphaGomoku (Xie, Fu, Yu 2018,
 arXiv:1809.10595) is the closest prior work: AlphaGo-style MCTS for
@@ -808,25 +815,31 @@ Nothing trains until these pass. Order matters.
    win-in-3 forced sequences, must-block open fours) with the engine's
    tactics module as mock evaluator. MCTS with a sane prior must solve
    win-in-1 at 50 simulations.
-3. **Network shape test + overfit test**: forward shapes on both
+3. **TSS soundness gate**: every line the prover emits is re-verified by
+   replaying it while enumerating all defender alternatives (cheap —
+   replies are forced); on shallow random positions, brute-force
+   adjudication must agree with every proof claim. The prover may be
+   incomplete (miss wins); it may never be unsound.
+4. **Network shape test + overfit test**: forward shapes on both
    backends; overfit 32 positions to >95% policy accuracy in a few
    hundred steps (proves loss, encoding, and training loop end-to-end).
-4. **Backend parity gate** — the Metal risk made executable: same
+5. **Backend parity gate** — the Metal risk made executable: same
    weights, same batch, Flex vs. Wgpu: forward outputs within 1e-5
    (f32), **and one full training step**: parameter deltas within 1e-4
    relative. Includes 1×1 convs (our heads) with autotune both on and
    off (issue #5626 pattern). If this fails: train on Flex, evaluate on
    Wgpu, file the bug, revisit next Burn release.
-5. **Determinism policy**: `--seed` fixes worker RNG streams and Burn's
+6. **Determinism policy**: `--seed` fixes worker RNG streams and Burn's
    backend seed; wgpu kernels are not bitwise deterministic across
    autotune choices, so determinism is promised on Flex, best-effort on
    Wgpu — recorded in the run journal either way.
 
-Risk table (top 3): Metal training correctness → gate #4 + Flex
+Risk table (top 3): Metal training correctness → gate #5 + Flex
 fallback. Learning stall (AlphaGomoku needed a curriculum) → the
 tactics module mitigates it from day one and generates the synthetic
 attack/defense set that milestone 3 trains on before self-play exists;
-that milestone's acceptance test detects a stall early [paper].
+that milestone's acceptance test detects a stall early [paper], and the
+milestone-4 anchor set keeps proven tactics in every batch thereafter.
 Throughput over-optimism → the
 chapter-9 numbers are [derived]; week-one measurement recalibrates
 worker count, batch window, and sims/move before any long run.
@@ -843,12 +856,33 @@ Estimated effort assumes focused evenings, not DeepMind clusters.
 | 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; `cargo bench` win-detection ≥ 50M checks/s |
 | 2 | `mcts` + mock evaluator | solves tactical suite; plays legal full games vs. uniform-random evaluator without crashing (1000 games) |
 | 3 | `net` + `train` on synthetic data | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
-| 4 | `selfplay` + evaluator service | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
-| 5 | **The loop, v1**: `gomoku run` phased | 10 iterations complete unattended; arena Elo of iteration *k* vs. iteration 0 is strictly, monotonically-ish increasing; first agent that beats raw-MCTS-only (>90% over 200 games) |
-| 6 | Hardening | 7-day continuous run without intervention; crash-recovery from journal verified by kill -9 drill |
-| 7 | Registered upgrades, one at a time | each lands only if arena Elo improves beyond noise (±30) |
+| 4 | TSS oracle + anchor set | soundness gate (§12 item 3) green; ≥10k machine-verified forced-win puzzles from random-play and Swap2 roots; a net trained with a small anchor fraction solves >95% of held-out proven puzzles without regressing the milestone-3 synthetic benchmark |
+| 5 | `selfplay` + evaluator service | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
+| 6 | **The loop, v1**: `gomoku run` phased | 10 iterations complete unattended; arena Elo of iteration *k* vs. iteration 0 is strictly, monotonically-ish increasing; first agent that beats raw-MCTS-only (>90% over 200 games) |
+| 7 | Hardening | 7-day continuous run without intervention; crash-recovery from journal verified by kill -9 drill |
+| 8 | Registered upgrades, one at a time | each lands only if arena Elo improves beyond noise (±30) |
 
-After milestone 5 we are where DeepGomoku once was — but in Rust, tabula
+**Why milestone 4 is a step of its own.** TSS labels are exact, not
+bootstrapped: policy = the forcing move, value = rules-truth ±1. That is
+supervised signal of a quality self-play will not produce for a long
+time, aimed at the network's weakest spot — sharp tactical lines where a
+weak prior makes MCTS blunder. The anchor set is *permanent*: it lives
+outside the replay window (no eviction), contributes a small
+[experiment] fraction of every batch from milestone 4 onward, and is
+regenerated as self-play improves — puzzle roots come from random play
+and Swap2 openings at first, from real self-play games later, so the set
+tracks the distribution the agent actually visits. Two guards keep it
+honest: **soundness over completeness** (only machine-verified lines
+become labels — §12 item 3), and a *small* fraction, because forcing
+positions are a narrow, weird slice of the game and overfeeding them
+warps the policy in quiet positions. External puzzle collections can
+validate the prover but are not bulk training data (appendix). Later, a
+registered upgrade can call the same prover *inside* MCTS — proven
+nodes back up exact ±1 instead of the network's value, the classic
+strong-Gomoku shortcut; that is milestone-8 material, deliberately not
+v1.
+
+After milestone 6 we are where DeepGomoku once was — but in Rust, tabula
 rasa, with a design that grows. Everything after that is compute and
 patience.
 
@@ -868,6 +902,13 @@ Papers (links verified 2026-09-14):
 - MCTS review: arxiv.org/abs/2103.04931 — parallelization taxonomy and attributions
 - Allis thesis (1994): DOI 10.26481/dis.19940923la (Maastricht); Allis, van den Herik & Huntjens (1993), *Go-Moku and Threat-Space Search*, University of Limburg — freestyle Gomoku is a first-player win
 - Renju rules: renju.net/rifrules; Swap2 status: Wikipedia (unsolved under Swap2)
+- TSS puzzle data — leads only, **unverified** (no web access during
+  writing; verify before relying on any of these): Gomocup tournament
+  game archives (gomocup.org) as a source of strong-engine root
+  positions; the renju.net game database (Renju rules — forbidden moves
+  and no overline win for Black — so positions need re-adjudication
+  under freestyle rules); community VCF exercise collections in
+  piskvork-era formats, provenance and licensing unclear.
 - Apple M5 Max: apple.com/newsroom/2026/08 (Mac Studio announcement) + apple.com/mac-studio/specs
 - Burn issues: #5162 (Metal NaN gradients), #5626 (autotune 1×1 conv), burn v0.21.0 tag + Cargo.lock (wgpu 29 via CubeCL 0.10)
 
@@ -889,6 +930,10 @@ Papers (links verified 2026-09-14):
    cited via the 1993 technical report record and secondary sources
    (Wikipedia), because the thesis PDF was not retrievable during
    research.
+6. The TSS dataset list above is a set of *leads*, not verified sources
+   — the writing environment had no web access. Our primary puzzle
+   source is self-generated (random play, Swap2 openings, later
+   self-play): renewable, license-free, and on-distribution.
 
 Next: milestone 1, the engine. That is where the code begins.
 

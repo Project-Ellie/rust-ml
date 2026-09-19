@@ -104,7 +104,8 @@ the project begins next.
   AlphaGomoku.
 - Book: [Custom training
   loop](https://burn.dev/books/burn/custom-training-loop.html) — the
-  template for milestone 4.
+  template for the self-play/training milestone (chapter 12, §13; note
+  that chapter 12's numbering supersedes the preview list above).
 
 ## Think about
 
