@@ -153,9 +153,9 @@ Stub files awaiting their slices (currently doc-comment only):
 |---|---|---|
 | 6 | `symmetry.rs`, `encode.rs` | D4 tables, 17×17 planes |
 | 7 | `tactics.rs` | `MoveSet`, immediate wins / forced blocks / double threats |
-| 8 | `opening.rs` | Swap2 typestate machine |
-| 9 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
-| 10 | `tss.rs` | bounded threat-space prover + line verifier |
+| 8 | `tss.rs` | bounded threat-space prover + line verifier |
+| 9 | `opening.rs` | Swap2 typestate machine |
+| 10 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
 
 Verified: `cargo test -p engine` → 47 tests green; `cargo build -p cli`
 green. Full differential: `cargo test -p engine --features testutil`

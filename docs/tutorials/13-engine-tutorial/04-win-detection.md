@@ -87,7 +87,7 @@ proptest covers what you cannot.
 ## ML refresh: why win detection sits on the hot path
 
 MCTS expands a leaf per simulation; every expansion asks "is this
-terminal?" Target: 50M checks/s across the system (slice 9 verifies).
+terminal?" Target: 50M checks/s across the system (slice 10 verifies).
 This is the same pattern as value-head evaluation in AlphaZero — the
 *terminal* answer must be essentially free so the network budget goes to
 non-terminal judgment. A slow `has_five` would tax every simulation;
@@ -100,7 +100,7 @@ engine's loops.
 - The wrap attack (7) needs both levels: the bitboard-level test is where
   the claim lives; the `Board`-level sentinel must go through *real*
   coordinates, so it also exercises the stride-16 mapping.
-- Do not "optimize" the staged AND before the slice-9 benchmark. Measure
+- Do not "optimize" the staged AND before the slice-10 benchmark. Measure
   first.
 
 ## Done when

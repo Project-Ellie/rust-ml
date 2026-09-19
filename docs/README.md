@@ -45,7 +45,7 @@ later by changing one type alias.
 | 10 | [Papers](10-papers.md) | — | Annotated reading list with links |
 | 11 | [Pitfalls](11-pitfalls.md) | — | Known traps, including the ones this course hit |
 | 12 | [The Gomoku Architecture](12-gomoku-architecture.md) | — | Full design of the AlphaZero-style agent: engine, network, MCTS, parallelism, training, runbook |
-| 13 | [The Engine Design](13-engine-design.md) | `gomoku/crates/engine` | Milestone 1 in detail: bitboards, Swap2, tactics, encoding |
+| 13 | [The Engine Design](13-engine-design.md) | `gomoku/crates/engine` | Milestone 1 in detail: bitboards, tactics + TSS, Swap2, encoding |
 
 ## Tutorials
 

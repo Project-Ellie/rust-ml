@@ -322,4 +322,4 @@ never a factor.
 
 Derivation of the shift primitive itself: [03-deep-dive/01 — Stride-16 and why `shr`](../03-deep-dive/01-stride16-and-shr.md).
 Consumers: [slice 04](../04-win-detection.md), [slice 07 — tactics](../07-tactics.md),
-benchmark and bar: [slice 09](../09-benchmarks-and-hardening.md).
+benchmark and bar: [slice 10](../10-benchmarks-and-hardening.md).

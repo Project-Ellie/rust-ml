@@ -197,7 +197,7 @@ pub fn forced_blocks(b: &Board) -> MoveSet {
 /// Moves after which `side` has >= 2 immediate wins (open four, double
 /// four): unanswerable. v1 gap: a four-three has exactly one immediate
 /// win now, so this criterion does not catch it — deeper forced wins
-/// are what slice 10's bounded prover (`tss.rs`) is for.
+/// are what slice 8's bounded prover (`tss.rs`) is for.
 pub fn double_threats(b: &Board, side: Color) -> MoveSet { /* same primitive */ }
 ```
 
@@ -350,9 +350,9 @@ it in release builds.
 5. Zobrist.
 6. Transforms + encode + commutation property.
 7. Tactics.
-8. Swap2 typestate.
-9. Criterion bench.
-10. TSS oracle (`tss.rs`): prover + verifier, soundness gate green.
+8. TSS oracle (`tss.rs`): prover + verifier, soundness gate green.
+9. Swap2 typestate.
+10. Criterion bench.
 11. Tighten visibility (`pub(crate)` sweep), rustdoc, done.
 
 Tutorial: [tutorials/13-engine-tutorial/](tutorials/13-engine-tutorial/README.md) — the build-your-own companion to this design.

@@ -27,8 +27,10 @@ not a failure.
 
 - **Deep dives** — `NN-deep-dive/` folders hang off the chapter they
 deepen (so far: [03-deep-dive](03-deep-dive/README.md),
-[04-deep-dive](04-deep-dive/README.md), and
-[05-deep-dive](05-deep-dive/README.md)). A chapter tells
+[04-deep-dive](04-deep-dive/README.md),
+[05-deep-dive](05-deep-dive/README.md),
+[06-deep-dive](06-deep-dive/README.md), and
+[07-deep-dive](07-deep-dive/README.md)). A chapter tells
 you *what* to build; a deep dive derives *why it is shaped that way*,
 with measured numbers and compiler experiments. Read them after the
 chapter, when a contract raises a "why this type?" question.
@@ -95,8 +97,9 @@ implementation plan uses exactly these names for these concepts.
 | 5 | [Zobrist keys](05-zobrist.md) | const table, incremental key, undo | 5 |
 | 6 | [Symmetry and encoding](06-symmetry-and-encoding.md) | D4 tables, 17×17 planes | 6 |
 | 7 | [Tactics](07-tactics.md) | `MoveSet`, win-in-1/2 detection | 7 |
-| 8 | [The Swap2 opening](08-swap2-opening.md) | typestate opening machine | 8 |
-| 9 | [Benchmarks and hardening](09-benchmarks-and-hardening.md) | criterion, visibility sweep | 9–10 |
+| 8 | [Threat-space search](08-threat-space-search.md) | bounded prover + line verifier | 8 |
+| 9 | [The Swap2 opening](09-swap2-opening.md) | typestate opening machine | 9 |
+| 10 | [Benchmarks and hardening](10-benchmarks-and-hardening.md) | criterion, visibility sweep | 10–11 |
 
 ## Commands cheat sheet
 
@@ -106,11 +109,12 @@ cargo test -p engine                 # run the crate's tests
 cargo test -p engine <name>          # run one test
 cargo test -p engine --features testutil   # with the reference engine exposed
 PROPTEST_CASES=10000 cargo test -p engine  # more property iterations
-cargo bench -p engine                # slice 9
+cargo bench -p engine                # slice 10
 ```
 
 ## Done means
 
 The milestone-1 acceptance row from chapter 12: property tests green,
-10k random games match the reference, `has_five` ≥ 50M checks/s — plus a
-public API surface you can show without embarrassment.
+10k random games match the reference, the TSS soundness gate (ch. 12,
+§12 item 3) at 100%, `has_five` ≥ 50M checks/s — plus a public API
+surface you can show without embarrassment.

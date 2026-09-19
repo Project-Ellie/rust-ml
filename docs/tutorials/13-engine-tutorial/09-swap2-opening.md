@@ -1,4 +1,4 @@
-# Slice 8 — The Swap2 opening
+# Slice 9 — The Swap2 opening
 
 The protocol that keeps self-play on open ground, encoded so that wrong
 sequences *do not compile*. Design: ch. 13, "Swap2 as a typestate
@@ -139,4 +139,4 @@ instead of "later".
 All branches + rejections green; key-equality test green; gates green.
 Commit: `feat(engine): Swap2 opening as typestate machine`.
 
-Next: [Slice 9 — Benchmarks and hardening](09-benchmarks-and-hardening.md)
+Next: [Slice 10 — Benchmarks and hardening](10-benchmarks-and-hardening.md)

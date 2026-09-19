@@ -34,7 +34,7 @@ pub fn forced_blocks(b: &Board) -> MoveSet;
 /// double fours — unanswerable next move.
 /// Known v1 gap: a four-three has exactly ONE immediate win now (the
 /// three matures next ply), so this criterion does not catch it; deeper
-/// forced wins belong to slice 10's bounded prover (`tss.rs`).
+/// forced wins belong to slice 8's bounded prover (`tss.rs`).
 pub fn double_threats(b: &Board, side: Color) -> MoveSet;
 ```
 
@@ -101,7 +101,7 @@ positions, available from day one:
   skip search — a config knob, measured as `[experiment]`),
 - as the generator for the milestone-3 synthetic attack/defense set
   (AlphaGomoku's curriculum, our registered fallback) — and as the move
-  generator for slice 10's threat-space prover, whose verified forced
+  generator for slice 8's threat-space prover, whose verified forced
   wins become the milestone-4 anchor set.
 
 How strongly these priors blend into training, and whether that blend
@@ -126,4 +126,4 @@ only vouches for what is *true*.
 Puzzle corpus + differential green; gates green.
 Commit: `feat(engine): tactical detection (wins, blocks, double threats)`.
 
-Next: [Slice 8 — The Swap2 opening](08-swap2-opening.md)
+Next: [Slice 8 — Threat-space search](08-threat-space-search.md)

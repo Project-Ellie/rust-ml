@@ -1,4 +1,4 @@
-# Slice 9 — Benchmarks and hardening
+# Slice 10 — Benchmarks and hardening
 
 Correct first, fast second — now it is second's turn. Verify the
 milestone-1 performance bar, then lock the crate's public surface.
@@ -87,9 +87,10 @@ Chapter 12, milestone 1, line by line:
 |---|---|
 | property tests green | `cargo test -p engine` output |
 | perft-style: 10k random games match reference | differential test log |
+| TSS soundness gate at 100% | slice-8 fuzz property log |
 | `has_five` ≥ 50M checks/s | criterion output |
 
-Paste the three outputs into the commit body. That is the discipline:
+Paste the outputs into the commit body. That is the discipline:
 evidence in the commit, not claims in the chat.
 
 ## Systems refresh: why measure now, not "when it's slow"

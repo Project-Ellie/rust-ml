@@ -853,7 +853,7 @@ Estimated effort assumes focused evenings, not DeepMind clusters.
 
 | # | Milestone | Acceptance test |
 |---|---|---|
-| 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; `cargo bench` win-detection ≥ 50M checks/s |
+| 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; TSS soundness gate (§12 item 3) at 100%; `cargo bench` win-detection ≥ 50M checks/s |
 | 2 | `mcts` + mock evaluator | solves tactical suite; plays legal full games vs. uniform-random evaluator without crashing (1000 games) |
 | 3 | `net` + `train` on synthetic data | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
 | 4 | TSS oracle + anchor set | soundness gate (§12 item 3) green; ≥10k machine-verified forced-win puzzles from random-play and Swap2 roots; a net trained with a small anchor fraction solves >95% of held-out proven puzzles without regressing the milestone-3 synthetic benchmark |

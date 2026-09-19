@@ -15,6 +15,7 @@ mod moveset;
 mod opening;
 mod symmetry;
 mod tactics;
+mod tss;
 mod win;
 mod zobrist;
 
