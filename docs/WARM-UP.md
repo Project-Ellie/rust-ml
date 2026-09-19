@@ -140,6 +140,12 @@ Fixed glossary (tutorial README has the full version):
 - Incremental Zobrist keys (slice 5): compile-time `const fn` table in
   `zobrist.rs`, `Board::zobrist()` updated in O(1) by play/undo,
   `compute_key` from-scratch ground truth, 10k-walk roundtrip proptest.
+- D4 symmetry + encoding (slice 6): `Transform` with const-eval
+  permutation tables (rot90 is counterclockwise — convention pinned),
+  `inverse`, `permute`; 17×17 relative planes with border ring; the
+  commutation proptest (10k boards) is green. Tactics-adjacent lesson:
+  `prop_assume` filtering at ~9% reject rate aborts proptest at high
+  case counts — generate from the complement instead (prop_flat_map).
 - Differential harness (`tests/differential.rs`, feature-gated
   `testutil`): 10k random games + 1k undo walks vs the oracle.
 - **CLI side quest complete**: playable human-vs-human terminal UI on
@@ -151,13 +157,12 @@ Stub files awaiting their slices (currently doc-comment only):
 
 | Slice | File | What lands there |
 |---|---|---|
-| 6 | `symmetry.rs`, `encode.rs` | D4 tables, 17×17 planes |
 | 7 | `tactics.rs` | `MoveSet`, immediate wins / forced blocks / double threats |
 | 8 | `tss.rs` | bounded threat-space prover + line verifier |
 | 9 | `opening.rs` | Swap2 typestate machine |
 | 10 | — | criterion bench (≥50M `has_five`/s), visibility sweep |
 
-Verified: `cargo test -p engine` → 47 tests green; `cargo build -p cli`
+Verified: `cargo test -p engine` → 55 tests green; `cargo build -p cli`
 green. Full differential: `cargo test -p engine --features testutil`
 → 2 properties green.
 
