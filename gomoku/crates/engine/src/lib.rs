@@ -8,6 +8,8 @@
 //! Rules: freestyle Gomoku on 15×15 — overlines count as a win, draw at
 //! 225 moves, Swap2 opening protocol supported.
 
+#![deny(missing_docs)]
+
 mod bitboard;
 mod board;
 mod encode;
@@ -20,6 +22,7 @@ mod win;
 mod zobrist;
 
 #[cfg(any(test, feature = "testutil"))]
+#[allow(missing_docs)]
 pub mod reference;
 
 // Public surface (ch. 13, "Crate layout" — re-exports ONLY what belongs

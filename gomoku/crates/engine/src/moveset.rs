@@ -1,10 +1,12 @@
 //! `MoveSet`: public set-of-moves bitset, logical stride-15 indexing.
 //! Slice 3. Deliberately separate from the internal stride-16 `Bitboard`.
 
+/// A legal Gomoku cell: `row * 15 + col`, always in `0..=224`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move(u8);
 
 impl Move {
+    /// Create a move from row and column; returns `None` if off the board.
     pub fn new(row: u8, col: u8) -> Option<Move> {
         if row < 15 && col < 15 {
             Some(Move(row * 15 + col))
@@ -13,14 +15,17 @@ impl Move {
         }
     }
 
+    /// Row index, `0..=14`.
     pub fn row(self) -> u8 {
         self.0 / 15
     }
 
+    /// Column index, `0..=14`.
     pub fn col(self) -> u8 {
         self.0 % 15
     }
 
+    /// Logical stride-15 index, `0..=224`.
     pub fn index(self) -> usize {
         self.0 as usize
     }
@@ -37,26 +42,32 @@ impl Move {
 pub struct MoveSet([u64; 4]);
 
 impl MoveSet {
+    /// The empty set.
     pub const EMPTY: MoveSet = MoveSet([0; 4]);
 
+    /// Insert `mv` into the set.
     pub fn insert(&mut self, mv: Move) {
         let i = mv.index();
         self.0[i / 64] |= 1 << (i % 64);
     }
 
+    /// True if `mv` is in the set.
     pub fn contains(&self, mv: Move) -> bool {
         let i = mv.index();
         self.0[i / 64] & (1 << (i % 64)) != 0
     }
 
+    /// Number of moves in the set.
     pub fn len(&self) -> u32 {
         self.0.iter().map(|w| w.count_ones()).sum()
     }
 
+    /// True if the set contains no moves.
     pub fn is_empty(&self) -> bool {
         self.0 == [0; 4]
     }
 
+    /// Iterate over the moves in the set.
     pub fn iter(&self) -> impl Iterator<Item = Move> + '_ {
         self.0.iter().enumerate().flat_map(|(w, &word)| {
             (0..64).filter_map(move |bit| {

@@ -1,7 +1,5 @@
 //! Burn-free 17×17 plane encoding, border ring set in the `you` plane.
 //! Slice 6. See docs/13-engine-design.md, "Encoding".
-//! Burn-free 17×17 plane encoding, border ring set in the `you` plane.
-//! Slice 6. See docs/13-engine-design.md, "Encoding".
 //!
 //! DESIGN DECISION (not a trick): transforms live in 15×15 space and
 //! the border is added AFTER transformation. The border ring is
@@ -15,6 +13,7 @@
 use crate::bitboard::idx;
 use crate::board::Board;
 
+/// Side length of the encoded planes (17×17, including the border ring).
 pub const EXT: usize = 17;
 
 /// RELATIVE planes: `me` is always the side to move. (The ABSOLUTE
@@ -22,10 +21,23 @@ pub const EXT: usize = 17;
 /// always plays "me".)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Planes {
-    pub me: [u8; EXT * EXT],  // stones of side to move; border = 0
-    pub you: [u8; EXT * EXT], // opponent stones; border ring = 1
+    /// Stones of the side to move; the border ring is zero.
+    pub me: [u8; EXT * EXT],
+    /// Opponent stones; the one-cell border ring is set to one.
+    pub you: [u8; EXT * EXT],
 }
 
+/// Encode a board into two 17×17 `u8` planes.
+///
+/// # Examples
+///
+/// ```
+/// use engine::{Board, encode};
+///
+/// let p = encode(&Board::new());
+/// assert_eq!(p.me.iter().filter(|&&x| x == 1).count(), 0);
+/// assert_eq!(p.you.iter().filter(|&&x| x == 1).count(), 64);
+/// ```
 pub fn encode(b: &Board) -> Planes {
     let mut me = [0u8; EXT * EXT];
     let mut you = [0u8; EXT * EXT];

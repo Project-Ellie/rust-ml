@@ -25,3 +25,7 @@ criterion.workspace = true
 [[test]]
 name = "differential"
 required-features = ["testutil"]
+
+[[bench]]
+name = "win_detection"
+harness = false

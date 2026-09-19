@@ -4,15 +4,24 @@
 
 use crate::Move;
 
+/// An element of the dihedral group D4 (the symmetries of a square).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transform {
+    /// Identity.
     Id,
+    /// 90-degree counter-clockwise rotation.
     Rot90,
+    /// 180-degree rotation.
     Rot180,
+    /// 270-degree counter-clockwise rotation.
     Rot270,
+    /// Reflection across the vertical axis.
     Flip,
+    /// Flip followed by 90-degree rotation.
     FlipRot90,
+    /// Flip followed by 180-degree rotation.
     FlipRot180,
+    /// Flip followed by 270-degree rotation.
     FlipRot270,
 }
 
@@ -51,6 +60,7 @@ pub(crate) const TRANSFORMS: [[u8; 225]; 8] = {
 };
 
 impl Transform {
+    /// All eight D4 transforms, in the order used by `Transform::index`.
     pub const ALL: [Transform; 8] = [
         Transform::Id,
         Transform::Rot90,
@@ -75,6 +85,7 @@ impl Transform {
         }
     }
 
+    /// The inverse transform: `t.inverse().transform_move(t.transform_move(m)) == m`.
     pub fn inverse(self) -> Transform {
         match self {
             Transform::Id => Transform::Id,
@@ -88,11 +99,13 @@ impl Transform {
         }
     }
 
+    /// Apply this transform to a board cell.
     pub fn transform_move(self, mv: Move) -> Move {
         let i = TRANSFORMS[self.index()][mv.index()];
         Move::new(i / 15, i % 15).expect("permutation tables contain only valid cells")
     }
 
+    /// Permute a flat 15×15 array according to this transform.
     pub fn permute<T: Copy>(self, cells: &[T; 225]) -> [T; 225] {
         let table = &TRANSFORMS[self.index()];
         let mut out = *cells;

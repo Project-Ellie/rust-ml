@@ -15,14 +15,18 @@ use crate::tactics::{forced_blocks, immediate_wins};
 /// an unblockable double threat (>= 2 immediate wins).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proof {
+    /// The side that can force a win.
     pub winner: Color,
+    /// The forcing sequence, starting with the attacker's first threat.
     pub line: Vec<Move>,
 }
 
 /// Hard caps. Exhausting the budget means "no proof" — never "loss".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchBudget {
+    /// Maximum threat-space nodes to explore.
     pub max_nodes: u32,
+    /// Maximum depth (plies) to search.
     pub max_depth: u8,
 }
 

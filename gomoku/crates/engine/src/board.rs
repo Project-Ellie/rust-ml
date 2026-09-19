@@ -4,13 +4,18 @@ use crate::bitboard::{Bitboard, VALID, idx};
 use crate::moveset::Move;
 use crate::zobrist;
 
+/// Absolute stone color. Black moves first in normal play; during the
+/// Swap2 opening colors are placed non-alternatingly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
+    /// The first-moving color.
     Black,
+    /// The second color.
     White,
 }
 
 impl Color {
+    /// The opposite color.
     pub fn other(self) -> Color {
         match self {
             Color::Black => Color::White,
@@ -19,20 +24,27 @@ impl Color {
     }
 }
 
-/// Game state. An enum, not bool flags
+/// Game state. An enum, not bool flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// The game is still open.
     Ongoing,
+    /// The game has been won by the given color.
     Won(Color),
+    /// The board is full with no winner.
     Draw,
 }
 
+/// Errors returned by `Board::play` and the Swap2 opening transitions.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PlayError {
+    /// The target cell already contains a stone.
     #[error("Cell is already occupied.")]
     Occupied,
+    /// The game has already ended.
     #[error("Game is already over.")]
     GameOver,
+    /// The opening stage has the wrong stone counts.
     #[error("Opening has the wrong stone counts for this stage.")]
     BadOpeningCounts,
 }
@@ -40,8 +52,10 @@ pub enum PlayError {
 /// Errors returned when constructing a board from an arbitrary position.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PositionError {
+    /// A cell appears in both the black and white lists.
     #[error("Black and white stones overlap on the same cell.")]
     OverlappingColors,
+    /// Stone counts differ by more than one or disagree with `to_move`.
     #[error("Stone counts are inconsistent with the side to move.")]
     InvalidCounts,
 }
@@ -64,6 +78,7 @@ pub struct Board {
 }
 
 impl Board {
+    /// An empty board with Black to move.
     pub fn new() -> Board {
         Board {
             black: Bitboard::EMPTY,
@@ -75,10 +90,26 @@ impl Board {
         }
     }
 
+    /// The incremental Zobrist key of the current position.
     pub fn zobrist(&self) -> u64 {
         self.key
     }
 
+    /// Play a stone for the side to move.
+    ///
+    /// # Errors
+    /// * `PlayError::GameOver` if the game is no longer ongoing.
+    /// * `PlayError::Occupied` if the cell is already occupied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use engine::{Board, Move};
+    ///
+    /// let mut b = Board::new();
+    /// b.play(Move::new(7, 7).unwrap()).unwrap();
+    /// assert_eq!(b.moves().len(), 1);
+    /// ```
     pub fn play(&mut self, mv: Move) -> Result<(), PlayError> {
         if self.status != Status::Ongoing {
             return Err(PlayError::GameOver);
@@ -106,22 +137,30 @@ impl Board {
         Ok(())
     }
 
+    /// The current game status.
     pub fn status(&self) -> Status {
         self.status
     }
 
+    /// The side whose turn it is to move.
     pub fn to_move(&self) -> Color {
         self.to_move
     }
 
+    /// The move history, in play order.
     pub fn moves(&self) -> &[Move] {
         &self.moves
     }
 
+    /// True if `mv` is legal in the current position.
     pub fn is_legal(&self, mv: Move) -> bool {
         self.status == Status::Ongoing && !(self.black | self.white).test(idx(mv.row(), mv.col()))
     }
 
+    /// Undo the last move.
+    ///
+    /// # Panics
+    /// Panics if the move history is empty.
     pub fn undo(&mut self) {
         let mv = self.moves.pop().expect("undo with empty history");
         let i = idx(mv.row(), mv.col());
@@ -138,6 +177,7 @@ impl Board {
         self.status = Status::Ongoing;
     }
 
+    /// An iterator over all legal empty cells.
     pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
         // `!occupied` sets ALL padding bits — mask immediately.
         // This is the one place complements are allowed, and the mask
@@ -165,6 +205,7 @@ impl Board {
         })
     }
 
+    /// The bitboard of stones for `color` (internal layout).
     pub(crate) fn stones(&self, color: Color) -> Bitboard {
         match color {
             Color::Black => self.black,
@@ -172,6 +213,7 @@ impl Board {
         }
     }
 
+    /// The color of the stone at `mv`, if any.
     pub fn stone_at(&self, mv: Move) -> Option<Color> {
         let idx = mv.row() as usize * 16 + mv.col() as usize;
         if self.black.test(idx) {
@@ -181,6 +223,15 @@ impl Board {
         } else {
             None
         }
+    }
+
+    /// Returns true if `color` has five or more stones in a row.
+    ///
+    /// This is the public primitive the win-detection benchmark measures;
+    /// it exposes the result without leaking the internal `Bitboard` type.
+    #[inline]
+    pub fn has_five_any(&self, color: Color) -> bool {
+        crate::win::has_any_five(&self.stones(color))
     }
 
     /// Build a board from an arbitrary valid position.
@@ -250,6 +301,7 @@ impl Board {
 }
 
 impl Default for Board {
+    /// Defaults to an empty board with Black to move.
     fn default() -> Self {
         Self::new()
     }
