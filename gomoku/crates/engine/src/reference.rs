@@ -2,7 +2,7 @@
 //! Slice 2. Compiled only for tests and the `testutil` feature.
 
 use crate::board::{Color, PlayError, Status};
-use crate::moveset::Move;
+use crate::moveset::{Move, MoveSet};
 
 /// One board cell. Private - the outside world sees `Option<Color`
 /// through `stone_at`; the `Cell` representation is our business.
@@ -70,24 +70,11 @@ impl Board {
     }
 
     fn wins_from(&self, r: usize, c: usize, color: Color) -> bool {
-        DIRECTIONS.iter().any(|&(dr, dc)| {
-            1 + self.count_dir(r, c, dr, dc, color) + self.count_dir(r, c, -dr, -dc, color) >= 5
-        })
+        wins_from_cells(&self.cells, r, c, color)
     }
 
     pub fn count_dir(&self, r: usize, c: usize, dr: i32, dc: i32, color: Color) -> usize {
-        let mut n = 0;
-        let mut nr = r as i32 + dr;
-        let mut nc = c as i32 + dc;
-        while (0..15).contains(&nr)
-            && (0..15).contains(&nc)
-            && self.cells[nr as usize][nc as usize] == Cell::Stone(color)
-        {
-            n += 1;
-            nr += dr;
-            nc += dc;
-        }
-        n
+        count_dir_cells(&self.cells, r, c, dr, dc, color)
     }
 
     pub fn moves(&self) -> &[Move] {
@@ -113,6 +100,171 @@ impl Default for Board {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// --- Slice 7: naive tactics oracle + the ASCII puzzle parser ---------
+
+/// Free-function twin of `Board::wins_from`, so the naive tactics can
+/// scan HYPOTHETICAL cell arrays. Counts the cell (r, c) itself as 1 —
+/// exactly the "place a stone here" semantics.
+fn wins_from_cells(cells: &[[Cell; 15]; 15], r: usize, c: usize, color: Color) -> bool {
+    DIRECTIONS.iter().any(|&(dr, dc)| {
+        1 + count_dir_cells(cells, r, c, dr, dc, color)
+            + count_dir_cells(cells, r, c, -dr, -dc, color)
+            >= 5
+    })
+}
+
+fn count_dir_cells(
+    cells: &[[Cell; 15]; 15],
+    r: usize,
+    c: usize,
+    dr: i32,
+    dc: i32,
+    color: Color,
+) -> usize {
+    let mut n = 0;
+    let mut nr = r as i32 + dr;
+    let mut nc = c as i32 + dc;
+    while (0..15).contains(&nr)
+        && (0..15).contains(&nc)
+        && cells[nr as usize][nc as usize] == Cell::Stone(color)
+    {
+        n += 1;
+        nr += dr;
+        nc += dc;
+    }
+    n
+}
+
+/// Replays a fast board's history into the naive representation.
+fn naive_from(b: &crate::board::Board) -> Board {
+    let mut nb = Board::new();
+    for &mv in b.moves() {
+        nb.play(mv).expect("a valid fast history replays naively");
+    }
+    nb
+}
+
+/// Naive `immediate_wins`: line scans through each empty cell.
+///
+/// VALID ON NON-TERMINAL BOARDS ONLY. Once a five exists, the fast
+/// whole-board scan (`has_any_five`) and this through-cell scan answer
+/// different questions — that divergence is precisely why
+/// `double_threats` excludes immediate wins (see tactics.rs).
+pub fn naive_immediate_wins(b: &crate::board::Board, side: Color) -> MoveSet {
+    let nb = naive_from(b);
+    let mut out = MoveSet::EMPTY;
+    for r in 0..15 {
+        for c in 0..15 {
+            if nb.cells[r][c] == Cell::Empty && wins_from_cells(&nb.cells, r, c, side) {
+                out.insert(Move::new(r as u8, c as u8).unwrap());
+            }
+        }
+    }
+    out
+}
+
+/// Naive `forced_blocks`. Same non-terminal precondition.
+pub fn naive_forced_blocks(b: &crate::board::Board) -> MoveSet {
+    naive_immediate_wins(b, b.to_move().other())
+}
+
+/// Naive `double_threats`: place each candidate, count cells that
+/// would complete five, keep the candidates with two or more.
+/// Immediate wins are skipped — same exclusion as the fast version.
+/// Same non-terminal precondition.
+pub fn naive_double_threats(b: &crate::board::Board, side: Color) -> MoveSet {
+    let nb = naive_from(b);
+    let mut out = MoveSet::EMPTY;
+    for r in 0..15usize {
+        for c in 0..15usize {
+            if nb.cells[r][c] != Cell::Empty {
+                continue;
+            }
+            if wins_from_cells(&nb.cells, r, c, side) {
+                continue; // immediate win: ends the game, not a threat
+            }
+            let mut hypo = nb.cells;
+            hypo[r][c] = Cell::Stone(side);
+            let mut wins = 0;
+            for r2 in 0..15 {
+                for c2 in 0..15 {
+                    if hypo[r2][c2] == Cell::Empty && wins_from_cells(&hypo, r2, c2, side) {
+                        wins += 1;
+                    }
+                }
+            }
+            if wins >= 2 {
+                out.insert(Move::new(r as u8, c as u8).unwrap());
+            }
+        }
+    }
+    out
+}
+
+/// Parses rows of `X` / `O` / `.` into a fast Board (Black = X,
+/// White = O): 15 whitespace-separated cells per row, 15 non-blank
+/// rows (blank lines are tolerated, so raw-string literals can
+/// indent). Stone counts must be reachable by alternating play from
+/// Black: equal counts (Black to move — Black wins ties) or one more
+/// X (White to move). The position must be non-terminal; a completed
+/// five (overlines included) aborts the replay with a panic.
+/// Panics on malformed input — test code is allowed to panic.
+pub fn board_from_ascii(rows: &str) -> crate::board::Board {
+    let mut xs: Vec<(u8, u8)> = Vec::new();
+    let mut os: Vec<(u8, u8)> = Vec::new();
+    let mut nrows = 0usize;
+    for line in rows.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.is_empty() {
+            continue;
+        }
+        let r = nrows;
+        assert!(r < 15, "more than 15 rows");
+        assert_eq!(
+            tokens.len(),
+            15,
+            "row {r} has {} cells, expected 15",
+            tokens.len()
+        );
+        for (c, t) in tokens.iter().enumerate() {
+            match *t {
+                "X" => xs.push((r as u8, c as u8)),
+                "O" => os.push((r as u8, c as u8)),
+                "." => {}
+                other => panic!("row {r}, col {c}: unexpected token {other:?} (want X, O, or .)"),
+            }
+        }
+        nrows += 1;
+    }
+    assert_eq!(nrows, 15, "expected 15 rows, got {nrows}");
+    assert!(
+        xs.len() == os.len() || xs.len() == os.len() + 1,
+        "unreachable stone counts: {} X vs {} O (alternating play from Black first)",
+        xs.len(),
+        os.len()
+    );
+
+    // Replay in parse order, strictly alternating X/O. Cells are
+    // distinct by construction, so the only way `play` can fail is a
+    // completed five mid-history — i.e. a broken puzzle, which is
+    // exactly what a test helper should report.
+    let mut b = crate::board::Board::new();
+    for k in 0..os.len() {
+        let (r, c) = xs[k];
+        b.play(Move::new(r, c).unwrap())
+            .expect("puzzle contains a five (X)?");
+        let (r, c) = os[k];
+        b.play(Move::new(r, c).unwrap())
+            .expect("puzzle contains a five (O)?");
+    }
+    if xs.len() > os.len() {
+        let &(r, c) = xs.last().unwrap();
+        b.play(Move::new(r, c).unwrap())
+            .expect("puzzle contains a five (X)?");
+    }
+    b
 }
 
 #[cfg(test)]
@@ -440,5 +592,105 @@ mod tests {
         assert_eq!(b.status(), Status::Ongoing);
         assert_eq!(b.stone_at(Move::new(7, 7).unwrap()), None);
         assert_eq!(b.moves().len(), 8);
+    }
+
+    #[test]
+    fn ascii_parser_infers_black_to_move_on_equal_counts() {
+        let b = board_from_ascii(
+            "
+            X . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . O . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::Black);
+        assert_eq!(b.stone_at(Move::new(0, 0).unwrap()), Some(Color::Black));
+        assert_eq!(b.stone_at(Move::new(7, 4).unwrap()), Some(Color::White));
+        assert_eq!(b.stone_at(Move::new(1, 1).unwrap()), None);
+    }
+
+    #[test]
+    fn ascii_parser_infers_white_to_move_when_black_leads() {
+        let b = board_from_ascii(
+            "
+            X . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::White);
+        assert_eq!(b.stone_at(Move::new(0, 0).unwrap()), Some(Color::Black));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected 15")]
+    fn ascii_parser_rejects_a_short_row() {
+        board_from_ascii(
+            "
+            X . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "unreachable stone counts")]
+    fn ascii_parser_rejects_impossible_counts() {
+        board_from_ascii(
+            "
+            X X . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
     }
 }

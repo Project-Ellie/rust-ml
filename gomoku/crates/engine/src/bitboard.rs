@@ -36,6 +36,23 @@ impl Bitboard {
         self.0[idx / 64] & (1 << (idx % 64)) != 0
     }
 
+    /// Iterate the indices of all set bits, lowest first — the classic
+    /// `bits & (bits - 1)` lowest-bit walk, word by word. Walks
+    /// whatever bits are set, padding included; masking dirty
+    /// complements is the caller's business (the padding invariant).
+    pub(crate) fn iter_set_bits(self) -> impl Iterator<Item = usize> {
+        self.0.into_iter().enumerate().flat_map(|(w, mut bits)| {
+            std::iter::from_fn(move || {
+                if bits == 0 {
+                    return None;
+                }
+                let bit = bits.trailing_zeros() as usize;
+                bits &= bits - 1;
+                Some(w * 64 + bit)
+            })
+        })
+    }
+
     // The three methods below are what slice 4's staged win detection
     // consumes — `count`/`is_zero` to inspect results, `shr` as the
     // shift-AND primitive. Nothing in the crate uses them yet, hence the

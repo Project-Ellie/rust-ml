@@ -26,6 +26,52 @@ impl Move {
     }
 }
 
+/// A set of moves as a bitset over logical indices (stride 15).
+///
+/// 225 bits in 4 `u64` words; the top 31 bits of word 3 can never be
+/// set, because the only way in is `insert(Move)` and a `Move` is
+/// always < 225. Value semantics, `Copy` — a set you can pass around
+/// like a number. Deliberately separate from the internal stride-16
+/// `Bitboard`: this type speaks the PUBLIC logical vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MoveSet([u64; 4]);
+
+impl MoveSet {
+    pub const EMPTY: MoveSet = MoveSet([0; 4]);
+
+    pub fn insert(&mut self, mv: Move) {
+        let i = mv.index();
+        self.0[i / 64] |= 1 << (i % 64);
+    }
+
+    pub fn contains(&self, mv: Move) -> bool {
+        let i = mv.index();
+        self.0[i / 64] & (1 << (i % 64)) != 0
+    }
+
+    pub fn len(&self) -> u32 {
+        self.0.iter().map(|w| w.count_ones()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == [0; 4]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Move> + '_ {
+        self.0.iter().enumerate().flat_map(|(w, &word)| {
+            (0..64).filter_map(move |bit| {
+                if word >> bit & 1 == 1 {
+                    // Invariant: only bits < 225 can be set, so the
+                    // index always fits a u8 and is a valid cell.
+                    Some(Move((w * 64 + bit) as u8))
+                } else {
+                    None
+                }
+            })
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,5 +89,43 @@ mod tests {
         assert_eq!(mv.index(), 7 * 15 + 3); // 108
         assert_eq!(mv.row(), 7);
         assert_eq!(mv.col(), 3);
+    }
+
+    #[test]
+    fn moveset_roundtrip_across_word_boundaries() {
+        let mut set = MoveSet::EMPTY;
+        assert!(set.is_empty());
+        assert_eq!(set.len(), 0);
+
+        // indices 0, 63, 64, 108, 224 — one per interesting seam
+        let moves = [
+            Move::new(0, 0).unwrap(),   //   0
+            Move::new(4, 3).unwrap(),   //  63
+            Move::new(4, 4).unwrap(),   //  64
+            Move::new(7, 3).unwrap(),   // 108
+            Move::new(14, 14).unwrap(), // 224
+        ];
+        for &mv in &moves {
+            set.insert(mv);
+        }
+        assert!(!set.is_empty());
+        assert_eq!(set.len(), 5);
+        for &mv in &moves {
+            assert!(set.contains(mv), "{mv:?} must be in the set");
+        }
+        assert!(!set.contains(Move::new(7, 7).unwrap()));
+
+        let mut collected: Vec<usize> = set.iter().map(|m| m.index()).collect();
+        collected.sort_unstable();
+        assert_eq!(collected, vec![0, 63, 64, 108, 224]);
+    }
+
+    #[test]
+    fn insert_is_idempotent() {
+        let mut set = MoveSet::EMPTY;
+        let mv = Move::new(7, 7).unwrap();
+        set.insert(mv);
+        set.insert(mv);
+        assert_eq!(set.len(), 1);
     }
 }

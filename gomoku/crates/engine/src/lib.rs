@@ -26,5 +26,6 @@ pub mod reference;
 // to the API). Grows slice by slice.
 pub use board::{Board, Color, PlayError, Status};
 pub use encode::{EXT, Planes, encode};
-pub use moveset::Move;
+pub use moveset::{Move, MoveSet};
 pub use symmetry::Transform;
+pub use tactics::{double_threats, forced_blocks, immediate_wins};
