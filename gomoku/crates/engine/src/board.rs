@@ -33,6 +33,17 @@ pub enum PlayError {
     Occupied,
     #[error("Game is already over.")]
     GameOver,
+    #[error("Opening has the wrong stone counts for this stage.")]
+    BadOpeningCounts,
+}
+
+/// Errors returned when constructing a board from an arbitrary position.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum PositionError {
+    #[error("Black and white stones overlap on the same cell.")]
+    OverlappingColors,
+    #[error("Stone counts are inconsistent with the side to move.")]
+    InvalidCounts,
 }
 
 /// The production board. Two bitboards in ABSOLUTE colors (ch. 13,
@@ -170,6 +181,71 @@ impl Board {
         } else {
             None
         }
+    }
+
+    /// Build a board from an arbitrary valid position.
+    ///
+    /// Validates that the two colors do not overlap and that the stone
+    /// counts differ by at most one, with `to_move` being the color
+    /// that has fewer-or-equal stones. The Zobrist key is computed from
+    /// scratch via `zobrist::compute_key`.
+    ///
+    /// # Errors
+    /// * `PositionError::OverlappingColors` if a cell appears in both lists.
+    /// * `PositionError::InvalidCounts` if counts differ by more than one
+    ///   or do not match `to_move`.
+    pub fn from_position(
+        black: &[Move],
+        white: &[Move],
+        to_move: Color,
+    ) -> Result<Board, PositionError> {
+        let mut bb_black = Bitboard::EMPTY;
+        let mut bb_white = Bitboard::EMPTY;
+        for mv in black {
+            bb_black = bb_black.with_bit(idx(mv.row(), mv.col()));
+        }
+        for mv in white {
+            bb_white = bb_white.with_bit(idx(mv.row(), mv.col()));
+        }
+
+        if !(bb_black & bb_white).is_zero() {
+            return Err(PositionError::OverlappingColors);
+        }
+
+        let black_count = bb_black.count() as i32;
+        let white_count = bb_white.count() as i32;
+        if (black_count - white_count).abs() > 1 {
+            return Err(PositionError::InvalidCounts);
+        }
+
+        let expected_to_move = if white_count < black_count {
+            Color::White
+        } else {
+            Color::Black
+        };
+        if to_move != expected_to_move {
+            return Err(PositionError::InvalidCounts);
+        }
+
+        let mut board = Board {
+            black: bb_black,
+            white: bb_white,
+            to_move,
+            status: Status::Ongoing,
+            moves: Vec::new(),
+            key: 0,
+        };
+        board.key = zobrist::compute_key(&board.black, &board.white, board.to_move);
+        board.status = if crate::win::has_any_five(&board.black) {
+            Status::Won(Color::Black)
+        } else if crate::win::has_any_five(&board.white) {
+            Status::Won(Color::White)
+        } else if board.black.count() + board.white.count() == 225 {
+            Status::Draw
+        } else {
+            Status::Ongoing
+        };
+        Ok(board)
     }
 }
 

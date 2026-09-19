@@ -24,9 +24,10 @@ pub mod reference;
 
 // Public surface (ch. 13, "Crate layout" — re-exports ONLY what belongs
 // to the API). Grows slice by slice.
-pub use board::{Board, Color, PlayError, Status};
+pub use board::{Board, Color, PlayError, PositionError, Status};
 pub use encode::{EXT, Planes, encode};
 pub use moveset::{Move, MoveSet};
+pub use opening::{FinalChoice, FirstChoice, Placing2, Placing3, Swap2};
 pub use symmetry::Transform;
 pub use tactics::{double_threats, forced_blocks, immediate_wins};
 pub use tss::{Proof, SearchBudget, prove_forced_win, verify_line};
