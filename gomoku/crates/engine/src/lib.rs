@@ -29,3 +29,4 @@ pub use encode::{EXT, Planes, encode};
 pub use moveset::{Move, MoveSet};
 pub use symmetry::Transform;
 pub use tactics::{double_threats, forced_blocks, immediate_wins};
+pub use tss::{Proof, SearchBudget, prove_forced_win, verify_line};

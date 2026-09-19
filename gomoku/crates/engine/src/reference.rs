@@ -81,6 +81,19 @@ impl Board {
         &self.moves
     }
 
+    /// All legal empty cells, in row-major order.
+    pub fn empty_moves(&self) -> impl Iterator<Item = Move> + '_ {
+        (0..15u8).flat_map(move |r| {
+            (0..15u8).filter_map(move |c| {
+                if self.cells[r as usize][c as usize] == Cell::Empty {
+                    Some(Move::new(r, c).unwrap())
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
     /// Undoes the last move by REPLAYING the remaining history onto a
     /// fresh board. O(n) where the fast undo is O(1) — and obviously
     /// correct, which is the only virtue an oracle needs.
@@ -265,6 +278,114 @@ pub fn board_from_ascii(rows: &str) -> crate::board::Board {
             .expect("puzzle contains a five (X)?");
     }
     b
+}
+
+// --- Slice 8: depth-bounded adjudicator (differential oracle) ------
+
+/// Depth-bounded, threat-space adjudicator using the line-scan oracle.
+/// Returns `Some(side)` if `side` can force a win within `max_depth`
+/// plies, `Some(side.other())` if the defender can refute, and `None`
+/// if the answer is beyond the horizon. This is intentionally a
+/// separate implementation from `tss::prove_forced_win`: it validates
+/// the bitboard prover against the naive board + cell-walk tactics.
+pub fn adjudicate(b: &crate::board::Board, side: Color, max_depth: u8) -> Option<Color> {
+    let mut nb = naive_from(b);
+    adjudicate_naive(&mut nb, side, max_depth)
+}
+
+/// Immediate wins on the naive `reference::Board` (no conversion).
+fn immediate_wins_naive(b: &Board, side: Color) -> MoveSet {
+    let mut out = MoveSet::EMPTY;
+    for r in 0..15 {
+        for c in 0..15 {
+            if b.cells[r][c] == Cell::Empty && wins_from_cells(&b.cells, r, c, side) {
+                out.insert(Move::new(r as u8, c as u8).unwrap());
+            }
+        }
+    }
+    out
+}
+
+fn adjudicate_naive(b: &mut Board, side: Color, depth: u8) -> Option<Color> {
+    match b.status() {
+        Status::Won(c) => return Some(c),
+        Status::Draw => return None,
+        Status::Ongoing => {}
+    }
+    if depth == 0 {
+        return None;
+    }
+
+    let to_move = b.to_move();
+    if to_move == side {
+        // Attacker: immediate win, then threat-generating moves.
+        let wins = immediate_wins_naive(b, side);
+        if !wins.is_empty() {
+            return Some(side);
+        }
+
+        let empties: Vec<Move> = b.empty_moves().collect();
+        for mv in empties {
+            b.play(mv).ok()?;
+
+            if b.status() == Status::Won(side) {
+                b.undo();
+                return Some(side);
+            }
+
+            let defender_wins = immediate_wins_naive(b, side.other());
+            let attacker_wins = immediate_wins_naive(b, side);
+
+            if !defender_wins.is_empty() {
+                b.undo();
+                continue;
+            }
+            if attacker_wins.len() >= 2 {
+                b.undo();
+                return Some(side);
+            }
+            if attacker_wins.is_empty() {
+                b.undo();
+                continue;
+            }
+
+            // Exactly one threat: defender must block every winning cell.
+            let blocks: Vec<Move> = attacker_wins.iter().collect();
+            let mut all_win = true;
+            for block in &blocks {
+                b.play(*block).ok()?;
+                let sub = adjudicate_naive(b, side, depth - 1);
+                b.undo();
+                if sub != Some(side) {
+                    all_win = false;
+                    break;
+                }
+            }
+            b.undo();
+            if all_win {
+                return Some(side);
+            }
+        }
+        None
+    } else {
+        // Defender: replies are the attacker's immediate wins.
+        let blocks = immediate_wins_naive(b, side);
+        if blocks.is_empty() {
+            // No immediate threat to address; the position is quiet.
+            return None;
+        }
+
+        // If every block still lets the attacker force a win, defender loses.
+        for block in blocks.iter() {
+            b.play(block).ok()?;
+            let sub = adjudicate_naive(b, side, depth - 1);
+            b.undo();
+            if sub != Some(side) {
+                return sub;
+            }
+        }
+        Some(side)
+    }
 }
 
 #[cfg(test)]

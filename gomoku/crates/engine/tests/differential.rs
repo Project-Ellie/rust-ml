@@ -7,7 +7,10 @@
 //! feature (see the `[[test]]` section in Cargo.toml).
 
 use engine::reference;
-use engine::{Board, Color, Move, Status, double_threats, forced_blocks, immediate_wins};
+use engine::{
+    Board, Color, Move, SearchBudget, Status, double_threats, forced_blocks, immediate_wins,
+    prove_forced_win, verify_line,
+};
 use proptest::prelude::*;
 
 proptest! {
@@ -98,5 +101,68 @@ proptest! {
             );
         }
         prop_assert_eq!(forced_blocks(&fast), reference::naive_forced_blocks(&fast));
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(200))]
+
+    /// The milestone-1 soundness gate: every proof emitted by the
+    /// threat-space prover passes the line verifier. Positions are
+    /// random mid-game playouts; the budget is small so the test
+    /// stays fast and only catches genuinely forcing lines.
+    #[test]
+    fn tss_some_results_all_verify(cells in prop::collection::vec(0u16..225, 8..=40)) {
+        let mut fast = Board::new();
+        for p in cells {
+            if fast.status() != Status::Ongoing { break; }
+            let _ = fast.play(Move::new((p / 15) as u8, (p % 15) as u8).unwrap());
+        }
+        if fast.status() != Status::Ongoing {
+            fast.undo();
+        }
+
+        let budget = SearchBudget { max_nodes: 500, max_depth: 5 };
+        for side in [Color::Black, Color::White] {
+            if fast.to_move() != side { continue; }
+            if let Some(proof) = prove_forced_win(&fast, side, budget) {
+                prop_assert!(verify_line(&fast, &proof), "verify_line rejected a prover result for {:?}", side);
+            }
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// Differential soundness: on shallow random positions, the naive
+    /// threat-space adjudicator agrees with every `Some` the bitboard
+    /// prover emits. This catches disagreements between the two
+    /// independent implementations of the same forcing logic.
+    #[test]
+    fn tss_agrees_with_reference_adjudicator(cells in prop::collection::vec(0u16..225, 4..=24)) {
+        let mut fast = Board::new();
+        for p in cells {
+            if fast.status() != Status::Ongoing { break; }
+            let _ = fast.play(Move::new((p / 15) as u8, (p % 15) as u8).unwrap());
+        }
+        if fast.status() != Status::Ongoing {
+            fast.undo();
+        }
+
+        let budget = SearchBudget { max_nodes: 1000, max_depth: 6 };
+        for side in [Color::Black, Color::White] {
+            if fast.to_move() != side { continue; }
+            if let Some(proof) = prove_forced_win(&fast, side, budget) {
+                let adjudicated = reference::adjudicate(&fast, side, 6);
+                prop_assert_eq!(
+                    adjudicated,
+                    Some(side),
+                    "prover found a win but reference adjudicator disagrees for {:?}",
+                    side
+                );
+                prop_assert!(verify_line(&fast, &proof));
+            }
+        }
     }
 }

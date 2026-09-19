@@ -69,7 +69,7 @@ pub fn double_threats(b: &Board, side: Color) -> MoveSet {
 /// occupation completes five. `empty` MUST be VALID-masked (padding
 /// bits clear) — `clean_empties` guarantees it, and `without_bit`
 /// preserves it.
-fn winning_cells(stones: Bitboard, empty: Bitboard) -> MoveSet {
+pub(crate) fn winning_cells(stones: Bitboard, empty: Bitboard) -> MoveSet {
     let mut out = MoveSet::EMPTY;
     for i in empty.iter_set_bits() {
         if has_any_five(&stones.with_bit(i)) {
@@ -82,13 +82,13 @@ fn winning_cells(stones: Bitboard, empty: Bitboard) -> MoveSet {
 /// The empty cells as a CLEAN bitboard. `!occupied` sets every padding
 /// bit — the complement must be masked immediately (the padding
 /// invariant, ch. 13; `Board::empty_moves` documents the same rule).
-fn clean_empties(b: &Board) -> Bitboard {
+pub(crate) fn clean_empties(b: &Board) -> Bitboard {
     !(b.stones(Color::Black) | b.stones(Color::White)) & VALID
 }
 
 /// Stride-16 bitboard index → logical Move. Only ever called with
 /// VALID-masked bits, so the column is < 15 and `new` cannot fail.
-fn mv_at(i: usize) -> Move {
+pub(crate) fn mv_at(i: usize) -> Move {
     Move::new((i / 16) as u8, (i % 16) as u8).expect("VALID-masked bits are real cells")
 }
 
