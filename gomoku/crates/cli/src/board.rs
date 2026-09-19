@@ -20,6 +20,11 @@ pub trait GameBoard {
     fn stone_at(&self, mv: Move) -> Option<Color>;
     fn moves(&self) -> &[Move];
     fn name(&self) -> &'static str;
+    /// Access the underlying fast-engine board, if there is one.
+    /// Used for engine-specific features such as the TSS demo.
+    fn engine_board(&self) -> Option<&engine::Board> {
+        None
+    }
 }
 
 /// The naive oracle, wrapped so UI extras have a home.
@@ -58,6 +63,13 @@ impl GameBoard for NaiveBoard {
 /// The production bitboard engine.
 pub struct FastBoard(engine::Board);
 
+impl FastBoard {
+    /// Wrap an engine board for the UI.
+    pub fn new(board: engine::Board) -> Self {
+        Self(board)
+    }
+}
+
 impl GameBoard for FastBoard {
     fn play(&mut self, mv: Move) -> Result<(), PlayError> {
         self.0.play(mv)
@@ -86,9 +98,13 @@ impl GameBoard for FastBoard {
     fn name(&self) -> &'static str {
         "fast"
     }
+
+    fn engine_board(&self) -> Option<&engine::Board> {
+        Some(&self.0)
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineKind {
     Naive,
     Fast,

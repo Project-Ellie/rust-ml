@@ -9,9 +9,19 @@ pub enum Command {
     New,
     Quit,
     Help,
+    /// Swap2: take Black.
+    TakeBlack,
+    /// Swap2: take White.
+    TakeWhite,
+    /// Swap2: place two more stones instead of choosing a color.
+    AddStones,
+    /// Confirm a full placement phase and move to the choice prompt.
+    Done,
+    /// Run the threat-space search demo overlay.
+    Tss,
 }
 
-const USAGE: &str = "usage: <row> <col> (0-14) · 'u' undoes · 'new' restarts · 'q' quits";
+const USAGE: &str = "usage: <row> <col> (0-14) · 'u' undo · 'd' done (opening) · 'b'/'w'/'a' Swap2 choices · 't' TSS demo · 'new' restart · 'q' quit";
 
 /// Parse one line of user input. Never panics; typos become `Err`
 /// messages the UI can display.
@@ -22,6 +32,11 @@ pub fn parse(input: &str) -> Result<Command, String> {
         "u" | "undo" => return Ok(Command::Undo),
         "new" => return Ok(Command::New),
         "h" | "help" | "?" => return Ok(Command::Help),
+        "b" => return Ok(Command::TakeBlack),
+        "w" => return Ok(Command::TakeWhite),
+        "a" => return Ok(Command::AddStones),
+        "d" => return Ok(Command::Done),
+        "t" => return Ok(Command::Tss),
         _ => {}
     }
 
@@ -67,6 +82,11 @@ mod tests {
         assert!(matches!(parse("new"), Ok(Command::New)));
         assert!(matches!(parse("h"), Ok(Command::Help)));
         assert!(matches!(parse("?"), Ok(Command::Help)));
+        assert!(matches!(parse("b"), Ok(Command::TakeBlack)));
+        assert!(matches!(parse("w"), Ok(Command::TakeWhite)));
+        assert!(matches!(parse("a"), Ok(Command::AddStones)));
+        assert!(matches!(parse("d"), Ok(Command::Done)));
+        assert!(matches!(parse("t"), Ok(Command::Tss)));
     }
 
     #[test]
