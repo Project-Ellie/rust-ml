@@ -855,9 +855,9 @@ Estimated effort assumes focused evenings, not DeepMind clusters.
 |---|---|---|
 | 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; TSS soundness gate (§12 item 3) at 100%; `cargo bench` win-detection ≥ 50M checks/s |
 | 2 | `mcts` + mock evaluator | solves tactical suite; plays legal full games vs. uniform-random evaluator without crashing (1000 games) |
-| 3 | `net` + `train` on synthetic data | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
+| 3 | `net` + `train` on synthetic data (+ phase-0 external supplements per [ch. 14](14-openings-and-supervised-curriculum.md) decisions D2/D3) | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
 | 4 | TSS oracle + anchor set | soundness gate (§12 item 3) green; ≥10k machine-verified forced-win puzzles from random-play and Swap2 roots; a net trained with a small anchor fraction solves >95% of held-out proven puzzles without regressing the milestone-3 synthetic benchmark |
-| 5 | `selfplay` + evaluator service | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
+| 5 | `selfplay` + evaluator service (Swap2 opening procedure per [ch. 14](14-openings-and-supervised-curriculum.md) decision D1) | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
 | 6 | **The loop, v1**: `gomoku run` phased | 10 iterations complete unattended; arena Elo of iteration *k* vs. iteration 0 is strictly, monotonically-ish increasing; first agent that beats raw-MCTS-only (>90% over 200 games) |
 | 7 | Hardening | 7-day continuous run without intervention; crash-recovery from journal verified by kill -9 drill |
 | 8 | Registered upgrades, one at a time | each lands only if arena Elo improves beyond noise (±30) |
@@ -926,14 +926,16 @@ Papers (links verified 2026-09-14):
    Every throughput number in chapter 9 is [derived] from our network's
    FLOPs and a conservative efficiency guess — to be replaced by
    measurement in week one.
-5. The Allis thesis *metadata* is verified; the solved-Gomoku result is
-   cited via the 1993 technical report record and secondary sources
-   (Wikipedia), because the thesis PDF was not retrievable during
-   research.
-6. The TSS dataset list above is a set of *leads*, not verified sources
-   — the writing environment had no web access. Our primary puzzle
-   source is self-generated (random play, Swap2 openings, later
-   self-play): renewable, license-free, and on-distribution.
+5. The Allis thesis *metadata* is verified; the thesis PDF itself was
+   retrieved on 2026-09-20 (see [the reference
+   catalogue](references/catalogue.md)), resolving this entry.
+6. The TSS dataset list above was a set of *leads* when written (no
+   web access then); it is RESOLVED as of 2026-09-20 — a verified
+   sweep catalogued the usable sources
+   ([findings](references/findings-external-data.md)) and mirrored
+   them locally under `data/`. Our primary puzzle source remains
+   self-generated (random play, Swap2 openings, later self-play):
+   renewable, license-free, and on-distribution.
 
 Next: milestone 1, the engine. That is where the code begins.
 

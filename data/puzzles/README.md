@@ -31,7 +31,7 @@ markers. Coordinates are 0-based `x,y`.
 
 - `vcf-material-763`: the anchor-set seed. Every line must be
   **re-verified by our own `verify_line`** before use (ch. 14,
-  proposal D5; soundness gate unchanged) — and re-adjudicated under
+  decision D5; soundness gate unchanged) — and re-adjudicated under
   freestyle rules (the source has no explicit ruleset tag).
 - The unlabelled sets are generator input for the TSS oracle
   (milestone 4): our prover produces the labels, `verify_line`

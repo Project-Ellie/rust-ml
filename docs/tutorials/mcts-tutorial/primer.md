@@ -641,27 +641,30 @@ implementations. The milestone-2 test plan is shaped around them:
 
 ## References
 
-**Project documents** (paths relative to the repository root):
+**Project documents:**
 
-- docs/09-toward-alphazero.md — chapter 9: the AlphaGo Zero algorithm
-  in one paragraph; the bridge from the MNIST curriculum to this
-  project.
-- docs/10-papers.md — chapter 10: the annotated reading list; item 9
-  is the MCTS survey (Browne et al. below).
-- docs/12-gomoku-architecture.md — chapter 12: system architecture,
-  milestone plan, claim-label conventions, and the honesty ledger.
-  Cited sections: §3 (rules and puzzle corpora), §6 (crate
-  boundaries), §7 (board representation choices), §8 (MCTS
-  parallelization analysis), §9 (evaluator service), §11 (phased
-  plan and registered upgrades), §12–13 (test plan and milestone
-  acceptance criteria), appendix (paper citations).
-- docs/13-engine-design.md — chapter 13: engine design and locked
-  decisions (decision 1: freestyle overlines; decision 5: absolute
-  colors; the encoding section: 17×17 planes with border ring).
-- docs/tutorials/13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md
+- [docs/09-toward-alphazero.md](../../09-toward-alphazero.md) —
+  chapter 9: the AlphaGo Zero algorithm in one paragraph; the bridge
+  from the MNIST curriculum to this project.
+- [docs/10-papers.md](../../10-papers.md) — chapter 10: the
+  annotated reading list; item 9 is the MCTS survey (Browne et al.
+  below).
+- [docs/12-gomoku-architecture.md](../../12-gomoku-architecture.md) —
+  chapter 12: system architecture, milestone plan, claim-label
+  conventions, and the honesty ledger. Cited sections: §3 (rules and
+  puzzle corpora), §6 (crate boundaries), §7 (board representation
+  choices), §8 (MCTS parallelization analysis), §9 (evaluator
+  service), §11 (phased plan and registered upgrades), §12–13 (test
+  plan and milestone acceptance criteria), appendix (paper
+  citations).
+- [docs/13-engine-design.md](../../13-engine-design.md) — chapter 13:
+  engine design and locked decisions (decision 1: freestyle
+  overlines; decision 5: absolute colors; the encoding section:
+  17×17 planes with border ring).
+- [docs/tutorials/13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md](../13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md)
   — why Zobrist keys exist and why the search does not use them (§6).
-- docs/tutorials/mcts-tutorial/README.md — the build tutorial for
-  milestone 2 (chapters 01–10).
+- [docs/tutorials/mcts-tutorial/README.md](README.md) — the build
+  tutorial for milestone 2 (chapters 01–10).
 
 **External literature:**
 

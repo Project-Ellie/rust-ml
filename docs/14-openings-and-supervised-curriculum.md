@@ -15,7 +15,7 @@ may enter the curriculum** — this project's standing direction is that it
 project follows AlphaZero in spirit but welcomes supervised head
 starts ("alpha-epsilon"), so this chapter defines what is allowed,
 from where, under which licenses, and in which order. The chapter
-ends with five design decisions proposed for locking. All data
+ends with five design decisions (D1–D5, locked 2026-09-20). All data
 sources named here were verified by direct HTTP access on 2026-09-20
 and are catalogued in `docs/references/`; negative findings are
 recorded in `docs/references/findings-external-data.md`.
@@ -59,8 +59,8 @@ recorded in `docs/references/findings-external-data.md`.
   overlines). Ours is freestyle 15×15: overlines win, no forbidden
   moves (ch. 13, decision 1).
 - **Claim labels** — **[paper]** / **[derived]** / **[experiment]** /
-  **[proposal]** as in ch. 12; **[proposal]** marks decisions not yet
-  not yet locked.
+  **[proposal]** marks design items not yet
+  locked; decisions D1–D5 of this chapter were locked on 2026-09-20.
 
 ## 1. Why the opening needs a design
 
@@ -150,7 +150,7 @@ what random opening lists provide anyway (§3.2).
 ## 3. The self-play opening procedure
 
 This section proposes the concrete procedure each self-play worker
-runs before move 1 of every game. Status: **[proposal D1]**.
+runs before move 1 of every game. Status: **locked decision D1** (2026-09-20).
 
 ### 3.1 Placement in the architecture
 
@@ -212,7 +212,7 @@ results and per-URL verification status:
 `docs/references/catalogue.md`) verified the following sources.
 Ruleset-mismatch warning applies throughout: everything below is
 freestyle-15×15 unless noted, and Renju-derived material must be
-re-adjudicated under our rules before any use (proposal D5, §5.4).
+re-adjudicated under our rules before any use (decision D5, §5.4).
 
 | Source | Content | License | Fit |
 |---|---|---|---|
@@ -266,7 +266,7 @@ Training signals ordered by noise, from cleanest to noisiest:
 The curriculum descends the ladder: clean supervised signal first,
 bootstrap taking over as it becomes reliable.
 
-### 5.3 Proposed phases [proposal D2]
+### 5.3 Phases (locked decision D2)
 
 - **Phase 0 (pre-training, extends milestone 3):** synthetic tactics
   set as already designed, *plus* behavior-cloning on the verified
@@ -292,13 +292,13 @@ bootstrap taking over as it becomes reliable.
    Mitigation: phase-2 decay schedule (§5.3) and the anchor-fraction
    discipline already locked in ch. 12.
 2. **Ruleset contamination.** Renju/exact-five positions are wrong
-   under our rules (overlines win). Mitigation **[proposal D5]**: all
+   under our rules (overlines win). Mitigation **(decision D5)**: all
    external positions are re-adjudicated by our engine before use;
    tactical labels are admitted only through `verify_line`
    (soundness gate, unchanged).
 3. **License contamination.** Gomocup archives and Piskvork's opening
    file carry no stated license; several puzzle sets have unclear
-   data rights. Mitigation **[proposal D3]**: permissively licensed
+   data rights. Mitigation **(decision D3)**: permissively licensed
    (MIT/CC0) or self-generated data may enter redistributable
    training sets; unlicensed-but-public archives may be consumed
    locally only and are never redistributed; GPL engines are used as
@@ -319,7 +319,7 @@ bootstrap taking over as it becomes reliable.
   license and encoding are clarified.
 - A learned opening-composer network (§3.4).
 
-## 6. Decisions proposed for locking
+## 6. Decisions (locked 2026-09-20)
 
 | # | Proposal |
 |---|---|
@@ -331,19 +331,21 @@ bootstrap taking over as it becomes reliable.
 
 ## References
 
-**Project documents** (paths relative to the repository root):
+**Project documents:**
 
-- docs/12-gomoku-architecture.md — ch. 12: §3 (solved status, opening
-  protocols), milestone 3 (synthetic data), milestone 4 (anchor set,
-  soundness gate), decision 8 (soundness over completeness).
-- docs/13-engine-design.md — ch. 13: decision 1 (freestyle rules),
-  decision 5 (absolute colors), Swap2 typestate contract.
-- docs/tutorials/mcts-tutorial/primer.md — MCTS design: value/prior
-  roles, root-noise discipline (§5).
-- docs/references/catalogue.md and
-  docs/references/findings-external-data.md — verified catalogue
-  entries and the research sweep (including negative results and
-  link-verification status) behind §4.
+- [docs/12-gomoku-architecture.md](12-gomoku-architecture.md) —
+  ch. 12: §3 (solved status, opening protocols), milestone 3
+  (synthetic data), milestone 4 (anchor set, soundness gate),
+  decision 8 (soundness over completeness).
+- [docs/13-engine-design.md](13-engine-design.md) — ch. 13:
+  decision 1 (freestyle rules), decision 5 (absolute colors), Swap2
+  typestate contract.
+- [docs/tutorials/mcts-tutorial/primer.md](tutorials/mcts-tutorial/primer.md)
+  — MCTS design: value/prior roles, root-noise discipline (§5).
+- [docs/references/catalogue.md](references/catalogue.md) and
+  [docs/references/findings-external-data.md](references/findings-external-data.md)
+  — verified catalogue entries and the research sweep (including
+  negative results and link-verification status) behind §4.
 
 **External sources** (verification status as of 2026-09-20; see the
 findings report for the full list):

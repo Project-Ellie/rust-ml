@@ -50,11 +50,13 @@ Concretely, every document MUST have:
    the two sentences that let the reader continue without opening
    ch. 12. Summarize — do not duplicate wholesale.
 5. **A references section last** (heading `## References`) listing
-   every cited source, local and external: repository documents with
-   their paths, papers with authors/venue/year. **Provide a link for
-   every entry whenever one exists** — a repository-relative path for
-   local documents, a stable URL (arXiv abstract page or DOI) for
-   external ones.
+   every cited source, local and external. **Provide a navigable link
+   for every entry whenever one exists**: local documents as relative
+   markdown links (`[docs/12-…md](../12-…md)` — resolvable by editors
+   such as RustRover and Typora, and by GitHub), external ones as
+   stable URLs (arXiv abstract page or DOI). The same rule applies to
+   inline file references anywhere in the body: if the text names a
+   file, the name is a link.
 
 ## Citation Rules
 
@@ -150,7 +152,9 @@ Concretely, every document MUST have:
 - [ ] Every abbreviation expanded at first use in the body.
 - [ ] Every pointy term cites its first noteworthy use (checked
       against `docs/references/index.jsonl`).
-- [ ] Every references entry has a link (local path or stable URL).
+- [ ] Every references entry has a navigable link (relative
+      markdown link for local files, stable URL for external);
+      inline file mentions in the body are links too.
 - [ ] Any literature found outside the catalogue was verified AND
       added to the catalogue.
 
@@ -164,6 +168,6 @@ Concretely, every document MUST have:
 | "Prerequisites: ch. 12 §1–2" (assumed reading) | Two-sentence summary of the needed content + citation |
 | "The honesty ledger applies" (convention undefined in-doc) | Glossary entry + ch. 12 in references |
 | "PUCT [paper]" (cites whatever was at hand) | "PUCT (predictor UCT, Rosin 2011)" — expand the abbreviation, cite the first noteworthy use |
-| References without links | arXiv abs URL or DOI per external entry; repo-relative path per local entry |
+| References without links | arXiv abs URL or DOI per external entry; relative markdown link per local entry (navigable in RustRover/Typora/GitHub) |
 | "Locked by <name>" / "<name>'s direction" | "Locked in this project" / "the project's direction" — documents are shared artifacts, names do not belong in them |
 | Web search for a paper the project has cited before | `rg` the catalogue's `index.jsonl` first; add new finds to it |

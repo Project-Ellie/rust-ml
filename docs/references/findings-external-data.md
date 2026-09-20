@@ -149,7 +149,7 @@ These can seed a puzzle generator if an internal VCF/VCT solver is run to produc
 
 ## References
 
-- `docs/references/catalogue.md` — canonical entries for all sources above, generated from `docs/references/generate.py`.
+- [catalogue.md](catalogue.md) — canonical entries for all sources above, generated from [generate.py](generate.py).
 - Piskvork `openings.txt`: `https://raw.githubusercontent.com/plastovicka/Piskvork/master/openings.txt`
 - Gomocup results archives: `https://gomocup.org/results/`
 - Renju.net international Gomoku rules (Swap2): `https://www.renju.net/gomokurules/`

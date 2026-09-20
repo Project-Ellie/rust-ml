@@ -46,7 +46,7 @@ later by changing one type alias.
 | 11 | [Pitfalls](11-pitfalls.md) | — | Known traps, including the ones this course hit |
 | 12 | [The Gomoku Architecture](12-gomoku-architecture.md) | — | Full design of the AlphaZero-style agent: engine, network, MCTS, parallelism, training, runbook |
 | 13 | [The Engine Design](13-engine-design.md) | `gomoku/crates/engine` | Milestone 1 in detail: bitboards, tactics + TSS, Swap2, encoding |
-| 14 | [Openings, External Data, and the Supervised Curriculum](14-openings-and-supervised-curriculum.md) | — | Swap2 as value arithmetic; the self-play opening procedure; verified external data; supervised phases (D1–D5 proposals) |
+| 14 | [Openings, External Data, and the Supervised Curriculum](14-openings-and-supervised-curriculum.md) | — | Swap2 as value arithmetic; the self-play opening procedure; verified external data; supervised phases (decisions D1–D5) |
 
 ## Tutorials
 
