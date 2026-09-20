@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document is the canonical literature reference for the rust-ml Gomoku/AlphaZero project. It lists every external paper, thesis, rule source, and local design document that future chapters, tutorials, and code comments should cite when they use a pointy term such as PUCT, UCB1, threat-space search, or root Dirichlet noise. Each entry gives a full citation, a one-line reason the project cites it, a stable URL, and—where applicable—the "first noteworthy use of" tag that pins the term to its original source.
+This document is the canonical literature reference for the rust-ml Gomoku/AlphaZero project. It lists every external paper, thesis, rule source, verified dataset, open-source engine, chapters, tutorials, and code comments should cite when they use a pointy term such as PUCT, UCB1, threat-space search, or root Dirichlet noise. Each entry gives a full citation, a one-line reason the project cites it, a stable URL, and—where applicable—the "first noteworthy use of" tag that pins the term to its original source.
 
 ## Glossary
 
@@ -170,6 +170,98 @@ This document is the canonical literature reference for the rust-ml Gomoku/Alpha
 - Why this project cites it: Gomocup tournament rules: freestyle, standard, renju, caro, balanced openings.
 - Link: https://gomocup.org/detail-information/
 - First noteworthy use of: Gomocup, freestyle gomoku, standard gomoku, balanced openings
+
+## External data sources for training and puzzles
+
+**Gomocup organizers (None).** *Gomocup tournament result archives (2000–2026)*. gomocup.org.
+- Why this project cites it: Yearly ZIP archives of Gomocup tournament games in PSQ format, plus balanced opening files for freestyle, standard, caro and renju rulesets.
+- Link: https://gomocup.org/results/
+
+**Petr Lastovicka (plastovicka) (None).** *Piskvork openings.txt*. GitHub.
+- Why this project cites it: Small, clean Swap2 opening catalogue shipped with the Piskvork tournament manager: 41 lines of comma-separated (x,y) coordinate pairs relative to the board centre.
+- Link: https://raw.githubusercontent.com/plastovicka/Piskvork/master/openings.txt
+
+**Renju International Federation (None).** *International Rules of Gomoku — Swap2*. renju.net.
+- Why this project cites it: Authoritative HTML description of the Swap2 opening protocol and the international Gomoku rule set. Note: RIF Gomoku rules treat overlines as non-winning, unlike the project's freestyle ruleset.
+- Link: https://www.renju.net/gomokurules/
+
+**Karesis (None).** *Karesis / Gomoku (Five in a Row) AI Dataset*. Hugging Face Datasets.
+- Why this project cites it: MIT-licensed HuggingFace dataset: 875 self-play games / 26,378 15×15 board-state/next-move positions generated with the WinePy alpha-beta engine.
+- Link: https://doi.org/10.57967/hf/4816
+
+**PoolC (None).** *PoolC / gomoku-dataset-1.8M*. Hugging Face Datasets.
+- Why this project cites it: Large HuggingFace dataset of 1.88M tokenized Gomoku positions in a single Parquet file. License and encoding are undocumented; unusable without reverse-engineering the input_ids sequence.
+- Link: https://huggingface.co/datasets/PoolC/gomoku-dataset-1.8M
+
+**gugujiao953-ship-it (None).** *banbu-gomoku VCF material*. GitHub.
+- Why this project cites it: 763 labelled VCF (victory by continuous four) puzzles with explicit solution lines. The only verified public set found that ships answers; ruleset must be re-verified for freestyle overlines-win.
+- Link: https://raw.githubusercontent.com/gugujiao953-ship-it/banbu-gomoku/main/public/puzzles/vcf-material.json
+
+**gugujiao953-ship-it (None).** *banbu-gomoku 开宝实战VCF*. GitHub.
+- Why this project cites it: ~1050 VCF puzzle positions imported from the Kaibao Android app. No stored answers; Renju-oriented; requires an internal solver to produce labels.
+- Link: https://raw.githubusercontent.com/gugujiao953-ship-it/banbu-gomoku/main/public/puzzles/kaibao/%E5%AE%9E%E6%88%98VCF_1052%E9%A2%98.json
+
+**gugujiao953-ship-it (None).** *banbu-gomoku RenjuPortal VCF collection*. GitHub.
+- Why this project cites it: 4,024 VCF puzzle positions from RenjuPortal. No stored solution lines; Renju-oriented; requires ruleset conversion before use in freestyle Gomoku.
+- Link: https://raw.githubusercontent.com/gugujiao953-ship-it/banbu-gomoku/main/public/puzzles/kaibao/RenjuPortalVCF.json
+
+**lfz084 (None).** *lfz084 / renju puzzle JSON archive*. GitHub.
+- Why this project cites it: Large collection of Renju puzzle sets (黑先VCF, 白先VCF, mate-in-3, exercises). Thousands of positions but no explicit answers; strong Renju bias and forbidden-hand conventions.
+- Link: https://github.com/lfz084/renju/tree/master/puzzle/json
+
+**Tk-visionary (None).** *renju-benchmark synthetic tactical tests*. GitHub.
+- Why this project cites it: GPL-3.0 set of 8 hand-authored labelled Renju positions (exact-five, overline, forbidden moves, must-block). Small correctness/edge-case test set, not a large training corpus.
+- Link: https://raw.githubusercontent.com/Tk-visionary/renju-benchmark/main/data/puzzles.jsonl
+
+**maojh15 (None).** *maojh15 / GomokuZeroAI*. Hugging Face Models.
+- Why this project cites it: MIT-licensed AlphaZero-style Gomoku policy-value checkpoint for 15×15. Could serve as a sparring partner or synthetic-data generator, or as an initialization for transfer learning.
+- Link: https://huggingface.co/maojh15/GomokuZeroAI
+
+**Nagi-ovo (None).** *Nagi-ovo / alphazero-gomoku*. Hugging Face Models.
+- Why this project cites it: MIT-licensed AlphaZero-style Gomoku model checkpoint trained for the same-named GitHub project. Potential sparring partner or pretrained initialization; verify board size and ruleset.
+- Link: https://huggingface.co/Nagi-ovo/alphazero-gomoku
+
+## Open-source Gomoku engines and tools
+
+**dhbloo (None).** *Rapfi — strong open-source Gomoku/Renju engine*. GitHub.
+- Why this project cites it: Modern alpha-beta + NNUE engine and one of the strongest public Gomoku programs. Supports selfplay mode that outputs training samples and an opengen mode for balanced openings. GPL-3.0 (engine); network weights are CC0-1.0.
+- Link: https://github.com/dhbloo/rapfi
+
+**Maciej Kozarzewski (None).** *AlphaGomoku — AlphaZero-style Gomoku engine*. GitHub.
+- Why this project cites it: Full C++ AlphaZero implementation for Gomoku with MCTS, neural networks, selfplay and training front-ends. Supports Swap2 and other opening controllers. GPL-3.0.
+- Link: https://github.com/MaciejKozarzewski/AlphaGomoku
+
+**hzyhhzy (None).** *KataGomo — KataGo fork for Gomoku and Renju*. GitHub.
+- Why this project cites it: KataGo derivative trained for Gomoku (freestyle, standard) and Renju. Strong open-source engine with pre-trained network releases and KataGo selfplay/training scripts. Custom MIT-style license.
+- Link: https://github.com/hzyhhzy/KataGomo
+
+**nkg114mc (None).** *c-gomoku-cli — head-to-head match runner for Gomocup engines*. GitHub.
+- Why this project cites it: Command-line tournament manager that runs any Gomocup-protocol engines, supports fixed opening files and concurrent games, and writes SGF plus CSV/binary training samples. GPL-3.0.
+- Link: https://github.com/nkg114mc/c-gomoku-cli
+
+**dhbloo (None).** *Rapfi-gomocup — legacy Gomocup freestyle engine*. GitHub.
+- Why this project cites it: Older MIT-licensed Rapfi that participated in Gomocup 2018. Speaks the Gomocup protocol and can be driven by c-gomoku-cli or Piskvork. Weaker than current Rapfi but permissively licensed.
+- Link: https://github.com/dhbloo/Rapfi-gomocup
+
+**wind23 (None).** *SlowRenju — Gomoku/Renju alpha-beta engine*. GitHub.
+- Why this project cites it: Iterative-deepening alpha-beta engine that has competed in Gomocup since 2013. Supports freestyle, standard and renju on board sizes 5–20. GPL-3.0; useful mid-tier sparring partner.
+- Link: https://github.com/wind23/SlowRenju
+
+**schibir (None).** *PentaZen — alpha-beta Gomoku/Renju engine*. GitHub.
+- Why this project cites it: Strong open-source alpha-beta engine (Gomocup 2021 version). Speaks Gomocup and partial Yixin protocols. GPL-3.0; can be paired with c-gomoku-cli for batch games.
+- Link: https://github.com/schibir/PentaZen
+
+**ChisBread (None).** *Chis — Gomoku AI engine*. GitHub.
+- Why this project cites it: C++ Gomoku engine producing a Piskvork-compatible executable. MPL-2.0; mid-tier sparring partner via the Gomocup protocol.
+- Link: https://github.com/ChisBread/Chis
+
+**Joker2770 (None).** *Z2I — AlphaZero-style Gomoku engine*. GitHub.
+- Why this project cites it: MIT-licensed MCTS+ONNX engine supporting freestyle, standard, renju and caro, with Python training scripts. Less strong than Rapfi/KataGomo but permissively licensed and includes selfplay training.
+- Link: https://github.com/Joker2770/Z2I
+
+**winterdl (None).** *Nut-engine — Gomocup protocol engine*. GitHub.
+- Why this project cites it: Apache-2.0 Gomoku/Renju AI supporting the Gomocup protocol. Mid-tier sparring partner; permissive license makes it safe for integration tests.
+- Link: https://github.com/winterdl/Nut-engine
 
 ## Network architecture and training
 
