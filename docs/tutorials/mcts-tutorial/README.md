@@ -98,7 +98,6 @@ parallelism. Resignation, gating, and Elo belong to later milestones.
 ## Status
 
 - 2026-09-19 — tutorial written, reference implementation verified
-  (compiles, all chapter tests green). No chapters started by Wolfie
-  yet.
+  (compiles, all chapter tests green). No chapters started yet.
 
 Keep this section current as chapters land.

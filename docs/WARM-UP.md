@@ -6,7 +6,7 @@ Referenced from [AGENTS.md](../AGENTS.md).
 
 ## What this project is
 
-**DeepGomoku reborn in Rust.** Wolfie's old TensorFlow project
+**DeepGomoku reborn in Rust.** The old TensorFlow project
 ([DeepGomoku](https://github.com/Project-Ellie/DeepGomoku)) is being
 resurrected as an AlphaZero-style Gomoku agent in Rust with the
 [Burn](https://github.com/tracel-ai/burn) framework. The repository is
@@ -190,8 +190,9 @@ started — no code exists beyond `engine` and `cli`.
 ## How the tutorials work (respect the pedagogy)
 
 The engine tutorial (`docs/tutorials/13-engine-tutorial/`) is
-**learn-by-doing for Wolfie**: slices give exact API contracts and TDD
-checklists but withhold implementations — Wolfie writes the code. When
+**learn-by-doing for the reader**: slices give exact API contracts and
+TDD checklists but withhold implementations — the learner writes the
+code. When
 assisting with a slice: coach toward the contract, don't dump the
 implementation. (Opt-in reference solutions exist for slices 2–4 in the
 `NN-deep-dive/` folders; the CLI tutorial, by contrast, ends each
@@ -224,5 +225,5 @@ target) → phased `gomoku run` loop with arena Elo tracking → hardening
 (7-day runs, crash recovery) → registered upgrades one at a time
 (playout-cap randomization, global-pooling heads, continuous mode, net
 growth, forced playouts, auxiliary targets, TSS inside MCTS). After
-that: applications around the lab — a game server, and Wolfie's dream
+that: applications around the lab — a game server, and the dream of a
 physical Gomoku board.

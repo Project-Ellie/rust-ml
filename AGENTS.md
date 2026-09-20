@@ -7,7 +7,7 @@ Everything below is the short version plus the rules.
 
 ## Project in one paragraph
 
-This repo resurrects Wolfie's TensorFlow
+This repo resurrects the TensorFlow
 [DeepGomoku](https://github.com/Project-Ellie/DeepGomoku) as an
 AlphaZero-style Gomoku agent in Rust with Burn 0.21.0. The root package
 is a finished MNIST curriculum (`docs/` chapters 1–8, `examples/`); the
@@ -23,8 +23,9 @@ engine design: `docs/13-engine-design.md`.
    the `v0.21.0` tag — check the pinned source, not blog posts.
 2. **`engine` is a dependency island** — no Burn, no I/O, no `rand`.
    `cargo check -p engine` must pass with Burn nowhere in sight.
-3. **The engine tutorial is Wolfie's learn-by-doing material.** Slices
-   give contracts, Wolfie writes implementations. Coach, don't hand
+3. **The engine tutorial is the owner's learn-by-doing material.**
+   Slices give contracts, the learner writes implementations. Coach,
+   don't hand
    over solutions (reference solutions in `NN-deep-dive/` are opt-in).
 4. **Gates before any commit:** `cargo test`,
    `cargo clippy --all-targets -- -D warnings`, `cargo fmt --all` —

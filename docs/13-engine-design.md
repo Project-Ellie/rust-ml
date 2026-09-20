@@ -10,7 +10,7 @@ document adds the concrete types, invariants, and test plan.
 
 | # | Decision | Reason |
 |---|---|---|
-| 1 | **Overlines count as a win** (freestyle rules) | Wolfie's call; simplest rule, consistent with the freestyle commitment (chapter 12, §3) |
+| 1 | **Overlines count as a win** (freestyle rules) | Locked in this project; simplest rule, consistent with the freestyle commitment (chapter 12, §3) |
 | 2 | **Swap2 opening protocol from the start** | Freestyle Gomoku is a proven first-player win (chapter 12, §3); Swap2 keeps self-play on open ground |
 | 3 | **17×17 encoding, border ring as opponent stones** | Learning-signal consistency near edges — the learning-side edge problem (chapter 12, §7) |
 | 4 | **Alpha-epsilon, not tabula rasa** | Hand-woven tactical detection (win-in-1, forced block, win-in-2) gives the learning curve a head start; doubles as MCTS mock evaluator and synthetic-data generator |

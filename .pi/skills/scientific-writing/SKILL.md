@@ -110,7 +110,14 @@ Concretely, every document MUST have:
    tutorials; jokes, asides, and personal references
    ("your DeepGomoku scars remember") are not — state the fact:
    "this is the most common defect in MCTS implementations."
-5. **Stepping back for the big picture is welcome** — plain-language
+5. **No personal names in documents.** Documents are project
+   artifacts that get shared; naming a person (even the project
+   owner) reads awkwardly outside the team. Decisions are "locked in
+   this project", directions are "the project's direction", tutorial
+   roles are "the learner" / "the reader" / "the owner" — never a
+   name. This applies to every repository document, including
+   AGENTS.md, status files, and commit messages.
+6. **Stepping back for the big picture is welcome** — plain-language
    motivation sections are good scientific writing. The rules above
    still apply inside them: plain must remain precise.
 
@@ -139,6 +146,7 @@ Concretely, every document MUST have:
 - [ ] Every metaphor: does the sentence still state the mechanism?
       If not, rewrite as mechanism.
 - [ ] No colloquialism outside the glossary.
+- [ ] No personal names anywhere in the document (grep for them).
 - [ ] Every abbreviation expanded at first use in the body.
 - [ ] Every pointy term cites its first noteworthy use (checked
       against `docs/references/index.jsonl`).
@@ -157,4 +165,5 @@ Concretely, every document MUST have:
 | "The honesty ledger applies" (convention undefined in-doc) | Glossary entry + ch. 12 in references |
 | "PUCT [paper]" (cites whatever was at hand) | "PUCT (predictor UCT, Rosin 2011)" — expand the abbreviation, cite the first noteworthy use |
 | References without links | arXiv abs URL or DOI per external entry; repo-relative path per local entry |
+| "Locked by <name>" / "<name>'s direction" | "Locked in this project" / "the project's direction" — documents are shared artifacts, names do not belong in them |
 | Web search for a paper the project has cited before | `rg` the catalogue's `index.jsonl` first; add new finds to it |

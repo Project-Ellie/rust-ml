@@ -85,7 +85,7 @@ NVIDIA's cuTile Rust, **not** about Burn or CubeCL. Do not miscite it.
   with a Gobang game implementation. You have a local copy at
   `../alpha-zero-general`. Its `Coach.py`/`MCTS.py` are ~200 lines and show
   the loop in its most readable form.
-- **DeepGomoku** — Wolfie's own TensorFlow implementation:
+- **DeepGomoku** — this project's predecessor, a TensorFlow implementation:
   <https://github.com/Project-Ellie/DeepGomoku>. The design baseline we
   intend to beat, in clarity if not (yet) in strength.
 

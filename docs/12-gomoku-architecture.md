@@ -587,8 +587,8 @@ heterogeneous games (moves by different network versions in one game) and
 stale BatchNorm moments (fixed by recomputing BN statistics from 50
 batches every 1,000 updates) [paper — ELF].
 
-We choose **phased v1**, like the alpha-zero-general `Coach.py` loop
-Wolfie already knows:
+We choose **phased v1**, following the alpha-zero-general `Coach.py`
+loop structure:
 
 ```text
 phase A: self-play N games   (GPU: evaluator only)

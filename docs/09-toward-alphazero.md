@@ -44,7 +44,7 @@ training loop) matters more for our goal than chapter 6 (`SupervisedTraining`).
 The AlphaGo Zero input is a stack of binary feature planes: current player's
 stones, opponent's stones, (in Go: history planes, liberties, ...), plus a
 constant plane for the side to move. For Gomoku we need much less. A first
-encoding, from Wolfie's earlier `azrust` sketch:
+encoding, from an earlier `azrust` sketch:
 
 ```text
 planes: 2 x (n+2) x (n+2)   for an n x n board with a 1-cell border

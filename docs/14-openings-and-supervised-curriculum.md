@@ -11,7 +11,7 @@ me/you-relative value network supplies exactly that judgment; the
 opening is therefore played by evaluation and search, not by a
 dedicated policy, and it improves automatically as the value function
 improves. Second: **which supervised, externally sourced components
-may enter the curriculum** — Wolfie's standing direction is that the
+may enter the curriculum** — this project's standing direction is that it
 project follows AlphaZero in spirit but welcomes supervised head
 starts ("alpha-epsilon"), so this chapter defines what is allowed,
 from where, under which licenses, and in which order. The chapter
@@ -60,7 +60,7 @@ recorded in `docs/references/findings-external-data.md`.
   moves (ch. 13, decision 1).
 - **Claim labels** — **[paper]** / **[derived]** / **[experiment]** /
   **[proposal]** as in ch. 12; **[proposal]** marks decisions not yet
-  locked by Wolfie.
+  not yet locked.
 
 ## 1. Why the opening needs a design
 
@@ -240,7 +240,7 @@ The project is AlphaZero in spirit with deliberate head starts
 ("alpha-epsilon"): hand-woven tactics as MCTS priors (milestone 2's
 mock evaluator), synthetic tactical training data (milestone 3), and
 solver-verified anchor labels (milestone 4) are already locked design.
-Wolfie's direction — recorded here as the premise of this section —
+The project's direction — recorded here as the premise of this section —
 is that **supervised components are welcome in the early curriculum**
 wherever they are honest about their provenance. Nothing below
 changes the self-play loop itself; it changes what the network knows
