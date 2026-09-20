@@ -135,7 +135,11 @@ fn start_message(state: &AppState) -> String {
             "Swap2 opening — Player A places two Black and one White stone".to_string()
         }
         AppState::Normal(_, _) => "new game — Black to move".to_string(),
-        AppState::Puzzle(puzzle) => puzzle_status_line(puzzle),
+        // Not the status line: draw() prints that separately, and a
+        // duplicate reads as a rendering bug.
+        AppState::Puzzle(_) => {
+            "puzzle mode — 'n'/'p' browse · 'u'/'r' history · 'h' help".to_string()
+        }
     }
 }
 

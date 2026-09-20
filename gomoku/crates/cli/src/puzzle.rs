@@ -319,9 +319,30 @@ mod tests {
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    fn next_dir() -> PathBuf {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("rust-ml-cli-puzzle-test-{}", n))
+    /// Unique temp directory per test, removed on drop. The process id
+    /// is part of the name because the counter restarts in every test
+    /// process while stale directories survive previous runs — that
+    /// combination made `missing_sidecar_is_clear` flaky (a stale
+    /// `puzzles.parser` from an earlier run could satisfy the gate).
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "rust-ml-cli-puzzle-test-{}-{}",
+                std::process::id(),
+                n
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
     }
 
     fn make_fixture() -> String {
@@ -338,11 +359,10 @@ mod tests {
             .to_string()
     }
 
-    fn temp_pair() -> (PathBuf, PathBuf, PathBuf) {
-        let dir = next_dir();
-        fs::create_dir_all(&dir).unwrap();
-        let data = dir.join("puzzles.json");
-        let sidecar = dir.join("puzzles.parser");
+    fn temp_pair() -> (TempDir, PathBuf, PathBuf) {
+        let dir = TempDir::new();
+        let data = dir.0.join("puzzles.json");
+        let sidecar = dir.0.join("puzzles.parser");
         (dir, data, sidecar)
     }
 
