@@ -9,9 +9,9 @@ there.
 
 Prerequisites: chapter 12 §1–2 (the four subsystems and the loop) and
 chapter 9 (the AlphaGo Zero algorithm in one paragraph). Everything here
-is design-level; when milestone 2 starts, a proper build-it-yourself
-tutorial with contracts and TDD slices will follow the same conventions
-as the engine tutorial.
+is design-level; the build-it-yourself tutorial lives next door in this
+same folder — start at [README.md](README.md) — with contracts and TDD
+slices, following the conventions of the engine tutorial.
 
 Numbers carry the chapter-12 labels: **[paper]** (cited, see ch. 12
 appendix), **[derived]** (computed from cited values), **[experiment]**
@@ -516,5 +516,5 @@ around them:
 Reading, when you want the primary sources: AlphaGo Zero (the
 algorithm we implement), the MCTS review (ch. 10 #9, for the taxonomy
 and everything we shelved), and ch. 12 §8 for the parallelization
-reasoning. When this primer has settled, milestone 2 gets its own
-design chapter and build tutorial — same conventions as the engine.
+reasoning. The build tutorial is [README.md](README.md) in this folder
+— same conventions as the engine tutorial.
