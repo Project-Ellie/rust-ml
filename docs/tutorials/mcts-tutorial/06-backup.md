@@ -161,7 +161,7 @@ The `make_edge` helper belongs in the test module; it is not part of the public 
 
 The complete reference implementation for this step lives in the deep-dive folder. Open it only after you have tried the step yourself, or when you have been stuck for more than twenty minutes.
 
-- [06-deep-dive/01-solution.md](06-deep-dive/01-solution.md)
+- [06-backup/01-solution.md](06-backup/01-solution.md)
 
 The solution quotes `src/backup.rs` from the verified reference crate verbatim.
 

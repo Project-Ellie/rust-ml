@@ -226,7 +226,7 @@ matches the design document.
 
 The complete reference for this chapter — `select.rs` including its
 built-in tests — lives in
-[03-deep-dive/01-solution.md](03-deep-dive/01-solution.md). Open it
+[03-selection-puct/01-solution.md](03-selection-puct/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after the
 chapter for comparison.
 

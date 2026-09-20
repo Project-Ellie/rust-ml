@@ -12,8 +12,8 @@ documentation.
 
 **Scope:** design docs, primers, tutorials, READMEs, wiki chapters,
 ADRs. **Not in scope:** code comments, commit messages, and opt-in
-solution deep-dives (e.g., `NN-deep-dive/` folders — those are fine
-in their established, more narrative style).
+solution deep-dives (the per-chapter tutorial companion folders —
+those are fine in their established, more narrative style).
 
 ## The Isolation Rule (the hard quality gate)
 
@@ -52,7 +52,9 @@ Concretely, every document MUST have:
 5. **A references section last** (heading `## References`) listing
    every cited source, local and external. **Provide a navigable link
    for every entry whenever one exists**: local documents as relative
-   markdown links (`[docs/12-…md](../12-…md)` — resolvable by editors
+   markdown links written relative to the linking file (example,
+   from this skill: [docs/12-gomoku-architecture.md](../../../docs/12-gomoku-architecture.md))
+   — resolvable by editors
    such as RustRover and Typora, and by GitHub), external ones as
    stable URLs (arXiv abstract page or DOI). The same rule applies to
    inline file references anywhere in the body: if the text names a

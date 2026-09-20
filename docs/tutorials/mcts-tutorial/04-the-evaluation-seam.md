@@ -196,7 +196,7 @@ All tests use `engine::Board`, `engine::Move`, and `engine::encode`. No randomne
 
 The complete reference implementation for this step lives in the deep-dive folder. Open it if you are stuck for more than twenty minutes, or after you have written your own version and want to compare. The file is a verbatim quote from the verified reference crate: it compiles and all chapter tests pass.
 
-- [04-deep-dive/01-solution.md](04-deep-dive/01-solution.md)
+- [04-the-evaluation-seam/01-solution.md](04-the-evaluation-seam/01-solution.md)
 
 Do not copy-paste without reading. The point is to understand why every line exists.
 

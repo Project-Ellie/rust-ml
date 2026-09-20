@@ -8,8 +8,8 @@ deliberately reject. Paper 01 is *why it is shaped that way*, paper 02
 *in what order to build it*.
 
 Series conventions (derive then measure; the chapter stays authoritative
-for the API; one `NN-deep-dive/` folder per chapter that needs one) live
-in [03-deep-dive/README.md](../03-deep-dive/README.md).
+for the API; one companion folder per chapter that needs one) live
+in [03-bitboard-and-board/README.md](../03-bitboard-and-board/README.md).
 
 | # | Paper | Answers |
 |---|-------|---------|

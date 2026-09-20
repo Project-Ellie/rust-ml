@@ -25,18 +25,18 @@ not a failure.
 
 ## Conventions used in these files
 
-- **Deep dives** — `NN-deep-dive/` folders hang off the chapter they
-deepen (so far: [03-deep-dive](03-deep-dive/README.md),
-[04-deep-dive](04-deep-dive/README.md),
-[05-deep-dive](05-deep-dive/README.md),
-[06-deep-dive](06-deep-dive/README.md), and
-[07-deep-dive](07-deep-dive/README.md)). A chapter tells
+- **Deep dives** — companion folders carry the chapter's root name
+(`04-win-detection/` deepens `04-win-detection.md`; so far: [03-bitboard-and-board](03-bitboard-and-board/README.md),
+[04-win-detection](04-win-detection/README.md),
+[05-zobrist](05-zobrist/README.md),
+[06-symmetry-and-encoding](06-symmetry-and-encoding/README.md), and
+[07-tactics](07-tactics/README.md)). A chapter tells
 you *what* to build; a deep dive derives *why it is shaped that way*,
 with measured numbers and compiler experiments. Read them after the
 chapter, when a contract raises a "why this type?" question.
 - **Implementation plans** — where a slice's thinking is already done, its
-`NN-deep-dive/` folder may also grow a step-by-step build plan ending in the
-reference solution (first: [04-deep-dive/02](04-deep-dive/02-implementation-plan.md)).
+companion folder may also grow a step-by-step build plan ending in the
+reference solution (first: [04-win-detection/02](04-win-detection/02-implementation-plan.md)).
 The slice files still withhold implementations; plans are opt-in.
 - **Rust toolbox** — short sections on the language idioms the slice
   needs (const fn, operator traits, PhantomData, ...). You know basic
@@ -92,7 +92,7 @@ implementation plan uses exactly these names for these concepts.
 |---|------|-----------|------------------|
 | 1 | [The workspace](01-the-workspace.md) | — (already scaffolded; orient yourself) | 1 |
 | 2 | [The reference engine](02-the-reference-engine.md) | `Move`, naive `reference.rs` + corpus | 2 |
-| 3 | [Bitboard and Board](03-bitboard-and-board.md) | `Bitboard`, `Board`, differential tests · [deep dives](03-deep-dive/README.md) | 3 |
+| 3 | [Bitboard and Board](03-bitboard-and-board.md) | `Bitboard`, `Board`, differential tests · [deep dives](03-bitboard-and-board/README.md) | 3 |
 | 4 | [Win detection](04-win-detection.md) | `has_five`, edge/overline corpus | 4 |
 | 5 | [Zobrist keys](05-zobrist.md) | const table, incremental key, undo | 5 |
 | 6 | [Symmetry and encoding](06-symmetry-and-encoding.md) | D4 tables, 17×17 planes | 6 |

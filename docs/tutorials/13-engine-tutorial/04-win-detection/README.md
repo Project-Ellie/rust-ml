@@ -6,8 +6,8 @@ The slice ([../04-win-detection.md](../04-win-detection.md)) tells you
 claim is either traced to the design or measured on a real run.
 
 Series conventions (derive then measure; the chapter stays authoritative
-for the API; one `NN-deep-dive/` folder per chapter that needs one) live
-in [03-deep-dive/README.md](../03-deep-dive/README.md).
+for the API; one companion folder per chapter that needs one) live
+in [03-bitboard-and-board/README.md](../03-bitboard-and-board/README.md).
 
 | # | Paper | Answers |
 |---|-------|---------|

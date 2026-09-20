@@ -163,7 +163,7 @@ behind one type is a bug farm; two types make mixing them a compile
 error. `MoveSet` is what tactics return, and what you get by collecting
 `empty_moves()` — which is lazy and allocation-free, so a caller that
 needs one move does not pay for all 225. (Reasoning and measurements:
-[03-deep-dive/02-empty-moves.md](tutorials/13-engine-tutorial/03-deep-dive/02-empty-moves.md);
+[03-bitboard-and-board/02-empty-moves.md](tutorials/13-engine-tutorial/03-bitboard-and-board/02-empty-moves.md);
 contract: [slice 3](tutorials/13-engine-tutorial/03-bitboard-and-board.md).)
 `Bitboard` stays `pub(crate)`.
 

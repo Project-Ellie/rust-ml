@@ -14,7 +14,7 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 fn bench_has_five(c: &mut Criterion) {
     // Several DISTINCT mid-game bitboards (~60 stones each). The input
     // must genuinely change per call, or the optimizer hoists/folds the
-    // call and you measure the optimizer instead (04-deep-dive/01,
+    // call and you measure the optimizer instead (04-win-detection/01,
     // appendix). black_box the slice and the accumulator, never the
     // individual call — a per-call barrier breaks vectorization and
     // inflates the number ~8x.

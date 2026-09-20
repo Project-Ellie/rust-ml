@@ -197,7 +197,7 @@ TDD checklists but withhold implementations — the learner writes the
 code. When
 assisting with a slice: coach toward the contract, don't dump the
 implementation. (Opt-in reference solutions exist for slices 2–4 in the
-`NN-deep-dive/` folders; the CLI tutorial, by contrast, ends each
+per-chapter companion folders; the CLI tutorial, by contrast, ends each
 chapter with a full verified solution.) Stuck >20 min → coaching
 conversation, per the tutorial README. Gates before every commit:
 `cargo test` + `cargo clippy --all-targets -- -D warnings` +

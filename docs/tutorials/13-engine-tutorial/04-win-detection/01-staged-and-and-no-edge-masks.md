@@ -14,7 +14,7 @@ methodology behind every number is in the appendix.
 All measurements were taken on the same machine (M5 Max) with a
 stand-in harness over the real `bitboard.rs`; numbers are illustrative,
 not engine-benchmark output. Series conventions live in
-[03-deep-dive/README.md](../03-deep-dive/README.md).
+[03-bitboard-and-board/README.md](../03-bitboard-and-board/README.md).
 
 ---
 
@@ -128,7 +128,7 @@ per cycle at ~4.5 GHz, ≈ 8.5 cycles per direction.)
 Most bitboard algorithms carry per-direction masks to stop runs wrapping
 across a row boundary. This one does not, because of the padding
 invariant (derived in
-[03-deep-dive/01](../03-deep-dive/01-stride16-and-shr.md)):
+[03-bitboard-and-board/01](../03-bitboard-and-board/01-stride16-and-shr.md)):
 
 > The padding column (column 15 of every row) and the high padding
 > (bits 240–255) are always zero.
@@ -320,6 +320,6 @@ never a factor.
 
 ---
 
-Derivation of the shift primitive itself: [03-deep-dive/01 — Stride-16 and why `shr`](../03-deep-dive/01-stride16-and-shr.md).
+Derivation of the shift primitive itself: [03-bitboard-and-board/01 — Stride-16 and why `shr`](../03-bitboard-and-board/01-stride16-and-shr.md).
 Consumers: [slice 04](../04-win-detection.md), [slice 07 — tactics](../07-tactics.md),
 benchmark and bar: [slice 10](../10-benchmarks-and-hardening.md).

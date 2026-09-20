@@ -216,7 +216,7 @@ enabled, every public item needs a doc comment.
 ## Solution (opt-in)
 
 A complete, compiled, tested reference lives in
-[10-deep-dive/01-solution.md](10-deep-dive/01-solution.md). It quotes
+[10-acceptance/01-solution.md](10-acceptance/01-solution.md). It quotes
 `tests/acceptance.rs` and the final `src/lib.rs` verbatim from the
 verified reference crate.
 

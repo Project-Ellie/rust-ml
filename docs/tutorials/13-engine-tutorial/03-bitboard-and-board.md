@@ -83,7 +83,7 @@ impl FromIterator<Move> for MoveSet {
 ```
 
 Which to use, and why the iterator is the primitive rather than the set:
-[deep dive 02](03-deep-dive/02-empty-moves.md).
+[deep dive 02](03-bitboard-and-board/02-empty-moves.md).
 
 ## Rust toolbox
 
@@ -130,7 +130,7 @@ compiler, kept for documentation and edition-portability; pre-2024 it is
 `E0700`). Being opaque also means only the promised capabilities are
 available — `.len()` needs `ExactSizeIterator`, which is not in the
 bounds, so implement `size_hint` if you want `collect` to preallocate.
-The full reasoning: [deep dive 02](03-deep-dive/02-empty-moves.md).
+The full reasoning: [deep dive 02](03-bitboard-and-board/02-empty-moves.md).
 
 ## The differential harness (the real deliverable)
 
@@ -175,7 +175,7 @@ acceptance number.
 3. `shr` correctness on hand-picked patterns — use `(1,1)` and a
    word-boundary stone like `(4,0)` (a stone at `(0,0)` is the bottom of
    the address space, so every shift discards it). Worked patterns:
-   [deep dive 01](03-deep-dive/01-stride16-and-shr.md)
+   [deep dive 01](03-bitboard-and-board/01-stride16-and-shr.md)
 4. `Board::new` / `play` / `to_move` — differential vs reference begins
 5. `is_legal` + `empty_moves`: count empties via `empty_cells()` (not by
    walking), and check the walk agrees — 225 − stones, deterministic
@@ -199,10 +199,10 @@ acceptance number.
 Two papers derive this slice's primitives from first principles, with
 measured numbers and compiler experiments behind every claim:
 
-- [01 — Stride-16 and why `shr`](03-deep-dive/01-stride16-and-shr.md):
+- [01 — Stride-16 and why `shr`](03-bitboard-and-board/01-stride16-and-shr.md):
   the shift primitive, the padding invariant, and why a wrap-around five
   is impossible.
-- [02 — Why `empty_moves()` looks like that](03-deep-dive/02-empty-moves.md):
+- [02 — Why `empty_moves()` looks like that](03-bitboard-and-board/02-empty-moves.md):
   the lazy-iterator signature, the loop over results, the `+ '_` story,
   and where the bulk (`empty_cells`) path wins.
 
@@ -211,6 +211,6 @@ measured numbers and compiler experiments behind every claim:
 Differential 10k green including undo walks; gates green.
 Commit: `feat(engine): bitboard Board with differential tests`.
 
-Worked solution with the full TDD path: [03-solution.md](03-deep-dive/03-solution.md) — read, understand, then type it yourself.
+Worked solution with the full TDD path: [03-solution.md](03-bitboard-and-board/03-solution.md) — read, understand, then type it yourself.
 
 Next: [Slice 4 — Win detection](04-win-detection.md)

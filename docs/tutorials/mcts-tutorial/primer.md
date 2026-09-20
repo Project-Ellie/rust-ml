@@ -575,7 +575,7 @@ move and a visit-count distribution.
   (DAG). PUCT statistics interact subtly with merged nodes;
   Gomoku's transposition rate is low (stones never move once placed);
   the payoff is unproven at our scale. Full reasoning:
-  [05-deep-dive/01](../13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md)
+  [05-zobrist/01](../13-engine-tutorial/05-zobrist/01-what-zobrist-hashing-is-good-for.md)
   §6. Revisit only if profiling shows duplicate subtrees dominating.
 - **Tree parallelization with virtual loss.** AlphaGo's
   asynchronously parallelized MCTS (APV-MCTS) solved a problem we do
@@ -661,7 +661,7 @@ implementations. The milestone-2 test plan is shaped around them:
   engine design and locked decisions (decision 1: freestyle
   overlines; decision 5: absolute colors; the encoding section:
   17×17 planes with border ring).
-- [docs/tutorials/13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md](../13-engine-tutorial/05-deep-dive/01-what-zobrist-hashing-is-good-for.md)
+- [docs/tutorials/13-engine-tutorial/05-zobrist/01-what-zobrist-hashing-is-good-for.md](../13-engine-tutorial/05-zobrist/01-what-zobrist-hashing-is-good-for.md)
   — why Zobrist keys exist and why the search does not use them (§6).
 - [docs/tutorials/mcts-tutorial/README.md](README.md) — the build
   tutorial for milestone 2 (chapters 01–10).

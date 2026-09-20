@@ -104,7 +104,7 @@ five = b & b.shr(s) & b.shr(2*s) & b.shr(3*s) & b.shr(4*s);
 
 `4 × 17 = 68`, and a u64 shift of 64 or more is not "zero": it is a
 panic in debug builds and masked-amount garbage in release. This form
-is unusable; [04-deep-dive/01](../04-deep-dive/01-staged-and-and-no-edge-masks.md)
+is unusable; [04-win-detection/01](../04-win-detection/01-staged-and-and-no-edge-masks.md)
 §2 quantifies the failure per direction.
 
 ### The staged AND (the design's form)

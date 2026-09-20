@@ -8,8 +8,8 @@ to two is the whole game at this depth, and where v1's truth ends),
 and the *plan* (red→green steps with the verified reference solution).
 
 Series conventions (derive then measure; the chapter stays authoritative
-for the API; one `NN-deep-dive/` folder per chapter that needs one) live
-in [03-deep-dive/README.md](../03-deep-dive/README.md).
+for the API; one companion folder per chapter that needs one) live
+in [03-bitboard-and-board/README.md](../03-bitboard-and-board/README.md).
 
 | # | Paper | Answers |
 |---|-------|---------|

@@ -248,7 +248,7 @@ You need tests for:
 
 The complete reference for this chapter — `tree.rs` including its
 built-in tests — lives in
-[02-deep-dive/01-solution.md](02-deep-dive/01-solution.md). Open it
+[02-the-arena/01-solution.md](02-the-arena/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after the
 chapter for comparison.
 

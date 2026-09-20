@@ -247,7 +247,7 @@ Do not forget to add `mcts` to `gomoku/Cargo.toml` under `[workspace]`
 ## Solution (opt-in)
 
 The complete, compiled, tested reference for this chapter lives in
-[01-deep-dive/01-solution.md](01-deep-dive/01-solution.md). Open it only
+[01-the-crate/01-solution.md](01-the-crate/01-solution.md). Open it only
 if you have been stuck for more than twenty minutes, or after you have
 finished the chapter and want to compare.
 

@@ -231,7 +231,7 @@ the full policy target, so dropping them would make π the wrong shape.
 ## Solution (opt-in)
 
 The complete reference implementation for this chapter lives in
-[08-deep-dive/01-solution.md](08-deep-dive/01-solution.md). Open it
+[08-from-tree-to-move/01-solution.md](08-from-tree-to-move/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after you
 have finished the chapter and want to compare.
 

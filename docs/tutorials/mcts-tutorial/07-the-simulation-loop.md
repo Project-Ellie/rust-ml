@@ -271,7 +271,7 @@ asks you to wait until chapter 09 before expecting them to compile.
 ## Solution (opt-in)
 
 The complete reference implementation for this chapter lives in
-[07-deep-dive/01-solution.md](07-deep-dive/01-solution.md). Open it
+[07-the-simulation-loop/01-solution.md](07-the-simulation-loop/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after you
 have finished the chapter and want to compare your shape to the
 reference.

@@ -26,7 +26,7 @@ engine design: `docs/13-engine-design.md`.
 3. **The engine tutorial is the owner's learn-by-doing material.**
    Slices give contracts, the learner writes implementations. Coach,
    don't hand
-   over solutions (reference solutions in `NN-deep-dive/` are opt-in).
+   over solutions (reference solutions in the per-chapter companion folders are opt-in).
 4. **Gates before any commit:** `cargo test`,
    `cargo clippy --all-targets -- -D warnings`, `cargo fmt --all` —
    all green.

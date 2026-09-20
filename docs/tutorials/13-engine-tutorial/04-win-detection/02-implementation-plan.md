@@ -180,7 +180,7 @@ script; if your copy does, replace it.)
 Honest caveat: through `play` alone even the fixed test cannot fail —
 `Move` only addresses columns 0–14, and the staged AND re-includes the
 unshifted, invariant-holding operand at every stage
-([03-deep-dive/01, §6](../03-deep-dive/01-stride16-and-shr.md)). The
+([03-bitboard-and-board/01, §6](../03-bitboard-and-board/01-stride16-and-shr.md)). The
 sentinel fires when code that writes bits *directly* — an unmasked `!`, a
 future symmetry transform, `from_position` — violates the invariant.
 

@@ -93,7 +93,7 @@ Design-level — the implementation is yours:
 7. **The gapped-four trap** (the soundness test that matters): a
    position where the defender has TWO blocks and one of them refutes
    the line. A proof claiming the win must fail `verify_line`. Build
-   this puzzle by hand from the 07-deep-dive's gapped-four discussion.
+   this puzzle by hand from the 07-tactics's gapped-four discussion.
 8. Differential soundness: on shallow random positions, brute-force
    adjudication via the reference engine (depth-bounded full search —
    shallow only!) agrees with every `Some` the prover emits.
@@ -130,7 +130,7 @@ oracle is a tutor, not the curriculum.
 - **Gapped fours break string-match verifiers.** A four with a gap can
   have two distinct winning cells; the defender may block either, and
   the continuation differs. `verify_line` must enumerate, not assume.
-- **Threats are a global property** (07-deep-dive): a cell can be a
+- **Threats are a global property** (07-tactics): a cell can be a
   winning cell because of stones far away. Generate threats with the
   hypothetical-placement primitive, not with local pattern matching.
 - **Do not call this per PUCT step.** The prover is for puzzle

@@ -39,7 +39,7 @@ you have already written it in your head twice.
    this section you could implement the step without another thought
    about *structure* — all that remains is the writing.
 5. **Solution.** A complete, compiled, tested reference implementation
-   — in the chapter's `NN-deep-dive/` folder, clearly marked. **Opt
+   — in the chapter's companion folder (same root name), clearly marked. **Opt
    in.** The intended use: try the step yourself first; open the
    solution when stuck >20 minutes, or afterwards to compare. Every
    solution is extracted from a reference crate that compiles and

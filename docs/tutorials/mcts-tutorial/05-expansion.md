@@ -154,7 +154,7 @@ For the draw-board test, the reference builds a position where columns 0-1 and 4
 
 The complete reference implementation for this step lives in the deep-dive folder. Open it only after you have tried the step yourself, or when you have been stuck for more than twenty minutes.
 
-- [05-deep-dive/01-solution.md](05-deep-dive/01-solution.md)
+- [05-expansion/01-solution.md](05-expansion/01-solution.md)
 
 The solution quotes `src/expand.rs` from the verified reference crate verbatim.
 

@@ -234,7 +234,7 @@ compile.
 ## Solution (opt-in)
 
 A complete, compiled, tested reference lives in
-[09-deep-dive/01-solution.md](09-deep-dive/01-solution.md). Open it only
+[09-the-tactics-evaluator/01-solution.md](09-the-tactics-evaluator/01-solution.md). Open it only
 if you are stuck for more than twenty minutes or after you have written
 your own version and want to compare. The solution quotes `mock.rs`
 verbatim from the verified reference crate, plus the sign-sentinel tests
