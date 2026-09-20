@@ -20,6 +20,8 @@ pub enum Command {
     Done,
     /// Run the threat-space search demo overlay.
     Tss,
+    /// Puzzle mode: step forward through the claimed solution line.
+    SolutionStep,
     /// Puzzle mode: next sample.
     NextPuzzle,
     /// Puzzle mode: previous sample.
@@ -38,6 +40,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
         "q" | "quit" | "exit" => return Ok(Command::Quit),
         "u" | "undo" => return Ok(Command::Undo),
         "r" | "redo" => return Ok(Command::Redo),
+        "s" | "step" => return Ok(Command::SolutionStep),
         "new" => return Ok(Command::New),
         "h" | "help" | "?" => return Ok(Command::Help),
         "b" => return Ok(Command::TakeBlack),

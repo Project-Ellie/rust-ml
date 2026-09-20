@@ -92,6 +92,7 @@ Do not create sidecars for unverified formats.
 | key | action |
 |-----|--------|
 | `<row> <col>` | play a move from the puzzle position |
+| `s` | step forward through the claimed solution line (unverified — illustration only) |
 | `u` | undo (stops at the puzzle root) |
 | `r` | redo |
 | `n` | next puzzle (wraps around) |

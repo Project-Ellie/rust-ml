@@ -23,7 +23,7 @@ use engine::{Move, Status};
 const HELP_NORMAL: &str =
     "enter <row> <col> to play · 'u' undo · 't' TSS demo (toggle) · 'new' restart · 'q' quit";
 const HELP_OPENING: &str = "<row> <col> to place · 'd' done · 'b' take Black · 'w' take White · 'a' add 2 stones · 'u' undo · 'q' quit";
-const HELP_PUZZLE: &str = "enter <row> <col> to play · 'u' undo · 'r' redo · 'n' next · 'p' previous · 't' TSS demo · 'new' reset puzzle · 'q' quit";
+const HELP_PUZZLE: &str = "enter <row> <col> to play · 's' solution step · 'u' undo · 'r' redo · 'n' next · 'p' previous · 't' TSS demo · 'new' reset puzzle · 'q' quit";
 
 /// Top-level application state.
 pub(crate) enum AppState {
@@ -189,7 +189,7 @@ fn dispatch_opening(opening: &mut OpeningState, cmd: Command) -> Option<OpeningR
         Command::Tss => {
             OpeningResult::Message("TSS demo is only available during normal play".to_string())
         }
-        Command::Redo | Command::NextPuzzle | Command::PrevPuzzle => {
+        Command::Redo | Command::SolutionStep | Command::NextPuzzle | Command::PrevPuzzle => {
             OpeningResult::Message("that command is only available in puzzle mode".to_string())
         }
         Command::New | Command::Help | Command::Quit => unreachable!("handled globally"),
@@ -248,7 +248,7 @@ fn dispatch_normal(
             }
         }
         Command::Tss => run_tss(board, holders, overlay),
-        Command::NextPuzzle | Command::PrevPuzzle => {
+        Command::SolutionStep | Command::NextPuzzle | Command::PrevPuzzle => {
             Some("that command is only available in puzzle mode".to_string())
         }
         Command::Done | Command::TakeBlack | Command::TakeWhite | Command::AddStones => {
@@ -268,6 +268,32 @@ fn dispatch_puzzle(
             Ok(()) => String::new(),
             Err(e) => e.to_string(),
         }),
+        // Step through the claimed solution line. Deliberately NOT
+        // verified against the engine (personal illustration only) —
+        // verification belongs to verify_line per ch. 14 decision D5.
+        Command::SolutionStep => {
+            let line = puzzle.puzzles[puzzle.index].solution.as_deref();
+            let Some(line) = line else {
+                return Some("this puzzle has no claimed solution".to_string());
+            };
+            let history = puzzle.board.moves();
+            if history.len() >= line.len() {
+                return Some("end of the claimed line".to_string());
+            }
+            if history
+                .iter()
+                .zip(line.iter())
+                .any(|(played, claimed)| played != claimed)
+            {
+                return Some("history diverged from the claimed line — 'new' to reset".to_string());
+            }
+            let next = line[history.len()];
+            let step = history.len() + 1;
+            match puzzle.board.play(next) {
+                Ok(()) => Some(format!("claimed line {step}/{}", line.len())),
+                Err(e) => Some(format!("claimed line broke at step {step}: {e}")),
+            }
+        }
         Command::Undo => {
             if puzzle.board.moves().is_empty() {
                 Some("already at the puzzle root".to_string())
@@ -828,6 +854,125 @@ mod tests {
             solution: None,
             depth: None,
         }
+    }
+
+    fn dummy_puzzle_with_line() -> Puzzle {
+        // White to move; a three-move claimed line on empty cells.
+        Puzzle {
+            solution: Some(vec![
+                Move::new(7, 8).unwrap(),
+                Move::new(8, 8).unwrap(),
+                Move::new(7, 9).unwrap(),
+            ]),
+            ..dummy_puzzle(0)
+        }
+    }
+
+    #[test]
+    fn solution_step_walks_the_claimed_line() {
+        let puzzles = vec![dummy_puzzle_with_line()];
+        let mut state = AppState::new_puzzle(puzzles, 0);
+        let mut overlay = None;
+
+        for step in 1..=3 {
+            let msg = dispatch(
+                &mut state,
+                EngineKind::Fast,
+                false,
+                Command::SolutionStep,
+                &mut overlay,
+            )
+            .unwrap();
+            assert_eq!(msg, format!("claimed line {step}/3"));
+        }
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert_eq!(p.board.moves().len(), 3);
+
+        let msg = dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::SolutionStep,
+            &mut overlay,
+        )
+        .unwrap();
+        assert_eq!(msg, "end of the claimed line");
+    }
+
+    #[test]
+    fn solution_step_without_line_is_refused() {
+        let puzzles = vec![dummy_puzzle(0)];
+        let mut state = AppState::new_puzzle(puzzles, 0);
+        let mut overlay = None;
+        let msg = dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::SolutionStep,
+            &mut overlay,
+        )
+        .unwrap();
+        assert_eq!(msg, "this puzzle has no claimed solution");
+    }
+
+    #[test]
+    fn solution_step_refuses_diverged_history_and_recovers_via_undo() {
+        let puzzles = vec![dummy_puzzle_with_line()];
+        let mut state = AppState::new_puzzle(puzzles, 0);
+        let mut overlay = None;
+
+        // Play a move that is NOT the claimed first move.
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::Play(Move::new(0, 0).unwrap()),
+            &mut overlay,
+        );
+        let msg = dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::SolutionStep,
+            &mut overlay,
+        )
+        .unwrap();
+        assert!(msg.contains("diverged"), "{msg}");
+
+        // Undo back to the root: stepping works again.
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::Undo,
+            &mut overlay,
+        );
+        let msg = dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::SolutionStep,
+            &mut overlay,
+        )
+        .unwrap();
+        assert_eq!(msg, "claimed line 1/3");
+    }
+
+    #[test]
+    fn solution_step_is_puzzle_only() {
+        let mut state = AppState::new(EngineKind::Fast, false);
+        let mut overlay = None;
+        let msg = dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::SolutionStep,
+            &mut overlay,
+        )
+        .unwrap();
+        assert!(msg.contains("only available in puzzle mode"), "{msg}");
     }
 
     #[test]
