@@ -666,25 +666,41 @@ implementations. The milestone-2 test plan is shaped around them:
 **External literature:**
 
 - Silver, D. et al. (2017). *Mastering the Game of Go without Human
-  Knowledge* (AlphaGo Zero). Nature 550, 354–359. — The algorithm we
-  implement: 800 simulations per move, `τ = 1` for the first 30 moves,
-  Dirichlet noise at the root with `ε = 0.25`, resignation
-  thresholding, tree reuse.
+  Knowledge* (AlphaGo Zero). Nature 550, 354–359.
+  https://doi.org/10.1038/nature24270 — The algorithm we implement:
+  800 simulations per move, `τ = 1` for the first 30 moves, Dirichlet
+  noise at the root with `ε = 0.25`, resignation thresholding, tree
+  reuse.
 - Silver, D. et al. (2018). *A General Reinforcement Learning
   Algorithm that Masters Chess, Shogi, and Go through Self-Play*
-  (AlphaZero). Science 362, 1140–1144. — The `α ≈ 10/(legal moves)`
+  (AlphaZero). Science 362, 1140–1144.
+  https://arxiv.org/abs/1712.01815 — The `α ≈ 10/(legal moves)`
   heuristic underlying our `α = 0.1`.
 - Tian, Y. et al. (2019). *ELF OpenGo: An Analysis and Open
-  Reimplementation of AlphaZero*. ICML 2019. — The published numeric
+  Reimplementation of AlphaZero*. ICML 2019.
+  https://arxiv.org/abs/1902.04522 — The published numeric
   `c_puct = 1.5`; batching and engineering practice.
 - Wu, D. J. (2019). *Accelerating Self-Play Learning in Go*
-  (KataGo). arXiv:1902.10565. — Playout-cap randomization
-  (registered upgrade #1).
+  (KataGo). arXiv:1902.10565. https://arxiv.org/abs/1902.10565 —
+  Playout-cap randomization (registered upgrade #1).
+- Auer, P. et al. (2002). *Finite-time Analysis of the Multiarmed
+  Bandit Problem*. Machine Learning 47(2–3), 235–256.
+  https://doi.org/10.1023/a:1013689704352 — UCB1, the bandit formula
+  that underlies UCT.
+- Kocsis, L. & Szepesvári, C. (2006). *Bandit Based Monte-Carlo
+  Planning*. ECML 2006, LNCS 4212.
+  https://doi.org/10.1007/11871842_29 — UCT, the tree form of UCB1.
 - Rosin, C. D. (2011). *Multi-armed Bandits with Episode Context*.
-  Annals of Mathematics and Artificial Intelligence 61, 203–230. —
-  The PUCT selection rule (polynomial UCT with a predictor prior).
+  Annals of Mathematics and Artificial Intelligence 61, 203–230.
+  https://doi.org/10.1007/s10472-011-9258-6 — The PUCT selection
+  rule (polynomial UCT with a predictor prior).
+- Chaslot, G. et al. (2008). *Parallel Monte-Carlo Tree Search*.
+  Computers and Games (CG 2008), LNCS 5131.
+  https://doi.org/10.1007/978-3-540-87608-3_6 — Virtual loss and the
+  parallel-MCTS taxonomy (root/leaf/tree parallelization) this design
+  draws its exclusions from.
 - Browne, C. et al. (2012). *A Survey of Monte Carlo Tree Search
   Methods*. IEEE Transactions on Computational Intelligence and AI in
-  Games 4(1), 1–43. — The classical MCTS taxonomy (selection
-  enhancements, rollout parallelization, virtual loss) this design
-  draws its exclusions from.
+  Games 4(1), 1–43. https://doi.org/10.1109/tciaig.2012.2186810 —
+  The classical MCTS survey (selection enhancements, rollout
+  parallelization) this design draws its exclusions from.

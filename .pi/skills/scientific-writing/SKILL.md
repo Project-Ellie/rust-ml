@@ -51,7 +51,39 @@ Concretely, every document MUST have:
    ch. 12. Summarize — do not duplicate wholesale.
 5. **A references section last** (heading `## References`) listing
    every cited source, local and external: repository documents with
-   their paths, papers with authors/venue/year, URLs where useful.
+   their paths, papers with authors/venue/year. **Provide a link for
+   every entry whenever one exists** — a repository-relative path for
+   local documents, a stable URL (arXiv abstract page or DOI) for
+   external ones.
+
+## Citation Rules
+
+1. **Abbreviations are expanded at first use.** First occurrence
+   carries the full term with the abbreviation in parentheses —
+   "Monte Carlo Tree Search (MCTS)" — thereafter the abbreviation is
+   used consistently. Applies even to terms the glossary defines:
+   the body must stand alone.
+2. **Pointy terms cite their first noteworthy use.** When the text
+   uses a named technique, formula, or mechanism from the literature
+   (PUCT, Dirichlet noise, virtual loss, threat-space search, UCB1,
+   temperature sampling, …), the citation at the point of use points
+   to the *first noteworthy use* — the earliest citable source that
+   introduced or standardized it in the form we use (PUCT → Rosin
+   2011, virtual loss → Chaslot et al. 2008, root Dirichlet noise →
+   AlphaGo Zero 2017). Citing the paper you happen to have read is
+   not the same thing.
+3. **Consult the project catalogue before searching the internet.**
+   `docs/references/` holds the verified literature base:
+   `catalogue.md` (human-readable, grouped by topic) and
+   `index.jsonl` (machine semantic index — grep it:
+   `rg 'term' docs/references/index.jsonl` — the `aliases` field
+   matches synonyms and alternative phrasings). The catalogue answers
+   "what do I cite for X?" without a web search. Only search the
+   internet (arXiv, publisher sites — high-reputation sources) when
+   the catalogue lacks the entry; then ADD the new verified entry to
+   the catalogue (via `docs/references/generate.py`) so the search
+   never happens twice. Never cite bibliographic data you have not
+   verified against the arXiv or publisher record.
 
 ## Language Rules
 
@@ -107,6 +139,12 @@ Concretely, every document MUST have:
 - [ ] Every metaphor: does the sentence still state the mechanism?
       If not, rewrite as mechanism.
 - [ ] No colloquialism outside the glossary.
+- [ ] Every abbreviation expanded at first use in the body.
+- [ ] Every pointy term cites its first noteworthy use (checked
+      against `docs/references/index.jsonl`).
+- [ ] Every references entry has a link (local path or stable URL).
+- [ ] Any literature found outside the catalogue was verified AND
+      added to the catalogue.
 
 ## Common mistakes (observed baseline)
 
@@ -117,3 +155,6 @@ Concretely, every document MUST have:
 | "fertile bug farm" | "the most common source of implementation defects" |
 | "Prerequisites: ch. 12 §1–2" (assumed reading) | Two-sentence summary of the needed content + citation |
 | "The honesty ledger applies" (convention undefined in-doc) | Glossary entry + ch. 12 in references |
+| "PUCT [paper]" (cites whatever was at hand) | "PUCT (predictor UCT, Rosin 2011)" — expand the abbreviation, cite the first noteworthy use |
+| References without links | arXiv abs URL or DOI per external entry; repo-relative path per local entry |
+| Web search for a paper the project has cited before | `rg` the catalogue's `index.jsonl` first; add new finds to it |
