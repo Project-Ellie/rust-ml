@@ -10,3 +10,8 @@
 proptest-regressions/
 *.proptest-regressions
 __pycache__/
+
+# data/ bulk content — local-only (licensing gate, see data/README.md)
+data/gomocup-games/games/
+data/karesis-gomoku/files/
+data/puzzles/files/
