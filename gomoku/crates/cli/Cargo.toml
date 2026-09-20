@@ -16,3 +16,6 @@ naive-engine = ["engine/testutil"]
 [dependencies]
 crossterm.workspace = true
 engine = { path = "../engine" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true

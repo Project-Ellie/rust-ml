@@ -25,6 +25,13 @@ pub trait GameBoard {
     fn engine_board(&self) -> Option<&engine::Board> {
         None
     }
+    /// Redo the last undone move. Default is a no-op for boards that do
+    /// not keep a redo stack.
+    fn redo(&mut self) {}
+    /// True if there are moves available to redo.
+    fn can_redo(&self) -> bool {
+        false
+    }
 }
 
 /// The naive oracle, wrapped so UI extras have a home.
@@ -121,6 +128,90 @@ pub fn board_for(kind: EngineKind) -> Box<dyn GameBoard> {
     }
 }
 
+// ------------------------------------------------------------------
+// Puzzle board
+
+use crate::puzzle::Puzzle;
+
+/// A board that starts from a puzzle root and supports undo/redo over
+/// the moves played since that root.
+///
+/// The underlying engine board is rebuilt from `Board::from_position`
+/// plus the current history. This matches the CLI's existing
+/// rebuild-by-replay approach and gives a hard undo floor at the puzzle
+/// root.
+pub struct PuzzleBoard {
+    board: engine::Board,
+    redo: Vec<Move>,
+}
+
+impl PuzzleBoard {
+    /// Build a board from a loaded puzzle.
+    ///
+    /// # Panics
+    /// Panics if the puzzle does not form a valid position. The parser
+    /// already validates this, so this is an internal-consistency check.
+    pub fn new(puzzle: &Puzzle) -> Self {
+        let board = engine::Board::from_position(&puzzle.black, &puzzle.white, puzzle.to_move)
+            .expect("puzzle parser validated the position");
+        Self {
+            board,
+            redo: Vec::new(),
+        }
+    }
+}
+
+impl GameBoard for PuzzleBoard {
+    fn play(&mut self, mv: Move) -> Result<(), PlayError> {
+        self.board.play(mv)?;
+        self.redo.clear();
+        Ok(())
+    }
+
+    fn undo(&mut self) {
+        if self.board.moves().is_empty() {
+            return;
+        }
+        let mv = self.board.moves().last().copied().expect("non-empty");
+        self.board.undo();
+        self.redo.push(mv);
+    }
+
+    fn status(&self) -> Status {
+        self.board.status()
+    }
+
+    fn to_move(&self) -> Color {
+        self.board.to_move()
+    }
+
+    fn stone_at(&self, mv: Move) -> Option<Color> {
+        self.board.stone_at(mv)
+    }
+
+    fn moves(&self) -> &[Move] {
+        self.board.moves()
+    }
+
+    fn name(&self) -> &'static str {
+        "fast"
+    }
+
+    fn engine_board(&self) -> Option<&engine::Board> {
+        Some(&self.board)
+    }
+
+    fn redo(&mut self) {
+        if let Some(mv) = self.redo.pop() {
+            let _ = self.board.play(mv);
+        }
+    }
+
+    fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +282,74 @@ mod tests {
         board.undo();
         assert_eq!(board.status(), Status::Ongoing);
         assert_eq!(board.moves().len(), 8);
+    }
+
+    #[test]
+    fn puzzle_board_undo_floors_at_root() {
+        let puzzle = Puzzle {
+            name: "test".to_string(),
+            black: vec![Move::new(7, 7).unwrap()],
+            white: vec![],
+            to_move: Color::White,
+            solution: None,
+            depth: None,
+        };
+        let mut board = PuzzleBoard::new(&puzzle);
+        assert!(board.moves().is_empty());
+
+        board.undo();
+        assert!(board.moves().is_empty());
+
+        board.play(Move::new(7, 8).unwrap()).unwrap();
+        assert_eq!(board.moves().len(), 1);
+        board.undo();
+        assert!(board.moves().is_empty());
+        board.undo();
+        assert!(board.moves().is_empty());
+    }
+
+    #[test]
+    fn puzzle_board_redo_is_cleared_on_new_move() {
+        let puzzle = Puzzle {
+            name: "test".to_string(),
+            black: vec![Move::new(7, 7).unwrap()],
+            white: vec![],
+            to_move: Color::White,
+            solution: None,
+            depth: None,
+        };
+        let mut board = PuzzleBoard::new(&puzzle);
+        board.play(Move::new(7, 8).unwrap()).unwrap();
+        board.play(Move::new(6, 6).unwrap()).unwrap();
+        board.undo();
+        assert!(board.can_redo());
+
+        board.play(Move::new(5, 5).unwrap()).unwrap();
+        assert!(!board.can_redo());
+        assert_eq!(board.moves().len(), 2);
+        assert_eq!(
+            board.moves().last().copied(),
+            Some(Move::new(5, 5).unwrap())
+        );
+    }
+
+    #[test]
+    fn puzzle_board_redo_replays_moves() {
+        let puzzle = Puzzle {
+            name: "test".to_string(),
+            black: vec![],
+            white: vec![],
+            to_move: Color::Black,
+            solution: None,
+            depth: None,
+        };
+        let mut board = PuzzleBoard::new(&puzzle);
+        board.play(Move::new(7, 7).unwrap()).unwrap();
+        board.undo();
+        assert!(board.moves().is_empty());
+
+        board.redo();
+        assert_eq!(board.moves().len(), 1);
+        assert_eq!(board.stone_at(Move::new(7, 7).unwrap()), Some(Color::Black));
     }
 }

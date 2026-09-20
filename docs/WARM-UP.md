@@ -173,14 +173,16 @@ Fixed glossary (tutorial README has the full version):
   CLI crate (the engine itself deliberately has no shared trait).
 - **CLI demo features**: hotseat Swap2 opening flow (default; party
   switches for accept-or-add-2 and color choice, undo by replaying the
-  placement log — `--no-swap2` skips) and a TSS overlay (`t` key):
+  placement log — `--no-swap2` skips), a TSS overlay (`t` key):
   the verified forced-win line rendered as numbered cells (attacker
-  plain, defender bracketed), verdict line included. `--engine naive`
-  is a default-on cargo feature (`naive-engine`); lean builds use
-  `--no-default-features`.
+  plain, defender bracketed), verdict line included, and a puzzle
+  examination mode (`--puzzle <path> [--index N]`) with sidecar parser
+  trust gate, undo/redo floor at the puzzle root, next/previous
+  wrapping, and TSS overlay. `--engine naive` is a default-on cargo
+  feature (`naive-engine`); lean builds use `--no-default-features`.
 
 Verified: `cargo test -p engine --features testutil` → 92 unit + 5
-differential + 2 doc-tests green; `cargo test -p cli` → 27 green;
+differential + 2 doc-tests green; `cargo test -p cli` → 41 green;
 `cargo bench -p engine` meets the milestone-1 bar.
 
 Milestones 2–8 (mcts, net+train on synthetic data, TSS anchor set,

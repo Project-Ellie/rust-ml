@@ -10,9 +10,10 @@ use crossterm::{
     terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use crate::board::{EngineKind, FastBoard, GameBoard, board_for};
+use crate::board::{EngineKind, FastBoard, GameBoard, PuzzleBoard, board_for};
 use crate::input::{Command, parse};
 use crate::opening::{Holders, OpeningPhase, OpeningState, Party};
+use crate::puzzle::Puzzle;
 use crate::render::{
     overlay_verdict, render_lines, render_lines_with_overlay, render_opening_lines,
     render_opening_styled, render_styled, render_styled_with_overlay, status_line,
@@ -22,6 +23,7 @@ use engine::{Move, Status};
 const HELP_NORMAL: &str =
     "enter <row> <col> to play · 'u' undo · 't' TSS demo (toggle) · 'new' restart · 'q' quit";
 const HELP_OPENING: &str = "<row> <col> to place · 'd' done · 'b' take Black · 'w' take White · 'a' add 2 stones · 'u' undo · 'q' quit";
+const HELP_PUZZLE: &str = "enter <row> <col> to play · 'u' undo · 'r' redo · 'n' next · 'p' previous · 't' TSS demo · 'new' reset puzzle · 'q' quit";
 
 /// Top-level application state.
 pub(crate) enum AppState {
@@ -29,6 +31,14 @@ pub(crate) enum AppState {
     Opening(OpeningState),
     /// Normal alternating play, optionally with hotseat holders from Swap2.
     Normal(Box<dyn GameBoard>, Option<Holders>),
+    /// Puzzle examination mode.
+    Puzzle(PuzzleState),
+}
+
+pub(crate) struct PuzzleState {
+    puzzles: Vec<Puzzle>,
+    index: usize,
+    board: PuzzleBoard,
 }
 
 impl AppState {
@@ -39,12 +49,22 @@ impl AppState {
             AppState::Normal(board_for(kind), None)
         }
     }
+
+    fn new_puzzle(puzzles: Vec<Puzzle>, index: usize) -> Self {
+        let board = PuzzleBoard::new(&puzzles[index]);
+        AppState::Puzzle(PuzzleState {
+            puzzles,
+            index,
+            board,
+        })
+    }
 }
 
 fn help_for(state: &AppState) -> &'static str {
     match state {
         AppState::Opening(_) => HELP_OPENING,
         AppState::Normal(_, _) => HELP_NORMAL,
+        AppState::Puzzle(_) => HELP_PUZZLE,
     }
 }
 
@@ -62,8 +82,14 @@ pub(crate) fn dispatch(
         Command::Quit => return None,
         Command::Help => return Some(help_for(state).to_string()),
         Command::New => {
-            *state = AppState::new(kind, swap2);
             *overlay = None;
+            if let AppState::Puzzle(puzzle) = state {
+                let puzzles = std::mem::take(&mut puzzle.puzzles);
+                let index = puzzle.index;
+                *state = AppState::new_puzzle(puzzles, index);
+            } else {
+                *state = AppState::new(kind, swap2);
+            }
             return Some(start_message(state));
         }
         _ => {}
@@ -94,6 +120,7 @@ pub(crate) fn dispatch(
         AppState::Normal(board, holders) => {
             dispatch_normal(&mut **board, holders.as_ref(), cmd, overlay)
         }
+        AppState::Puzzle(puzzle) => dispatch_puzzle(puzzle, cmd, overlay),
     }
 }
 
@@ -108,6 +135,7 @@ fn start_message(state: &AppState) -> String {
             "Swap2 opening — Player A places two Black and one White stone".to_string()
         }
         AppState::Normal(_, _) => "new game — Black to move".to_string(),
+        AppState::Puzzle(puzzle) => puzzle_status_line(puzzle),
     }
 }
 
@@ -157,6 +185,9 @@ fn dispatch_opening(opening: &mut OpeningState, cmd: Command) -> Option<OpeningR
         Command::Tss => {
             OpeningResult::Message("TSS demo is only available during normal play".to_string())
         }
+        Command::Redo | Command::NextPuzzle | Command::PrevPuzzle => {
+            OpeningResult::Message("that command is only available in puzzle mode".to_string())
+        }
         Command::New | Command::Help | Command::Quit => unreachable!("handled globally"),
     })
 }
@@ -204,7 +235,76 @@ fn dispatch_normal(
                 ))
             }
         }
+        Command::Redo => {
+            if board.can_redo() {
+                board.redo();
+                Some(format!("redid move — {:?} to move", board.to_move()))
+            } else {
+                Some("nothing to redo".to_string())
+            }
+        }
         Command::Tss => run_tss(board, holders, overlay),
+        Command::NextPuzzle | Command::PrevPuzzle => {
+            Some("that command is only available in puzzle mode".to_string())
+        }
+        Command::Done | Command::TakeBlack | Command::TakeWhite | Command::AddStones => {
+            Some("that command is only available during the Swap2 opening".to_string())
+        }
+        Command::New | Command::Help | Command::Quit => unreachable!("handled globally"),
+    }
+}
+
+fn dispatch_puzzle(
+    puzzle: &mut PuzzleState,
+    cmd: Command,
+    overlay: &mut Option<engine::Proof>,
+) -> Option<String> {
+    match cmd {
+        Command::Play(mv) => Some(match puzzle.board.play(mv) {
+            Ok(()) => String::new(),
+            Err(e) => e.to_string(),
+        }),
+        Command::Undo => {
+            if puzzle.board.moves().is_empty() {
+                Some("already at the puzzle root".to_string())
+            } else {
+                puzzle.board.undo();
+                Some(format!(
+                    "undid the last move — {:?} to move",
+                    puzzle.board.to_move()
+                ))
+            }
+        }
+        Command::Redo => {
+            if puzzle.board.can_redo() {
+                puzzle.board.redo();
+                Some(format!("redid move — {:?} to move", puzzle.board.to_move()))
+            } else {
+                Some("nothing to redo".to_string())
+            }
+        }
+        Command::NextPuzzle => {
+            puzzle.index = (puzzle.index + 1) % puzzle.puzzles.len();
+            puzzle.board = PuzzleBoard::new(&puzzle.puzzles[puzzle.index]);
+            *overlay = None;
+            Some(format!(
+                "puzzle {}/{}",
+                puzzle.index + 1,
+                puzzle.puzzles.len()
+            ))
+        }
+        Command::PrevPuzzle => {
+            let n = puzzle.puzzles.len();
+            puzzle.index = (puzzle.index + n - 1) % n;
+            puzzle.board = PuzzleBoard::new(&puzzle.puzzles[puzzle.index]);
+            *overlay = None;
+            Some(format!(
+                "puzzle {}/{}",
+                puzzle.index + 1,
+                puzzle.puzzles.len()
+            ))
+        }
+        Command::Tss => run_tss(&puzzle.board, None, overlay),
         Command::Done | Command::TakeBlack | Command::TakeWhite | Command::AddStones => {
             Some("that command is only available during the Swap2 opening".to_string())
         }
@@ -317,6 +417,7 @@ fn status_for(state: &AppState) -> String {
     match state {
         AppState::Opening(opening) => opening_prompt_message(opening),
         AppState::Normal(board, holders) => status_line_for(&**board, holders.as_ref()),
+        AppState::Puzzle(puzzle) => puzzle_status_line(puzzle),
     }
 }
 
@@ -336,6 +437,30 @@ fn status_line_for(board: &dyn GameBoard, holders: Option<&Holders>) -> String {
             format!("{base} · {:?} to move", board.to_move())
         }
         _ => status_line(board),
+    }
+}
+
+fn puzzle_status_line(puzzle: &PuzzleState) -> String {
+    let p = &puzzle.puzzles[puzzle.index];
+    let solution_tag = if p.solution.is_some() {
+        " · solution"
+    } else {
+        ""
+    };
+    let depth_tag = if let Some(d) = p.depth {
+        format!(" · depth {d}")
+    } else {
+        String::new()
+    };
+    match puzzle.board.status() {
+        Status::Ongoing => format!(
+            "{} · {}/{} · {:?} to move{solution_tag}{depth_tag}",
+            p.name,
+            puzzle.index + 1,
+            puzzle.puzzles.len(),
+            puzzle.board.to_move()
+        ),
+        _ => status_line(&puzzle.board),
     }
 }
 
@@ -426,19 +551,26 @@ fn render_state(state: &AppState, overlay: Option<&engine::Proof>, styled: bool)
                 render_opening_lines(opening)
             }
         }
-        AppState::Normal(board, _) => {
-            if let Some(proof) = overlay {
-                if styled {
-                    render_styled_with_overlay(&**board, proof)
-                } else {
-                    render_lines_with_overlay(&**board, proof)
-                }
-            } else if styled {
-                render_styled(&**board)
-            } else {
-                render_lines(&**board)
-            }
+        AppState::Normal(board, _) => render_board(&**board, overlay, styled),
+        AppState::Puzzle(puzzle) => render_board(&puzzle.board, overlay, styled),
+    }
+}
+
+fn render_board(
+    board: &dyn GameBoard,
+    overlay: Option<&engine::Proof>,
+    styled: bool,
+) -> Vec<String> {
+    if let Some(proof) = overlay {
+        if styled {
+            render_styled_with_overlay(board, proof)
+        } else {
+            render_lines_with_overlay(board, proof)
         }
+    } else if styled {
+        render_styled(board)
+    } else {
+        render_lines(board)
     }
 }
 
@@ -471,10 +603,82 @@ pub fn run_ui(_board: Box<dyn GameBoard>, kind: EngineKind, swap2: bool) -> io::
     Ok(())
 }
 
+// ------------------------------------------------------------------
+// Puzzle mode front-ends
+
+/// Scrolling front-end for puzzle mode: same loop as `run_plain`,
+/// browsing and playing puzzles without the alternate screen.
+pub fn run_plain_puzzle(puzzles: Vec<Puzzle>, index: usize) -> io::Result<()> {
+    let mut state = AppState::new_puzzle(puzzles, index);
+    let mut overlay: Option<engine::Proof> = None;
+    let mut message = start_message(&state);
+    loop {
+        for line in render_state(&state, overlay.as_ref(), false) {
+            println!("{line}");
+        }
+        println!("{}", status_for(&state));
+        if !message.is_empty() {
+            println!("{message}");
+        }
+        print!("> ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input)? == 0 {
+            break; // EOF (Ctrl-D): leave quietly
+        }
+        let cmd = match parse(&input) {
+            Ok(c) => c,
+            Err(e) => {
+                message = e;
+                continue;
+            }
+        };
+        // `kind` and `swap2` are unused in puzzle mode because `New`
+        // resets the current puzzle, not the normal game.
+        match dispatch(&mut state, EngineKind::Fast, false, cmd, &mut overlay) {
+            Some(next) => message = next,
+            None => break,
+        }
+    }
+    Ok(())
+}
+
+/// Alternate-screen front-end for puzzle mode.
+pub fn run_ui_puzzle(puzzles: Vec<Puzzle>, index: usize) -> io::Result<()> {
+    let _screen = AlternateScreen::enter()?;
+    let mut stdout = io::stdout();
+    let mut state = AppState::new_puzzle(puzzles, index);
+    let mut overlay: Option<engine::Proof> = None;
+    let mut message = start_message(&state);
+    loop {
+        draw(&mut stdout, &state, overlay.as_ref(), &message)?;
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input)? == 0 {
+            break; // EOF
+        }
+        let cmd = match parse(&input) {
+            Ok(c) => c,
+            Err(e) => {
+                message = e;
+                continue;
+            }
+        };
+        // `kind` and `swap2` are unused in puzzle mode because `New`
+        // resets the current puzzle, not the normal game.
+        match dispatch(&mut state, EngineKind::Fast, false, cmd, &mut overlay) {
+            Some(next) => message = next,
+            None => break,
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::Move;
+    use engine::{Color, Move};
 
     #[test]
     fn undo_with_empty_history_is_refused_not_panicked() {
@@ -609,5 +813,95 @@ mod tests {
         )
         .unwrap();
         assert!(msg.contains("Swap2 done"), "{msg}");
+    }
+
+    fn dummy_puzzle(index: u32) -> Puzzle {
+        Puzzle {
+            name: format!("puzzle #{index}"),
+            black: vec![Move::new(7, 7).unwrap()],
+            white: vec![],
+            to_move: Color::White,
+            solution: None,
+            depth: None,
+        }
+    }
+
+    #[test]
+    fn puzzle_navigation_wraps_around() {
+        let puzzles = vec![dummy_puzzle(0), dummy_puzzle(1), dummy_puzzle(2)];
+        let mut state = AppState::new_puzzle(puzzles, 0);
+        let mut overlay = None;
+
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::PrevPuzzle,
+            &mut overlay,
+        )
+        .unwrap();
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert_eq!(p.index, 2);
+
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::NextPuzzle,
+            &mut overlay,
+        )
+        .unwrap();
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert_eq!(p.index, 0);
+    }
+
+    #[test]
+    fn puzzle_reset_clears_history() {
+        let puzzles = vec![dummy_puzzle(0)];
+        let mut state = AppState::new_puzzle(puzzles, 0);
+        let mut overlay = None;
+
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::Play(Move::new(7, 8).unwrap()),
+            &mut overlay,
+        )
+        .unwrap();
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert_eq!(p.board.moves().len(), 1);
+
+        // Undo once so a redo stack exists; reset must clear it too.
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::Undo,
+            &mut overlay,
+        );
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert!(p.board.can_redo());
+
+        dispatch(
+            &mut state,
+            EngineKind::Fast,
+            false,
+            Command::New,
+            &mut overlay,
+        );
+        let AppState::Puzzle(p) = &state else {
+            panic!("expected puzzle state");
+        };
+        assert!(p.board.moves().is_empty());
+        assert!(!p.board.can_redo());
     }
 }

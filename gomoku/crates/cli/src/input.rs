@@ -6,6 +6,7 @@ use engine::Move;
 pub enum Command {
     Play(Move),
     Undo,
+    Redo,
     New,
     Quit,
     Help,
@@ -19,9 +20,15 @@ pub enum Command {
     Done,
     /// Run the threat-space search demo overlay.
     Tss,
+    /// Puzzle mode: next sample.
+    NextPuzzle,
+    /// Puzzle mode: previous sample.
+    PrevPuzzle,
 }
 
-const USAGE: &str = "usage: <row> <col> (0-14) · 'u' undo · 'd' done (opening) · 'b'/'w'/'a' Swap2 choices · 't' TSS demo · 'new' restart · 'q' quit";
+// Kept mode-agnostic on purpose: mode-specific keys live in the
+// ui.rs HELP_* strings shown by the 'h' command.
+const USAGE: &str = "usage: <row> <col> (0-14) · 'h' help · 'q' quit";
 
 /// Parse one line of user input. Never panics; typos become `Err`
 /// messages the UI can display.
@@ -30,6 +37,7 @@ pub fn parse(input: &str) -> Result<Command, String> {
     match text.as_str() {
         "q" | "quit" | "exit" => return Ok(Command::Quit),
         "u" | "undo" => return Ok(Command::Undo),
+        "r" | "redo" => return Ok(Command::Redo),
         "new" => return Ok(Command::New),
         "h" | "help" | "?" => return Ok(Command::Help),
         "b" => return Ok(Command::TakeBlack),
@@ -37,6 +45,8 @@ pub fn parse(input: &str) -> Result<Command, String> {
         "a" => return Ok(Command::AddStones),
         "d" => return Ok(Command::Done),
         "t" => return Ok(Command::Tss),
+        "n" => return Ok(Command::NextPuzzle),
+        "p" => return Ok(Command::PrevPuzzle),
         _ => {}
     }
 
@@ -87,6 +97,9 @@ mod tests {
         assert!(matches!(parse("a"), Ok(Command::AddStones)));
         assert!(matches!(parse("d"), Ok(Command::Done)));
         assert!(matches!(parse("t"), Ok(Command::Tss)));
+        assert!(matches!(parse("n"), Ok(Command::NextPuzzle)));
+        assert!(matches!(parse("p"), Ok(Command::PrevPuzzle)));
+        assert!(matches!(parse("r"), Ok(Command::Redo)));
     }
 
     #[test]

@@ -126,6 +126,9 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "engine",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
