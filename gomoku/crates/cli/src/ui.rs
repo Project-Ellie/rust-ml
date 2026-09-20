@@ -20,7 +20,7 @@ use crate::render::{
 use engine::{Move, Status};
 
 const HELP_NORMAL: &str =
-    "enter <row> <col> to play · 'u' undo · 't' TSS demo · 'new' restart · 'q' quit";
+    "enter <row> <col> to play · 'u' undo · 't' TSS demo (toggle) · 'new' restart · 'q' quit";
 const HELP_OPENING: &str = "<row> <col> to place · 'd' done · 'b' take Black · 'w' take White · 'a' add 2 stones · 'u' undo · 'q' quit";
 
 /// Top-level application state.
@@ -217,13 +217,21 @@ fn run_tss(
     holders: Option<&Holders>,
     overlay: &mut Option<engine::Proof>,
 ) -> Option<String> {
+    // Toggle: an active overlay is hidden by pressing 't' again.
+    if overlay.is_some() {
+        *overlay = None;
+        return Some("TSS overlay hidden".to_string());
+    }
+
     let Some(fast) = board.engine_board() else {
         return Some("TSS demo requires the fast engine".to_string());
     };
 
+    // Depth 9 keeps overlay numbers single-digit, which keeps the
+    // board at the normal width-3 grid (see render.rs overlay cells).
     let budget = engine::SearchBudget {
         max_nodes: 100_000,
-        max_depth: 16,
+        max_depth: 9,
     };
     let side = board.to_move();
     let Some(proof) = engine::prove_forced_win(fast, side, budget) else {

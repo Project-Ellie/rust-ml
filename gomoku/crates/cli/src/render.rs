@@ -186,7 +186,7 @@ impl GameBoard for TemporaryOpeningBoard {
 /// Plain rendering with a verified TSS line overlaid as numbered cells.
 pub fn render_lines_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 4, |glyph, is_last, mv| {
+    render_with(board, 3, |glyph, is_last, mv| {
         if let Some((n, side)) = overlay.get(mv) {
             return overlay_cell_plain(n, side);
         }
@@ -197,7 +197,7 @@ pub fn render_lines_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<St
 /// Styled rendering with a verified TSS line overlaid as numbered cells.
 pub fn render_styled_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 4, |glyph, is_last, mv| {
+    render_with(board, 3, |glyph, is_last, mv| {
         if let Some((n, side)) = overlay.get(mv) {
             return overlay_cell_styled(n, side, proof.winner);
         }
@@ -213,17 +213,17 @@ pub fn render_styled_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<S
 
 fn plain_cell(glyph: char, is_last: bool) -> String {
     if is_last {
-        format!("[{glyph} ]")
+        format!("[{glyph}]")
     } else {
-        format!(" {glyph}  ")
+        format!(" {glyph} ")
     }
 }
 
 fn styled_cell(styled: &dyn std::fmt::Display, is_last: bool) -> String {
     if is_last {
-        format!("[{styled} ]")
+        format!("[{styled}]")
     } else {
-        format!(" {styled}  ")
+        format!(" {styled} ")
     }
 }
 
@@ -256,22 +256,14 @@ enum Side {
     Defender,
 }
 
+// Overlay numbers are single-digit because the CLI's TSS budget caps
+// max_depth at 9 (ui.rs) — that is what lets the overlay keep the
+// normal width-3 grid. Raise the depth cap and the width must follow.
 fn overlay_cell_plain(n: usize, side: Side) -> String {
+    debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
     match side {
-        Side::Attacker => {
-            if n < 10 {
-                format!(" {n}  ")
-            } else {
-                format!(" {n} ")
-            }
-        }
-        Side::Defender => {
-            if n < 10 {
-                format!("[{n} ]")
-            } else {
-                format!("[{n}]")
-            }
-        }
+        Side::Attacker => format!(" {n} "),
+        Side::Defender => format!("[{n}]"),
     }
 }
 
@@ -285,21 +277,10 @@ fn overlay_cell_styled(n: usize, side: Side, winner: Color) -> String {
         Color::Black => s.cyan().bold(),
         Color::White => s.yellow(),
     };
+    debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
     match side {
-        Side::Attacker => {
-            if n < 10 {
-                format!(" {styled}  ")
-            } else {
-                format!(" {styled} ")
-            }
-        }
-        Side::Defender => {
-            if n < 10 {
-                format!("[{styled} ]")
-            } else {
-                format!("[{styled}]")
-            }
-        }
+        Side::Attacker => format!(" {styled} "),
+        Side::Defender => format!("[{styled}]"),
     }
 }
 
@@ -435,14 +416,14 @@ mod tests {
 
         let lines = render_lines_with_overlay(&*board, &proof);
         assert_eq!(lines.len(), 19);
-        // Each cell is 4 visible characters wide, so the whole line is wider.
-        assert!(lines.iter().all(|l| l.chars().count() == 4 + 60 + 4));
+        // Width-3 cells like normal play — the overlay causes no layout jump.
+        assert!(lines.iter().all(|l| l.chars().count() == 4 + 45 + 4));
 
         // The first attacking move should be visible as a single-digit number.
         let mv1 = proof.line[0];
         let row = &lines[2 + mv1.row() as usize];
-        let start = 4 + mv1.col() as usize * 4;
-        let cell = &row[start..start + 4];
+        let start = 4 + mv1.col() as usize * 3;
+        let cell = &row[start..start + 3];
         assert!(
             cell.trim().contains('1'),
             "attacking cell should show 1, got {cell:?}"
