@@ -9,3 +9,4 @@
 # proptest failure persistence
 proptest-regressions/
 *.proptest-regressions
+__pycache__/
