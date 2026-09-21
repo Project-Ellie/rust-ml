@@ -1,0 +1,13 @@
+[package]
+name = "mcts"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine = { path = "../engine"}
+rand = "0.10.3"
+rand_distr = "0.6.0"
+
+[dev-dependencies]
+engine = { path = "../engine", features = ["testutil"]}
+rand = "0.10.3"
