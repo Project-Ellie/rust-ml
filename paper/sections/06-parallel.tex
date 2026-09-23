@@ -1,0 +1,345 @@
+\section{Parallel self-play in Rust}
+\label{sec:parallel}
+
+\subsection{What is actually scarce}
+\label{sec:scarce}
+
+A self-play system has two kinds of work, and they differ by two orders of
+magnitude in cost. The tree work -- descending a path of ten edges, comparing a
+few hundred weighted sums, playing and unplaying moves -- is measured in
+microseconds. One evaluation of a small residual network is roughly $1.7$
+gigarithmetic operations for the configuration of Table~\ref{tab:scaling}, which
+on a device delivering a few effective tera-operations per second is measured in
+milliseconds when it is done alone and much less when it is done in a batch.
+
+Three consequences follow, and they determine the entire parallel design.
+
+\emph{Throughput is set by evaluations per second.} Games per hour is
+\begin{equation}
+\text{games/h} \;=\; \frac{\text{evals/s}}{\text{simulations/move}}
+\cdot \frac{1}{\text{moves/game}} \cdot 3600 ,
+\label{eq:throughput}
+\end{equation}
+and neither the quality of the tree implementation nor the number of CPU cores
+appears in it. Everything else in this section exists to raise the first factor.
+
+\emph{A batch of one wastes the device.} Accelerator efficiency is a function of
+batch size: the fixed cost of launching work, and the fact that the device is
+built for wide parallel operations, mean that evaluating 128 positions in one
+call costs far less than 128 calls of one. Batching is therefore not an
+optimization; it is the difference between using the device and merely occupying
+it.
+
+\emph{But batching is latency, and latency starves the workers.} A worker that
+submits a request and waits cannot do anything else. If the service waits for
+more requests before running, every worker in the batch waits longer, and if the
+wait exceeds the useful work per evaluation, the workers become the bottleneck
+instead of the accelerator.
+
+The design problem is therefore a single trade-off: \emph{maximize batch size
+without making workers wait longer than the device needs}. The classical answer
+in self-play is to build many independent trees, because more trees means more
+outstanding requests, which means larger batches.
+
+\subsection{The parallelization taxonomy, and why the choice is inverted}
+\label{sec:taxonomy}
+
+Parallel MCTS divides into three families \citep{chaslot2008parallel,
+browne2012survey}, and it is worth stating why two of them do not apply here.
+
+\paragraph{Leaf parallelization.} Run many simulations from one expanded leaf
+concurrently. The technique exists to parallelize \emph{rollouts}: several random
+playouts from the same leaf, averaged. An AlphaZero-style search has no rollouts
+(Section~\ref{sec:algorithm}), so there is nothing to parallelize. Evaluations
+are already batched by the service, which is the useful half of the idea.
+
+\paragraph{Root parallelization.} Build several independent trees from the same
+root and merge their root statistics at the end. Synchronization is zero. The
+cost is that each tree repeats the exploration the others perform, so $k$ trees
+do not search $k$ times as much of the tree; they search the same part $k$ times
+and diversify only through randomness. With a shared batched evaluator this
+family becomes attractive again, for a reason its original formulation did not
+have: independent trees generate independent evaluation requests, which is
+exactly what the batcher wants.
+
+\paragraph{Tree parallelization.} One shared tree, many threads descending it.
+The classical difficulty is that concurrent threads select the same best path and
+converge on the same leaf, so a mechanism is needed to keep them apart: a
+\emph{virtual loss}, in which a thread records a temporary loss on the edges it is
+descending, deterring followers until the real value is backed up
+\citep{chaslot2008parallel,segal2011paralleluct}. AlphaGo (2016) ran precisely
+this construction, with lock-free tree updates and virtual loss
+\citep{silver2016alphago}.
+
+The historical reason is worth internalizing, because it explains why the same
+choice is wrong here. \emph{AlphaGo needed tree parallelization because its
+network evaluations were scarce and its search was deep.} A large network
+evaluated slowly, and the search needed thousands of simulations per move, so the
+only way to fill the device was to have many threads deepen one tree.
+Self-play on a single accelerator is the opposite situation. Evaluations come
+back in batches from one device; the number of simulations per move is a few
+hundred; and what the batcher lacks is not threads inside one tree but
+\emph{trees}.
+
+Hence the choice of \emph{game-level parallelism}: each worker plays its own game
+with its own single-threaded tree, its own board, and its own random-number
+generator. This is root parallelization taken to the point where no merging
+happens at all, which is correct here because the trees belong to different games
+and produce different training data rather than different estimates of one move.
+The properties that follow are the ones that matter:
+
+\begin{itemize}
+  \item \textbf{No shared tree, no locks.} A worker's data structures are private,
+        so an entire class of concurrency defects cannot occur, and cache lines
+        are not fought over.
+  \item \textbf{The only synchronization point is the evaluator}, which is
+        precisely where synchronization is wanted, since batching \emph{is} the
+        coordination.
+  \item \textbf{Scaling is linear in workers until the device saturates}, because
+        the workers do not contend with each other at all.
+\end{itemize}
+
+The same choice was made by ELF OpenGo at datacenter scale: 32 self-play workers
+per GPU, with eight game threads per worker and no shared trees
+\citep{tian2019elf}. When a design that is forced by a single accelerator matches
+what an industrial system chose with hundreds, the reasoning is likely sound.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm and 8mm,
+  w/.style={draw, rounded corners=2pt, align=center, font=\scriptsize,
+            minimum width=26mm, minimum height=12mm, fill=black!3},
+  svc/.style={draw, rounded corners=2pt, align=center, font=\small,
+              minimum width=78mm, minimum height=13mm, fill=blue!4},
+  buf/.style={draw, rounded corners=2pt, align=center, font=\small,
+              minimum width=78mm, minimum height=10mm, fill=green!4},
+  arr/.style={-{Latex[length=2mm]}, thick},
+  darr/.style={{Latex[length=2mm]}-{Latex[length=2mm]}, thick},
+]
+\node[w] (w0) {worker 0\\game $+$ tree $+$ RNG};
+\node[w, right=of w0] (w1) {worker 1\\game $+$ tree $+$ RNG};
+\node[right=of w1, font=\large] (dots) {$\cdots$};
+\node[w, right=of dots] (wN) {worker $W{-}1$\\game $+$ tree $+$ RNG};
+\node[svc, below=10mm of w1, xshift=11mm] (svc)
+  {\textbf{evaluator service} (one thread, owns the model)\\
+   collect $\to$ batch ($\le B$ requests, $\le t$ window) $\to$ one forward pass $\to$ reply};
+\node[buf, below=7mm of svc] (buf)
+  {\textbf{replay window}: sharded ring buffer of games};
+\draw[darr] (w0.south) -- ++(0,-4mm) -| ([xshift=-28mm]svc.north);
+\draw[darr] (w1.south) -- (svc.north);
+\draw[darr] (wN.south) -- ++(0,-4mm) -| ([xshift=28mm]svc.north);
+\draw[arr] (svc.south) -- node[right,font=\scriptsize]{finished games} (buf.north);
+\end{tikzpicture}
+\caption{The actor layout. Workers never touch the model, the model never sees a
+tree, and the service is the only place where threads interact.}
+\label{fig:actors}
+\end{figure}
+
+\subsection{The evaluator service}
+\label{sec:service}
+
+The service is one thread that owns the model and runs a loop. In outline:
+
+\begin{lstlisting}[style=rust,caption={The batching loop. One device call per
+batch, one reply per request.},label={lst:service}]
+loop {
+    let first = rx.recv()?;                       // block until work exists
+    let mut batch = vec![first];
+    while batch.len() < MAX_BATCH {               // fill the batch
+        match rx.recv_timeout(WINDOW) {           // ... within a time window
+            Ok(req) => batch.push(req),
+            Err(_)  => break,                     // window closed: run now
+        }
+    }
+    let out = model.forward(&batch);              // ONE device call
+    for (req, res) in batch.into_iter().zip(out) {
+        let _ = req.reply.send(res);              // one reply per request
+    }
+}
+\end{lstlisting}
+
+Five decisions are embedded in that short loop.
+
+\paragraph{Dynamic batching with a window.} The batch is bounded by both a count
+and a time. The window exists to catch the tail of the arrival process, not to
+build the batch: when many workers are blocked, the batch fills to the cap
+immediately and the window contributes nothing to latency. This is the point to
+get right when tuning, because the two failure modes are opposite. A window that
+is too long adds latency to every request without improving the batch; a window
+that is too short fails to gather the requests that are already available.
+
+A simple model makes the trade-off visible. Suppose the service takes
+$\tau(b) = \tau_0 + b\,\tau_1$ for a batch of $b$ (a fixed launch cost plus a
+per-item cost), and suppose $Q$ workers are blocked waiting. If $Q \ge B$ the
+batch is full, throughput is $B/\tau(B)$, and the window does not matter. If
+$Q < B$ the service must decide between waiting up to $t$ to gather more requests
+and running the smaller batch. Waiting is only worthwhile if the arrivals during
+the wait more than compensate for the delay they add to the requests already
+collected. In practice the useful rule is: \emph{size the batch cap so that a
+healthy worker pool can fill it, and keep the window short}. The cap, not the
+window, is the throughput knob.
+
+\paragraph{One model, one thread.} The network lives exclusively on the service
+thread. Workers send plain request structs and receive plain result structs; they
+never hold a handle to a tensor, a device, or a module. This has a larger
+consequence than it first appears.
+
+In Rust terms, it means the system uses \emph{ownership} to make a class of
+concurrency bugs unrepresentable, rather than \code{Arc<Mutex<Model>{}>} to manage
+them at runtime. There is no reader--writer lock on the weights, so there is no
+lock contention on the hottest resource; there is no question about whether
+accelerator handles are \code{Send}, because none of them ever cross a thread
+boundary; and replacing the model after a training phase is a single assignment
+on a single thread, with no coordination protocol. The synchronization that
+remains is exactly the batching that the design wants.
+
+This is the most Rust-specific decision in the whole system, and it generalizes:
+when two components must share a resource, first ask whether the resource can be
+\emph{owned} by one of them and accessed by messages.
+
+\paragraph{Replies travel inside requests.} Each request carries a one-shot
+sender for its own reply. The service needs no table mapping request identifiers
+to waiting parties, no correlation logic, and no cleanup for abandoned requests:
+if a worker stops waiting, the send simply fails and the error is ignored. The
+message is self-addressed, so the protocol cannot get out of step.
+
+\paragraph{Bounded channels are backpressure.} The request channel is bounded. If
+the device falls behind, workers block in \code{send} rather than accumulating an
+unbounded queue of stale requests, and the system throttles itself to device
+speed with no watchdog, no adaptive rate control, and no measurement. Note the
+interaction with the batching loop: a bounded channel plus a
+\code{recv\_timeout} window means the service is never starved by an idle pool
+and never flooded by an eager one.
+
+\paragraph{Errors need a policy.} If the service thread panics, every worker is
+blocked in \code{recv} forever and the process hangs rather than failing. Two
+cheap defences are worth building: the reply channel is dropped when the service
+dies, so \code{recv} on the worker side returns an error that can be propagated;
+and the run loop treats a dead service as a fatal condition with a message, not
+as a retryable one.
+
+\subsection{Training, inference, and the single-device problem}
+\label{sec:phased}
+
+One accelerator must serve two clients: the evaluator service during self-play,
+and the trainer during the training phase. A system can either phase them or run
+them concurrently.
+
+\emph{Continuous} operation is what AlphaZero did, on separate hardware for
+self-play and training. ELF OpenGo ran it continuously on shared hardware and
+reported a large throughput advantage for the asynchronous pipeline, at the cost
+of two specific complications: games whose moves were produced by different
+network versions, which makes the training data heterogeneous, and batch
+normalization statistics that lag behind the current weights, which they fixed by
+recomputing those statistics from a sample of batches at intervals
+\citep{tian2019elf,ioffe2015batchnorm}.
+
+\emph{Phased} operation alternates: generate $N$ self-play games with the
+evaluator alone; run $K$ training steps with the trainer alone; play evaluation
+games; repeat. The reasoning for choosing this first is straightforward. On a
+single device, concurrency is not really concurrency: two clients contend on one
+queue, the driver serializes them anyway but less predictably than the scheduler
+would, and the batch shapes fight each other, because training wants batches of
+a thousand and inference wants batches of at most a few hundred. Phasing costs
+nothing in correctness, makes every number reproducible per iteration, and keeps
+the first working version debuggable, which matters more than a percentage of
+throughput at the point where the system has never run.
+
+The upgrade path stays open by construction, and this is the design argument for
+phasing: once the evaluator and the trainer are separate owners of separate
+resources, moving to continuous operation is a scheduling change, not a rewrite.
+The decision rule to write down is: go continuous when profiling shows the phase
+boundaries costing more than a fixed fraction of throughput, and pay ELF's
+complications deliberately, including a minimum replay size before training
+starts.
+
+\subsection{The replay window}
+\label{sec:buffer}
+
+The buffer is the only mutable structure shared between threads, so it should be
+as simple as possible, and it should be sized by an argument rather than by
+intuition.
+
+The argument is about what to store. Storing \emph{positions} means storing the
+encoded planes, the target distribution, and the outcome: about a kilobyte per
+sample, simple, and immediately usable. Storing \emph{games} means storing the
+move list and the metadata: tens of bytes per game, because the planes are
+derivable. The difference is a factor of several thousand -- two million games
+occupy on the order of a hundred megabytes of move lists, against terabytes for
+the equivalent positions.
+
+Storing games is the better choice for three reasons. It fits comfortably in
+memory without paging. It keeps the encoding decisions mutable: if the plane
+layout changes during experimentation, every stored game remains valid, whereas
+stored planes are frozen at the old layout. And it puts the encoding work where
+the CPU is idle: the trainer thread is device-bound, not CPU-bound, so replaying
+a game through the rules engine at sampling time is nearly free, and it is the
+same discipline that applies to any data pipeline -- store the raw form, encode
+at the boundary.
+
+Concurrency for the buffer follows the sharding principle already established.
+Appends arrive from many workers and sampling happens on one thread. A single
+mutex, or a lock-free structure, is over-engineering: a sharded ring buffer with
+one mutex per shard keeps lock hold times at the level of a few instructions,
+the sampler round-robins the shards, and the worst case is a slightly uneven
+distribution of games rather than a correctness problem. Contention here is
+measured in microseconds per game, not per sample.
+
+Persistence should be per iteration rather than per sample: appending each
+finished game to a journal file bounds a crash to the current phase, at one write
+per game. A system that trains for days and loses the run to a power failure will
+be rebuilt with a journal after the first incident, which is one incident later
+than necessary.
+
+\subsection{Sizing, and the one number to watch}
+\label{sec:sizing}
+
+Worker count follows from cores, not from a formula. Reserve one core for the
+service thread, which is mostly idle waiting on the device but must never be
+scheduled late, because a late service thread stalls every worker; reserve one
+for the trainer and the operating system; give the rest to workers. On an
+18-core machine that is 14 workers, and it is a starting value.
+
+The tuning signal is a single number: \emph{evaluator queue depth}, the number of
+requests waiting when the service starts a batch.
+
+\begin{itemize}
+  \item Queue consistently starving (batch sizes far below the cap): add workers,
+        or lower the batch cap so that the batches that do exist complete sooner.
+  \item Queue consistently flooded (the bounded channel is full and workers are
+        blocking in \code{send}): the device is saturated, and extra workers only
+        add latency. Remove workers, or reduce simulations per move.
+\end{itemize}
+
+This is the entire control loop, and it is deliberately a measurement rather than
+a model. A worked estimate of the target throughput is useful for planning and
+should be labelled as derived rather than measured. With the network of
+Table~\ref{tab:scaling} at roughly $1.7$ gigarithmetic operations per evaluation,
+a conservative assumption of five effective tera-operations per second gives
+about $2900$ evaluations per second. At $400$ simulations per move that is about
+seven moves per second across all workers, so a 50-move game completes in about
+seven seconds and the system produces a few hundred games per hour. A
+25{,}000-game iteration then takes on the order of two days. The precise numbers
+depend on the device, and the useful conclusion is the order of magnitude: plan
+for days to a first non-embarrassing agent and weeks to a strong one, and
+distrust any plan more precise than that before the first measurement exists.
+
+\subsection{Determinism}
+\label{sec:determinism}
+
+Self-play is stochastic in four places: the noise vector at the root, the
+temperature sampling, the symmetry transform applied to training positions, and
+the mini-batch sampling. Each should be driven by a generator that is owned by
+exactly one worker, seeded from a run-level seed plus the worker index, so that
+the $\text{worker} \times \text{game}$ stream can be reproduced exactly.
+
+What can be promised depends on the backend. On a CPU backend, arithmetic is
+deterministic and a fixed seed reproduces a run bit for bit. On an accelerator
+backend, kernel selection and autotuning can make even the same operation produce
+slightly different rounding between processes, so the promise is best-effort and
+must be stated as such. This matters for one practical reason: reproducing a
+strange game is by far the fastest route to diagnosing a search defect, and
+reproducibility has to be designed in before it is needed. Recording the seed,
+the mode, and the backend in the run journal costs nothing and converts an
+unreproducible anomaly into an investigation.

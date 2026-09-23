@@ -15,3 +15,15 @@ __pycache__/
 data/gomocup-games/games/
 data/karesis-gomoku/files/
 data/puzzles/files/
+
+# paper/ LaTeX build products
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.pdf
+paper/*.synctex.gz
+paper/*.toc

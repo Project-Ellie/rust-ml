@@ -1,0 +1,161 @@
+\section{Introduction}
+\label{sec:intro}
+
+\subsection{What this monograph follows}
+
+There is a single line of mathematics that runs from the definition of a
+Markov decision process to a program that teaches itself to play a board game.
+This monograph follows that line in one direction, and then follows the same
+line into code.
+
+The mathematical path has six steps:
+
+\begin{enumerate}
+  \item the \emph{objective} of a parameterized policy, and the likelihood-ratio
+        identity that makes its gradient estimable from samples alone
+        (Section~\ref{sec:reinforce});
+  \item the \emph{policy gradient theorem}, which removes the derivative of the
+        state distribution from the gradient (Section~\ref{sec:pgt});
+  \item the \emph{actor--critic} decomposition, and the instability that
+        bootstrapping introduces (Section~\ref{sec:actorcritic});
+  \item the \emph{deterministic policy gradient}, the sibling branch of the same
+        idea, and a clarification of its place in the lineage
+        (Section~\ref{sec:dpg});
+  \item \emph{approximate policy iteration} and its reformulation as Expert
+        Iteration, which is the exact frame around the AlphaZero loop
+        (Sections~\ref{sec:apxpi} and~\ref{sec:exit});
+  \item the \emph{bandit} results that give tree search its exploration rule and
+        its only real guarantees (Section~\ref{sec:bandits}).
+\end{enumerate}
+
+The algorithmic path has three steps: the sequence of three DeepMind papers that
+deleted one crutch at a time (Section~\ref{sec:three-papers}), the algorithm as a
+whole including its search and its loss
+(Sections~\ref{sec:algorithm}--\ref{sec:loss}), and the honest inventory of which
+parts are proven and which are not (Section~\ref{sec:proven}).
+
+The engineering path has two dominant problems, and this is where most of the
+implementation effort actually goes:
+
+\begin{itemize}
+  \item \textbf{The shape of the search tree in Rust.} A game tree is a
+        recursively owned structure, which is the structure the Rust ownership
+        model is least willing to express directly. Section~\ref{sec:tree}
+        develops the flat-arena representation, states its invariants, and shows
+        the traversal pattern that keeps the borrow checker satisfied without
+        runtime checks.
+  \item \textbf{The parallel organisation of self-play.} Self-play needs
+        thousands of position evaluations per second from one accelerator, while
+        the tree search that produces them is irregular, branchy, and cheap. The
+        answer is to build many independent trees rather than one shared tree, and
+        to make the accelerator a batching service at the single point of
+        synchronization. Section~\ref{sec:parallel} develops this.
+\end{itemize}
+
+\subsection{The target application}
+
+Every concrete example in this monograph uses freestyle Gomoku on a
+$15\times15$ board, with the Swap2 opening protocol. Gomoku is a useful target
+for three reasons.
+
+First, it is tactically sharp and short. A game lasts roughly 30 to 70 moves,
+and single moves decide games. This is the opposite regime from Go, where
+influence accumulates slowly over hundreds of moves. The consequence for the
+capital---compute, network size, number of self-play games---is large and
+favourable: published AlphaZero-style Gomoku agents reached human playing
+strength with networks two orders of magnitude smaller than the Go networks
+\citep{xie2018alphagomoku}.
+
+Second, the mechanics are simple enough to be fully specified in a page, which
+keeps the rules engine small and keeps this monograph's examples short.
+
+Third, and least obviously, Gomoku has a solved core: Allis and colleagues
+proved in 1993 and 1994 that freestyle Gomoku on $15\times15$ is a forced win for
+the first player \citep{allis1996gomoku,allis1994thesis}. This is a gift rather
+than a problem. Board positions of which the exact value is known, and forced
+win sequences that can be verified mechanically, are perfect test data for a
+search implementation, and they are available before any learning happens. The
+competitive variant, which the Swap2 opening rule produces, is not solved
+(Section~\ref{sec:solved}), so the agent still plays on open ground.
+
+\subsection{The ``alpha-epsilon'' position}
+
+A pure AlphaZero agent knows nothing about the game except its rules. This
+monograph describes a small, deliberate departure from that purity: hand-written
+tactical detection (a win in one move, a forced block, a double threat) computed
+by bit operations, together with a bounded threat-space prover.
+
+The departure matters for three reasons, and only the first is about strength.
+Tactical detection gives the learning curve a head start, because a young
+network's priors are nearly uniform and a prior that already points at immediate
+wins saves thousands of fruitless self-play games. The same detection code
+serves as a deterministic stand-in evaluator, which allows the entire search to
+be built, tested, and proven correct before a single gradient is computed. And
+the bounded prover produces labelled positions, whose labels are exact rules
+truths rather than bootstrap estimates, which a small fraction of every training
+batch can then use as an anchor.
+
+The word \emph{epsilon} in the label is the honest part: the hand-written
+knowledge is a small perturbation to an otherwise learned system, not a
+replacement for it. Section~\ref{sec:alphaepsilon} states exactly what the
+component may and may not do.
+
+\subsection{Scope}
+
+This monograph gives derivations for the mathematics and reasoning for the
+implementation. It does not give complete programs, complete hyperparameter
+sweeps, or benchmark results, and it does not describe any particular
+repository. Code fragments are illustrative and are kept below roughly fifteen
+lines where possible.
+
+Three things are deliberately out of scope. Reinforcement learning from
+imperfect information (poker, simultaneous games) is not covered, because nothing
+in the AlphaZero line applies to it without a substantial reformulation.
+Continuous control is covered only at the point where the deterministic policy
+gradient enters the narrative (Section~\ref{sec:dpg}); it is discussed because
+it is frequently confused with the AlphaZero line, and the confusion is worth
+clearing. Finally, distributed training across several accelerators is not
+covered: the parallel design in Section~\ref{sec:parallel} is explicitly the
+single-accelerator design, and the reasons for the choice are stated there.
+
+\subsection{How to read this monograph}
+
+Readers who want the algorithm should read Sections~\ref{sec:three-papers}
+through~\ref{sec:loss} and can treat the mathematical section as reference
+material. Readers who want to build the system should read
+Sections~\ref{sec:tree} and~\ref{sec:parallel} first: those two sections contain
+the design decisions that are expensive to change later.
+
+Readers who are following the original papers should note one recurring
+distinction. The primary sources publish algorithms and architectures in full
+detail but are reticent about constants. Where a constant is not published, this
+monograph says so at the point of use, and marks the substitute as an
+experimental choice. Table~\ref{tab:folklore} collects these cases, and this is
+the most practically useful table in the document.
+
+All symbols are collected in Appendix~\ref{app:notation} and are redefined at
+first use in the body.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Constants commonly attributed to the primary sources but not published
+by them. The ``actual source'' column names where the number really comes from.}
+\label{tab:folklore}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Constant & Commonly claimed source & Actual source \\
+\midrule
+$c_{\mathrm{puct}} = 1.5$ & AlphaGo Zero / AlphaZero & Not published by DeepMind;
+first widely used published value is from \citet{tian2019elf} \\
+Replay window size & AlphaZero & Not published; the 500{,}000-game window is
+AlphaGo Zero's, reported via \citet{tian2019elf} \\
+Dirichlet $\alpha$ & AlphaZero & The rule $\alpha \approx 10 / (\text{typical legal moves})$
+is published; the specific per-game values follow from it \\
+Simulations per move & --- & 1600 (AlphaGo Zero), 800 (AlphaZero). Do not mix
+them \\
+Gating threshold 55\% over 400 games & AlphaGo Zero & Removed entirely in
+AlphaZero \\
+\bottomrule
+\end{tabularx}
+\end{table}

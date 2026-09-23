@@ -1,0 +1,475 @@
+\section{The AlphaZero algorithm}
+\label{sec:alphazero}
+
+\subsection{Three papers, and what each one removed}
+\label{sec:three-papers}
+
+The AlphaZero design did not appear at once. It is the residue of three papers,
+each of which deleted components that the field believed were necessary, and each
+deletion made the system both simpler and stronger. Table~\ref{tab:removals}
+records the sequence; the direction of travel is the message.
+
+\begin{table}[t]
+\centering
+\small
+\caption{What each paper removed. Every entry in the first column is a component
+that a specialist would have defended before the following paper appeared.}
+\label{tab:removals}
+\begin{tabularx}{\textwidth}{@{}l l l l@{}}
+\toprule
+& AlphaGo (2016) & AlphaGo Zero (2017) & AlphaZero (2018) \\
+\midrule
+Human game data      & yes (supervised policy) & removed & not used \\
+Networks             & 3 learned $+$ SL policy  & 1 with two heads & 1 with two heads \\
+Handcrafted features & some & removed & removed \\
+Random rollouts      & yes (fast policy) & removed & removed \\
+Symmetry exploitation & --- & augmentation, averaging & removed \\
+Best-network gating  & --- & 55\% gate & removed \\
+Games supported      & Go & Go & chess, shogi, Go \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{AlphaGo (2016).} The system was a pipeline: a supervised policy
+network trained on human games, refined by policy-gradient self-play
+\eqref{eq:reinforce-game}; a separate value network; a fast rollout policy of
+hand-crafted features; and MCTS that combined all four
+\citep{silver2016alphago}. It beat Fan Hui 5--0 and Lee Sedol 4--1.
+
+\paragraph{AlphaGo Zero (2017).} Human data, rollouts, hand-crafted features, and
+the separate networks were all deleted. One network with two heads, one search,
+and a self-play loop remained. After three days of training it beat the
+Lee-beating version 100 games to 0; after 40 days it reached an Elo of 5{,}185,
+against 4{,}858 for the strongest previous version and 3{,}739 for AlphaGo Lee.
+The raw network, with no search at all, measured 3{,}055 \citep{silver2017alphagozero}.
+That last number is worth pausing on: it means the network alone, playing a move
+per forward pass, was already at the level of a distributed system that used 176
+GPUs.
+
+\paragraph{AlphaZero (2018).} The gate, the symmetry exploitation, and the
+assumption of binary outcomes were removed, giving one algorithm, one
+architecture, and one set of hyperparameters for three games
+\citep{silver2018alphazero}. It beat Stockfish after 4 hours, Elmo after 2 hours,
+and AlphaGo Lee after 8 hours of training.
+
+\subsection{The algorithm}
+\label{sec:algorithm}
+
+\subsubsection{The network}
+
+One network computes both outputs:
+\begin{equation}
+f_\theta(s) \;=\; (p, v), \qquad
+p_a \approx \Prob(a \mid s), \qquad v \approx \E[z \mid s],
+\end{equation}
+where $s$ is the position, $p$ is a distribution over moves, $v \in [-1,1]$ is
+the expected outcome from the side to move, and $z$ is the final outcome of the
+game. A single forward pass therefore supplies everything the search needs: a
+prior over moves and an evaluation of the position.
+
+\subsubsection{The search}
+
+Each move is chosen after a fixed budget of simulations (1{,}600 in AlphaGo Zero,
+800 in AlphaZero; the numbers must not be mixed). One simulation has three
+phases, and the difference from classical MCTS is in the second.
+
+\begin{description}
+  \item[Select.] Descend from the root, at each node choosing the action of
+        \eqref{eq:puct}, until reaching a leaf. A leaf is either terminal or
+        never-expanded.
+  \item[Expand and evaluate.] If the leaf is terminal, its value is the true game
+        outcome, and the network is not called. Otherwise, evaluate it once:
+        $(p,v) = f_\theta(s_L)$, store $p$ as the priors of the leaf's outgoing
+        edges, and use $v$ as the leaf's value. \emph{There are no rollouts.}
+        This is the whole of the replacement of AlphaGo's rollout policy: one
+        trained evaluation instead of several hundred random moves.
+  \item[Back up.] Propagate $v$ to the root, incrementing visit counts and
+        accumulating values along the way. The sign alternates at each ply,
+        because the game is zero-sum and the players alternate
+        (Section~\ref{sec:tree} takes this up as an implementation matter).
+\end{description}
+
+After a move is played, the subtree under the played edge becomes the new root;
+the accumulated statistics survive, which is free depth at the next decision.
+
+\subsubsection{Self-play data generation}
+
+Self-play games are generated with the current network guiding the search, with
+two exploration mechanisms active at the root.
+
+\emph{Dirichlet noise} perturbs the root priors:
+\begin{equation}
+P(s_{\mathrm{root}}, a) \;=\; (1-\varepsilon)\, p_a + \varepsilon\, \eta_a,
+\qquad \eta \sim \mathrm{Dir}(\alpha), \qquad \varepsilon = 0.25 .
+\label{eq:dirichlet}
+\end{equation}
+AlphaGo Zero used $\alpha = 0.03$ for Go. AlphaZero scaled $\alpha$ in inverse
+proportion to the typical number of legal moves: $0.3$ for chess, $0.15$ for
+shogi, $0.03$ for Go \citep{silver2018alphazero}. The paper's reason is that the
+noise ensures every move may be tried while the search may still overrule bad
+moves. A small $\alpha$ produces a spiky noise vector, so a few random moves
+receive a large boost per game and different games explore different lines.
+
+\emph{Temperature} controls how the played move is sampled from the visit counts:
+\begin{equation}
+\pi_a \;\propto\; N(s_{\mathrm{root}}, a)^{1/\tau}.
+\label{eq:temperature}
+\end{equation}
+For the first 30 moves of each AlphaGo Zero game, $\tau = 1$, so play is
+proportional to visit counts and openings diversify. Afterwards $\tau \to 0$,
+which means playing the most-visited move. The asymmetry is deliberate: early
+diversity widens the state distribution that the value head sees, while late
+greediness keeps the value target informative, because a game thrown away by
+random midgame play teaches the value head very little.
+
+Each position of a finished game is stored as a triple $(s, \pi, z)$, where
+$\pi$ is the full visit-count distribution at the root -- not the move that was
+played -- and $z$ is the final outcome from the perspective of the player to move
+at $s$. AlphaGo Zero additionally applied a random element of the board's
+dihedral symmetry group to $s$; AlphaZero removed that step because chess and
+shogi have no such symmetry.
+
+AlphaGo Zero also resigned games in which the value estimate stayed below a
+threshold, with the false-positive rate held at or below 5\% by forcing 10\% of
+games to be played to the end for calibration \citep{silver2017alphagozero}.
+
+\subsubsection{The training step}
+
+Mini-batches are drawn uniformly from a replay window of recent self-play games
+(500{,}000 games in AlphaGo Zero; AlphaZero's window size is not published). For
+a sample $(s,\pi,z)$ with network output $(p,v)$ the loss is
+
+\begin{equation}
+\ell(\theta) \;=\; \underbrace{(z-v)^2\vphantom{\big|}}_{\text{value}}
+\;-\; \underbrace{\pi^{\!\top} \log p\vphantom{\big|}}_{\text{policy}}
+\;+\; \underbrace{c\,\|\theta\|^2\vphantom{\big|}}_{\text{regularization}},
+\qquad c = 10^{-4}.
+\label{eq:alphazero-loss}
+\end{equation}
+
+The two error terms carry equal weight. AlphaGo Zero justifies this in one
+parenthesis: it is reasonable because the rewards are unit-scaled, $r \in
+\{-1,+1\}$ \citep{silver2017alphagozero}. Section~\ref{sec:loss} unpacks that
+sentence. The optimizer is stochastic gradient descent with momentum $0.9$; the
+learning-rate schedules are in Table~\ref{tab:hyper}.
+
+\subsubsection{The outer loop}
+
+AlphaGo Zero ran iterations with a gate: generate games, train a candidate, and
+promote the candidate only if it won at least 55\% of 400 evaluation games
+against the current best. AlphaZero removed the gate, always training on data
+from the latest network. The cost of the gate is compute plus the training steps
+spent waiting; the benefit is that a bad network never generates training games.
+Removing it was shown to be safe at scale, in part because the replay window
+mixes data from many recent checkpoints, so a transient regression dilutes
+rather than dominates \citep{tian2019elf,wu2019katago}.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=9mm and 14mm,
+  box/.style={draw, rounded corners=2pt, align=center, font=\small,
+              minimum height=9mm, inner xsep=6pt, fill=black!3},
+  arr/.style={-{Latex[length=2mm]}, thick},
+  lbl/.style={font=\scriptsize, inner sep=2pt},
+]
+\node[box] (net) {network $f_\theta$\\$(p,v)$};
+\node[box, right=of net] (search) {MCTS\\$\pi = \mathrm{norm}(N)$};
+\node[box, right=of search] (games) {self-play games\\$(s,\pi,z)$};
+\node[box, below=of games] (buffer) {replay window\\uniform sampling};
+\node[box, left=of buffer] (train) {gradient step on\\$\ell(\theta)$};
+\draw[arr] (net) -- node[lbl,above]{prior, value} (search);
+\draw[arr] (search) -- node[lbl,above]{improved policy} (games);
+\draw[arr] (games) -- (buffer);
+\draw[arr] (buffer) -- (train);
+\draw[arr] (train) -| node[lbl,below,pos=0.25]{updated weights} (net);
+\end{tikzpicture}
+\caption{The AlphaZero loop. The network is trained to imitate the search; the
+improved network then produces a stronger search. Everything else in the system
+is engineering around this cycle.}
+\label{fig:loop}
+\end{figure}
+
+\subsection{Why the loop works}
+\label{sec:alphazero-why}
+
+\paragraph{The skeleton is approximate policy iteration.} Section~\ref{sec:apxpi}
+already made this identification. The search is the improvement operator, the
+value head trained on $z$ is the evaluation operator, and the network is refitted
+to both. What makes the loop climb is the asymmetry: the teacher is stronger than
+the student, because the teacher is the student plus search.
+
+\paragraph{The value target is the raw game result.} There is no term of the form
+$v(s) \leftarrow r + v(s')$. The consequences are worth listing, because they
+explain most of the stability of the method.
+
+\emph{Unbiased targets}: $z$ is a sample of the true outcome under the current
+improved policy, so it carries no approximation error. \emph{No deadly triad}:
+the instability of Section~\ref{sec:actorcritic} requires bootstrapping, and
+bootstrapping is absent, so the triad cannot form. \emph{Variance}: a single game
+outcome is a noisy estimate of a position's worth; the cure is volume, namely
+tens of millions of games and a replay window that averages the noise across each
+batch. The team judged unbiased targets worth the variance, in a class of games
+where exploration noise must come from the search rather than from dice. KataGo
+kept the same choice \citep{wu2019katago}.
+
+\paragraph{The policy target is a distribution.} Training uses $\pi$, the full
+visit-count distribution at the root, not the move played. Three arguments
+support this. It is an information-dense target: $\pi$ encodes the search's
+opinion about every legal move, including how strongly the alternatives were
+rejected, while an argmax target keeps one bit of relative preference. This is
+the same argument as soft targets in knowledge distillation
+\citep{hinton2015distillation}: the relative probabilities of the wrong answers
+carry most of the teaching signal. It is a low-variance target, because it
+averages hundreds of simulations. And it is by construction the output of the
+improvement operator, so imitating it is exactly the imitation step of the
+policy-iteration loop.
+
+\paragraph{MCTS averages network errors; minimax amplifies them.} This is the
+AlphaZero paper's own argument for why search and deep evaluation fit together,
+and it is worth quoting in full:
+
+\begin{quote}
+``MCTS averages over these approximation errors, which therefore tend to cancel
+out when evaluating a large subtree. In contrast, alpha--beta search computes an
+explicit minimax, which propagates the biggest approximation errors to the root
+of the subtree'' \citep{silver2018alphazero}.
+\end{quote}
+
+A deep network's value errors are confident and hard to predict. Plug such an
+evaluator into minimax and the max operator systematically seeks out the largest
+errors, because the maximum of a set of noisy estimates is biased upward. MCTS
+averages evaluations over many leaf visits, so independent errors partially
+cancel. The search is not merely compatible with the network; it is the search
+whose error model matches the network's failure mode.
+
+\paragraph{Knowledge replaces computation.} Deleting the rollouts replaced a
+cheap, biased, high-variance estimate with one forward pass that returns a
+calibrated expectation. The aggregate effect is visible in the search statistics:
+in chess AlphaZero searches about 80{,}000 positions per second while Stockfish
+searches about 70 million, and in shogi the numbers are 40{,}000 against 35
+million \citep{silver2018alphazero}. AlphaZero wins with roughly three orders of
+magnitude less search, because each of its evaluations carries learned knowledge
+instead of statistics over random play. Breadth is traded for depth of
+evaluation, and nothing in the algorithm depends on how fast random rollouts can
+be made -- which is also why the algorithm transfers between games.
+
+\paragraph{Self-play is an automatic curriculum.} The opponent is always exactly
+as strong as the learner. Early games are between near-random players and are
+short and tactically simple; as the network improves, so does the opposition, and
+the data always sits at the edge of current ability, which is the regime where
+the gradient signal is richest. There is no distribution shift between training
+and deployment, because both are self-play. The exploration mechanisms of
+Section~\ref{sec:algorithm} exist to prevent the data from collapsing onto a
+single deterministic line, which would starve the value head.
+
+\paragraph{Evidence that the loop discovers rather than imitates.} During AlphaGo
+Zero training the system rediscovered human joseki, the corner patterns developed
+over centuries of play, and then abandoned several of them in favour of variants
+it preferred \citep{silver2017alphagozero}. Human knowledge appeared as a
+transient phase rather than as a ceiling.
+
+\subsection{Architecture}
+\label{sec:architecture}
+
+\paragraph{Input as a stack of planes.} AlphaGo Zero represents a position as a
+$19\times19\times17$ image: eight planes for the current player's stones at time
+steps $t \dots t-7$, eight for the opponent's, and one constant plane for the
+side to move \citep{silver2017alphagozero}. The plane representation is not
+incidental. A board is a grid, so the state is an image; the rules are
+translation-invariant, which matches weight sharing; they are defined through
+adjacencies, which matches local receptive fields; and they are invariant under
+rotation and reflection, which matches data augmentation. The paper states this
+reasoning explicitly. The history planes supply the temporal context
+(repetitions, ko-like situations) that a single snapshot cannot show.
+
+AlphaZero generalized the encoding per game \citep{silver2018alphazero}: keep the
+eight-step history, and replace ``stone or no stone'' with one plane per piece
+type. Chess needs 6 piece types per side plus 2 repetition planes, times 8
+history steps, plus 7 constant planes -- 119 planes per cell. The organizing
+principle survived unchanged, and the plans are always oriented to the side to
+move, which halves the state space.
+
+\paragraph{Trunk and heads.} The AlphaGo Zero trunk is a convolutional block of
+256 filters of size $3\times3$ followed by batch normalization and a rectifier,
+then 19 or 39 residual blocks, each of the form
+$\mathrm{conv}\,3{\times}3 \to \mathrm{BN} \to \mathrm{ReLU} \to
+\mathrm{conv}\,3{\times}3 \to \mathrm{BN} \to (+ \mathrm{skip}) \to \mathrm{ReLU}$
+
+\citep{silver2017alphagozero}. The policy head is a $1\times1$ convolution with
+two filters, batch normalization, a rectifier, and a linear layer to one logit
+per move; the value head is a $1\times1$ convolution with one filter followed by
+linear layers to 256 and then to 1, with a $\tanh$ output.
+
+Two details are load-bearing. The heads are deliberately tiny next to the trunk:
+the $1\times1$ convolutions collapse 256 channels to almost nothing before the
+expensive linear layers, because the knowledge is expected to live in the shared
+body. And the $\tanh$ bounds $v$ to the range of $z$, which keeps the squared
+error well scaled and prevents occasional large logits from producing large
+gradients.
+
+\paragraph{Why the residual tower, and why one tower for two heads.} The
+architecture is the ResNet design \citep{he2016resnet} transplanted from image
+classification, and the paper says the hyperparameters were chosen to match the
+state of the art in image recognition. Two arguments matter.
+
+Residual connections make very deep networks trainable at all: without them
+gradients vanish and training accuracy degrades with depth. And the choice was
+measured rather than assumed. AlphaGo Zero trained four architectures on the same
+fixed dataset of self-play games \citep{silver2017alphagozero}: one residual
+tower with both heads; two residual towers, one per task; one non-residual
+convolutional tower with both heads; and two non-residual towers. The first won.
+The residual tower accounts for more than 600 Elo, and combining policy and value
+into one network accounts for roughly another 600 Elo. The paper reports that
+the combination slightly reduced move-prediction accuracy while reducing value
+error and raising playing strength, and explains it as regularization to a common
+representation that serves multiple use cases.
+
+Two mechanisms produce that effect. Computationally, MCTS needs both outputs at
+every leaf, so two separate towers would cost two forward passes per leaf, which
+is the dominant cost of self-play. Statistically, the value task forces the trunk
+to encode features that predict the outcome while the policy task forces it to
+encode features that discriminate good moves from bad; neither task alone needs
+the full concept set of the other, but a shared trunk must serve both, so it
+learns the union. Each objective trains the other's features. The small drop in
+raw move-prediction accuracy is the signature of the trade: a little policy fit
+is given up for a lot of position understanding, and playing strength follows
+position understanding.
+
+\paragraph{Action encoding.} Go uses a flat distribution over the board plus a
+pass move, which does not generalize to games with structured moves. AlphaZero
+encodes chess moves as an $8\times8\times73$ stack -- 56 queen-move planes, 8
+knight-move planes, 9 underpromotion planes -- giving 4{,}672 moves, and shogi as
+$9\times9\times139$ \citep{silver2018alphazero}. Keeping the output spatial, so
+that a move means ``from this square, in this direction, by this much'',
+preserves the same translation symmetry that helps the input. The price is a
+fixed maximal move set, with illegal moves masked and renormalized at search
+time. For a game whose moves are simply ``place a stone on an empty cell'' the
+flat encoding is already spatial: one output per cell, masked to the legal cells.
+
+\subsection{The loss, term by term -- and why it is not a policy gradient}
+\label{sec:loss}
+
+Equation \eqref{eq:alphazero-loss} has three terms with three jobs.
+
+\paragraph{$(z-v)^2$: policy evaluation.} Fit the value head to the true outcome
+of games played by the improved policy. The paper treats $v$ as an expectation,
+$v \approx \E[z \mid s]$, and mean squared error is the natural fit for an
+expectation of a bounded scalar. It preserves the unit-scale argument that
+justifies equal weighting, and it accommodates the draw value $0$ without a
+reparametrization.
+
+\paragraph{$-\pi^{\!\top}\log p$: policy improvement, written as distillation.}
+Cross-entropy between the search distribution and the network policy. Its
+minimizer is $p = \pi$: the network is asked to reproduce the search's output for
+every move, not only for the move played. This is the term that makes the loop
+climb, because $\pi$ is the output of an improvement operator, so fitting $\pi$
+pulls the network above its own raw-policy level at every iteration, with
+supervision generated on the fly.
+
+\paragraph{$c\|\theta\|^2$: smoothness, with a system-level purpose.} In this
+system the regularizer does more than prevent overfitting. MCTS trusts the
+network: the prior steers selection and the value steers backup. A network that
+overfits the replay window becomes locally erratic -- priors spike on memorized
+positions, values swing between neighbouring positions -- and the search built on
+top of it degrades, which degrades the next batch of data. Weight decay keeps the
+function smooth, which keeps the search meaningful, which keeps the data stream
+healthy. The regularizer protects the loop, not only the fit.
+
+\paragraph{What is deliberately absent.} The loss is also defined by what it does
+not contain: no bootstrapped term, so targets stay unbiased; no entropy bonus,
+because exploration is the search's job
+(Section~\ref{sec:alphaepsilon} explains how that separation is kept); no
+importance weights, because the replay window is fresh enough for the
+policy-iteration framing; and \emph{no policy-gradient term at all}. The
+reinforcement-learning signal enters through the data -- the search results --
+and not through the gradient estimator.
+
+This last point is the one that is most often misstated. AlphaZero does not
+estimate $\nabla_\theta J$ by any method resembling REINFORCE. It runs policy
+iteration and supervises the pieces. The policy-gradient layer of
+Section~\ref{sec:pgt} is the historical ancestor: it is what trained AlphaGo's
+reinforcement-learning policy network in 2016 \eqref{eq:reinforce-game}. By 2017
+the explicit gradient step was gone, replaced by distillation from search. The
+object being optimized is still the expected outcome of a parameterized policy,
+and the convergence intuition still comes from the policy gradient theorem, but
+the mechanism is a supervised-fit-to-improved-targets loop. That difference is
+why the method trains stably at scales where direct policy-gradient methods are
+fragile.
+
+\subsection{Hyperparameters}
+\label{sec:hyper}
+
+Table~\ref{tab:hyper} collects the published numbers. It is short on purpose:
+the papers specify the algorithm in full and the constants barely at all.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Published training quantities. Where a value is absent, the primary
+source does not publish it, and the substitute must be treated as an experiment.
+Simulations per move are 1{,}600 in AlphaGo Zero and 800 in AlphaZero; the two
+must not be mixed.}
+\label{tab:hyper}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+Quantity & AlphaGo Zero & AlphaZero \\
+\midrule
+Residual blocks & 20 (3-day), 40 (40-day) & 19 \\
+Channels & 256 & 256 \\
+Mini-batch & 2{,}048 & 4{,}096 \\
+Training steps & 700k (3-day), 3.1M (40-day) & 700k (mini-batches) \\
+Self-play games & approx.\ 4.9M & 44M chess, 24M shogi, 21M Go \\
+Learning rate & $10^{-2} \to 10^{-3} \to 10^{-4}$ &
+$0.2 \to 0.02 \to 0.002 \to 0.0002$ \\
+Optimizer & SGD, momentum 0.9 & SGD, momentum 0.9 \\
+Weight decay & $10^{-4}$ (inside the loss) & $10^{-4}$ (inside the loss) \\
+Replay window & 500{,}000 games & not published \\
+$c_{\mathrm{puct}}$ & not published & not published (1.5 is ELF's value) \\
+Dirichlet $\varepsilon$ & 0.25 & 0.25 \\
+Dirichlet $\alpha$ & 0.03 (Go) & 0.3 chess, 0.15 shogi, 0.03 Go \\
+Temperature & $\tau = 1$ for 30 moves, then $\to 0$ & same form \\
+Gating & 55\% over 400 games & removed \\
+Hardware & 64 GPU workers $+$ 19 CPU servers & 5{,}000 TPUv1 self-play, 64 TPUv2 train \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The longer history: a decade of deletions}
+\label{sec:history}
+
+The design looks inevitable in hindsight, which it was not. It is the residue of
+roughly ten years of removing one crutch at a time \citep{silver2009thesis}.
+In 2007, reinforcement learning over hand-crafted local pattern features produced
+weak amateur play in Go: local patterns alone do not scale. In 2007--2008,
+combining UCT with learned pattern priors produced the first dan-level Go
+program, which established that learned knowledge inside tree search multiplies
+strength \citep{gelly2007rave}. In 2015, deep Q-networks showed that a single
+convolutional network trained from pixels could reach human level on a suite of
+Atari games \citep{mnih2015dqn}; the result demonstrated that deep function
+approximation is stable enough for reinforcement learning, and it is what made
+the following step plausible. It also showed the limits of the value-only
+approach: DQN learns a value over actions and acts greedily on it, with no policy
+network and no search, so it cannot represent a distribution over good moves and
+cannot improve itself by lookahead. In 2016, deep networks supplied that policy
+as well, and MCTS combined policy, value, rollouts, and human data. In 2017 the
+human data, the rollouts, and the separate networks were removed. In 2018 the
+gating, the symmetry exploitation, and the Go-specific structure were removed. In
+2020 MuZero removed the rules themselves, learning a latent dynamics model so
+that the same loop also masters Atari \citep{schrittwieser2020muzero}.
+
+Read as a sequence, every step deleted the most human part that remained, and
+every deletion either held or raised playing strength.
+
+\paragraph{The ancestor.} Tesauro's TD-Gammon (1992--1995) trained a value
+network purely by self-play temporal-difference learning and reached strong
+master level in backgammon, the first demonstration that self-play with function
+approximation can produce world-class play \citep{tesauro1995tdgammon}. It differs
+from AlphaZero in three ways that are instructive. Backgammon has dice, which
+supply exploration noise for free; AlphaZero must manufacture that noise, which
+is why Dirichlet noise and temperature exist. TD-Gammon played from the raw
+network with shallow lookahead, so there was no search in the loop. And it
+bootstrapped, which AlphaZero does not. The paper's judgement was that unbiased
+targets were worth their variance in deterministic games; TD-Gammon is the
+counterexample that shows bootstrapping can work when the environment itself
+supplies the noise.

@@ -1,0 +1,396 @@
+% ---------------------------------------------------------------------------
+%  Bibliography. Every entry was verified against the arXiv abstract page,
+%  the PMLR record, the publisher DOI record, or the project's verified
+%  literature catalogue. Do not add unverified entries.
+% ---------------------------------------------------------------------------
+
+% --- the AlphaGo line -----------------------------------------------------
+
+@article{silver2016alphago,
+  author  = {Silver, David and Huang, Aja and Maddison, Chris J. and Guez, Arthur
+             and Sifre, Laurent and van den Driessche, George and Schrittwieser, Julian
+             and Antonoglou, Ioannis and Panneershelvam, Veda and Lanctot, Marc
+             and Dieleman, Sander and Grewe, Dominik and Nham, John and Kalchbrenner, Nal
+             and Sutskever, Ilya and Lillicrap, Timothy and Leach, Madeleine
+             and Kavukcuoglu, Koray and Graepel, Thore and Hassabis, Demis},
+  title   = {Mastering the game of {Go} with deep neural networks and tree search},
+  journal = {Nature},
+  volume  = {529},
+  pages   = {484--489},
+  year    = {2016},
+  doi     = {10.1038/nature16961}
+}
+
+@article{silver2017alphagozero,
+  author  = {Silver, David and Schrittwieser, Julian and Simonyan, Karen
+             and Antonoglou, Ioannis and Huang, Aja and Guez, Arthur and Hubert, Thomas
+             and Baker, Lucas and Lai, Matthew and Bolton, Adrian and Chen, Yutian
+             and Lillicrap, Timothy and Hui, Fan and Sifre, Laurent
+             and van den Driessche, George and Graepel, Thore and Hassabis, Demis},
+  title   = {Mastering the game of {Go} without human knowledge},
+  journal = {Nature},
+  volume  = {550},
+  pages   = {354--359},
+  year    = {2017},
+  doi     = {10.1038/nature24270}
+}
+
+@article{silver2018alphazero,
+  author  = {Silver, David and Hubert, Thomas and Schrittwieser, Julian
+             and Antonoglou, Ioannis and Lai, Matthew and Guez, Arthur and Lanctot, Marc
+             and Sifre, Laurent and Kumaran, Dharshan and Graepel, Thore
+             and Lillicrap, Timothy and Simonyan, Karen and Hassabis, Demis},
+  title   = {A general reinforcement learning algorithm that masters chess, shogi,
+             and {Go} through self-play},
+  journal = {Science},
+  volume  = {362},
+  number  = {6419},
+  pages   = {1140--1144},
+  year    = {2018},
+  note    = {Preprint: arXiv:1712.01815},
+  url     = {https://arxiv.org/abs/1712.01815}
+}
+
+@article{schrittwieser2020muzero,
+  author  = {Schrittwieser, Julian and Antonoglou, Ioannis and Hubert, Thomas
+             and Simonyan, Karen and Sifre, Laurent and Schmitt, Simon and Guez, Arthur
+             and Lockhart, Edward and Hassabis, Demis and Graepel, Thore
+             and Lillicrap, Timothy and Silver, David},
+  title   = {Mastering {Atari}, {Go}, chess and shogi by planning with a learned model},
+  journal = {Nature},
+  volume  = {588},
+  pages   = {604--609},
+  year    = {2020},
+  url     = {https://arxiv.org/abs/1911.08265}
+}
+
+% --- value-based and policy-gradient ancestors ----------------------------
+
+@article{mnih2015dqn,
+  author  = {Mnih, Volodymyr and Kavukcuoglu, Koray and Silver, David and Rusu, Andrei A.
+             and Veness, Joel and Bellemare, Marc G. and Graves, Alex and Riedmiller, Martin
+             and Fidjeland, Andreas K. and Ostrovski, Georg and Petersen, Stig and Beattie, Charles
+             and Sadik, Amir and Antonoglou, Ioannis and King, Helen and Kumaran, Dharshan
+             and Wierstra, Daan and Legg, Shane and Hassabis, Demis},
+  title   = {Human-level control through deep reinforcement learning},
+  journal = {Nature},
+  volume  = {518},
+  pages   = {529--533},
+  year    = {2015},
+  doi     = {10.1038/nature14236}
+}
+
+@inproceedings{silver2014dpg,
+  author    = {Silver, David and Lever, Guy and Heess, Nicolas and Degris, Thomas
+               and Wierstra, Daan and Riedmiller, Martin},
+  title     = {Deterministic Policy Gradient Algorithms},
+  booktitle = {Proceedings of the 31st International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {32},
+  pages     = {387--395},
+  year      = {2014},
+  url       = {https://proceedings.mlr.press/v32/silver14.html}
+}
+
+@article{lillicrap2015ddpg,
+  author  = {Lillicrap, Timothy P. and Hunt, Jonathan J. and Pritzel, Alexander
+             and Heess, Nicolas and Erez, Tom and Tassa, Yuval and Silver, David
+             and Wierstra, Daan},
+  title   = {Continuous control with deep reinforcement learning},
+  journal = {arXiv preprint arXiv:1509.02971},
+  year    = {2015},
+  note    = {Presented at ICLR 2016},
+  url     = {https://arxiv.org/abs/1509.02971}
+}
+
+@article{williams1992reinforce,
+  author  = {Williams, Ronald J.},
+  title   = {Simple statistical gradient-following algorithms for connectionist
+             reinforcement learning},
+  journal = {Machine Learning},
+  volume  = {8},
+  pages   = {229--256},
+  year    = {1992}
+}
+
+@inproceedings{sutton2000policygradient,
+  author    = {Sutton, Richard S. and McAllester, David and Singh, Satinder
+               and Mansour, Yishay},
+  title     = {Policy Gradient Methods for Reinforcement Learning with Function
+               Approximation},
+  booktitle = {Advances in Neural Information Processing Systems 12},
+  year      = {2000},
+  url       = {https://proceedings.neurips.cc/paper_files/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf}
+}
+
+@inproceedings{anthony2017exit,
+  author    = {Anthony, Thomas and Tian, Zheng and Barber, David},
+  title     = {Thinking Fast and Slow with Deep Learning and Tree Search},
+  booktitle = {Advances in Neural Information Processing Systems 30},
+  year      = {2017},
+  note      = {arXiv:1705.08439},
+  url       = {https://arxiv.org/abs/1705.08439}
+}
+
+@book{howard1960,
+  author    = {Howard, Ronald A.},
+  title     = {Dynamic Programming and Markov Processes},
+  publisher = {MIT Press},
+  year      = {1960}
+}
+
+@book{suttonbarto2018,
+  author    = {Sutton, Richard S. and Barto, Andrew G.},
+  title     = {Reinforcement Learning: An Introduction},
+  edition   = {2},
+  publisher = {MIT Press},
+  year      = {2018}
+}
+
+@article{tesauro1995tdgammon,
+  author  = {Tesauro, Gerald},
+  title   = {Temporal Difference Learning and {TD-Gammon}},
+  journal = {Communications of the ACM},
+  volume  = {38},
+  number  = {3},
+  year    = {1995}
+}
+
+@phdthesis{silver2009thesis,
+  author = {Silver, David},
+  title  = {Reinforcement Learning and Simulation-Based Search in Computer {Go}},
+  school = {University of Alberta},
+  year   = {2009}
+}
+
+% --- tree search and bandits ----------------------------------------------
+
+@inproceedings{coulom2006mcts,
+  author    = {Coulom, R{\'e}mi},
+  title     = {Efficient Selectivity and Backup Operators in Monte-Carlo Tree Search},
+  booktitle = {Computers and Games (CG 2006), Lecture Notes in Computer Science 4630},
+  year      = {2007},
+  doi       = {10.1007/978-3-540-75538-8_7}
+}
+
+@article{auer2002ucb1,
+  author  = {Auer, Peter and Cesa-Bianchi, Nicol{\`o} and Fischer, Paul},
+  title   = {Finite-time Analysis of the Multiarmed Bandit Problem},
+  journal = {Machine Learning},
+  volume  = {47},
+  number  = {2--3},
+  pages   = {235--256},
+  year    = {2002},
+  doi     = {10.1023/a:1013689704352}
+}
+
+@inproceedings{kocsis2006uct,
+  author    = {Kocsis, Levente and Szepesv{\'a}ri, Csaba},
+  title     = {Bandit Based Monte-Carlo Planning},
+  booktitle = {European Conference on Machine Learning (ECML 2006),
+               Lecture Notes in Computer Science 4212},
+  year      = {2006},
+  doi       = {10.1007/11871842_29}
+}
+
+@article{rosin2011puct,
+  author  = {Rosin, Christopher D.},
+  title   = {Multi-armed bandits with episode context},
+  journal = {Annals of Mathematics and Artificial Intelligence},
+  volume  = {61},
+  number  = {3},
+  pages   = {203--230},
+  year    = {2011},
+  doi     = {10.1007/s10472-011-9258-6}
+}
+
+@inproceedings{gelly2007rave,
+  author    = {Gelly, Sylvain and Silver, David},
+  title     = {Combining online and offline knowledge in {UCT}},
+  booktitle = {Proceedings of the 24th International Conference on Machine Learning
+               (ICML 2007)},
+  year      = {2007},
+  doi       = {10.1145/1273496.1273531}
+}
+
+@inproceedings{chaslot2008parallel,
+  author    = {Chaslot, Guillaume and Winands, Mark H. M. and van den Herik, H. Jaap},
+  title     = {Parallel Monte-Carlo Tree Search},
+  booktitle = {Computers and Games (CG 2008), Lecture Notes in Computer Science 5131},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-87608-3_6}
+}
+
+@inproceedings{segal2011paralleluct,
+  author    = {Segal, Richard},
+  title     = {On the Scalability of Parallel {UCT}},
+  booktitle = {Computers and Games (CG 2010), Lecture Notes in Computer Science 6515},
+  year      = {2011},
+  doi       = {10.1007/978-3-642-17928-0_4}
+}
+
+@article{browne2012survey,
+  author  = {Browne, Cameron and Powley, Edward J. and Whitehouse, Daniel and Lucas, Simon M.
+             and Cowling, Peter I. and Rohlfshagen, Philipp and Tavener, Stephen
+             and P{\'e}rez, Diego and Samothrakis, Spyridon and Colton, Simon},
+  title   = {A Survey of Monte Carlo Tree Search Methods},
+  journal = {IEEE Transactions on Computational Intelligence and AI in Games},
+  volume  = {4},
+  number  = {1},
+  pages   = {1--43},
+  year    = {2012},
+  doi     = {10.1109/tciaig.2012.2186810}
+}
+
+@inproceedings{winands2008solver,
+  author    = {Winands, Mark H. M. and Bj{\"o}rnsson, Yngvi and Saito, Jahn-Takeshi},
+  title     = {Monte-Carlo Tree Search Solver},
+  booktitle = {Computers and Games (CG 2008), Lecture Notes in Computer Science 5131},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-87608-3_3}
+}
+
+@inproceedings{wang2007patterns,
+  author    = {Wang, Yizao and Gelly, Sylvain},
+  title     = {Modifications of {UCT} and Sequence-Like Simulations for {Monte-Carlo} {Go}},
+  booktitle = {IEEE Symposium on Computational Intelligence and Games (CIG 2007)},
+  year      = {2007},
+  doi       = {10.1109/cig.2007.368095}
+}
+
+% --- replicas and engineering --------------------------------------------
+
+@inproceedings{tian2019elf,
+  author    = {Tian, Yuandong and Ma, Jerry and Gong, Qucheng and Sengupta, Shubho
+               and Chen, Zhuoyuan and Pinkerton, James and Zitnick, C. Lawrence},
+  title     = {{ELF OpenGo}: An Analysis and Open Reimplementation of {AlphaZero}},
+  booktitle = {Proceedings of the 36th International Conference on Machine Learning
+               (ICML 2019)},
+  year      = {2019},
+  url       = {https://arxiv.org/abs/1902.04522}
+}
+
+@article{wu2019katago,
+  author  = {Wu, David J.},
+  title   = {Accelerating Self-Play Learning in {Go}},
+  journal = {arXiv preprint arXiv:1902.10565},
+  year    = {2019},
+  url     = {https://arxiv.org/abs/1902.10565}
+}
+
+% --- Gomoku, threat-space search, opening rules ---------------------------
+
+@phdthesis{allis1994thesis,
+  author = {Allis, Louis Victor},
+  title  = {Searching for Solutions in Games and Artificial Intelligence},
+  school = {Maastricht University},
+  year   = {1994},
+  doi    = {10.26481/dis.19940923la}
+}
+
+@article{allis1996gomoku,
+  author  = {Allis, Louis Victor and van den Herik, H. Jaap and Huntjens, M. P. H.},
+  title   = {Go-Moku Solved by New Search Techniques},
+  journal = {Computational Intelligence},
+  volume  = {12},
+  number  = {1},
+  pages   = {7--23},
+  year    = {1996},
+  doi     = {10.1111/j.1467-8640.1996.tb00250.x}
+}
+
+@article{xie2018alphagomoku,
+  author  = {Xie, Zheng and Fu, Xingyu and Yu, JinYuan},
+  title   = {{AlphaGomoku}: An {AlphaGo}-based {Gomoku} Artificial Intelligence
+             using Curriculum Learning},
+  journal = {arXiv preprint arXiv:1809.10595},
+  year    = {2018},
+  url     = {https://arxiv.org/abs/1809.10595}
+}
+
+@misc{renju_rules,
+  author       = {{Renju International Federation}},
+  title        = {Renju Rules},
+  howpublished = {\url{https://renju.net/rules/}},
+  year         = {n.d.},
+  note         = {Includes the {Swap2} opening protocol}
+}
+
+@misc{gomocup,
+  author       = {{Gomocup organizers}},
+  title        = {Gomocup: the {Gomoku} {AI} Tournament --- Detail Information},
+  howpublished = {\url{https://gomocup.org/detail-information/}},
+  year         = {n.d.},
+  note         = {Tournament rules for freestyle, standard, renju and caro variants}
+}
+
+% --- architecture and optimization ---------------------------------------
+
+@inproceedings{he2016resnet,
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  title     = {Deep Residual Learning for Image Recognition},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern
+               Recognition (CVPR 2016)},
+  year      = {2016},
+  url       = {https://arxiv.org/abs/1512.03385}
+}
+
+@article{ioffe2015batchnorm,
+  author  = {Ioffe, Sergey and Szegedy, Christian},
+  title   = {Batch Normalization: Accelerating Deep Network Training by Reducing
+             Internal Covariate Shift},
+  journal = {arXiv preprint arXiv:1502.03167},
+  year    = {2015},
+  url     = {https://arxiv.org/abs/1502.03167}
+}
+
+@article{kingma2014adam,
+  author  = {Kingma, Diederik P. and Ba, Jimmy},
+  title   = {Adam: A Method for Stochastic Optimization},
+  journal = {arXiv preprint arXiv:1412.6980},
+  year    = {2014},
+  url     = {https://arxiv.org/abs/1412.6980}
+}
+
+@article{loshchilov2017adamw,
+  author  = {Loshchilov, Ilya and Hutter, Frank},
+  title   = {Decoupled Weight Decay Regularization},
+  journal = {arXiv preprint arXiv:1711.05101},
+  year    = {2017},
+  url     = {https://arxiv.org/abs/1711.05101}
+}
+
+@article{schaul2015prioritized,
+  author  = {Schaul, Tom and Quan, John and Antonoglou, Ioannis and Silver, David},
+  title   = {Prioritized Experience Replay},
+  journal = {arXiv preprint arXiv:1511.05952},
+  year    = {2015},
+  url     = {https://arxiv.org/abs/1511.05952}
+}
+
+@inproceedings{hinton2015distillation,
+  author    = {Hinton, Geoffrey and Vinyals, Oriol and Dean, Jeff},
+  title     = {Distilling the Knowledge in a Neural Network},
+  booktitle = {NIPS 2014 Deep Learning Workshop},
+  year      = {2015},
+  url       = {https://arxiv.org/abs/1503.02531}
+}
+
+@inproceedings{wilson2017adaptive,
+  author    = {Wilson, Ashia C. and Roelofs, Rebecca and Stern, Mitchell and Srebro, Nathan
+               and Recht, Benjamin},
+  title     = {The Marginal Value of Adaptive Gradient Methods in Machine Learning},
+  booktitle = {Advances in Neural Information Processing Systems 30},
+  year      = {2017},
+  url       = {https://arxiv.org/abs/1705.08292}
+}
+
+% --- software -------------------------------------------------------------
+
+@misc{burn,
+  author       = {{Trace-AI}},
+  title        = {Burn: a deep learning framework for {Rust}},
+  howpublished = {\url{https://github.com/tracel-ai/burn}},
+  year         = {2026},
+  note         = {Version 0.21.0}
+}

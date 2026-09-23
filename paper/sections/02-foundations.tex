@@ -1,0 +1,557 @@
+\section{Mathematical foundations}
+\label{sec:foundations}
+
+\subsection{Markov decision processes and the objective}
+\label{sec:mdp}
+
+\begin{definition}[Markov decision process]
+A \emph{Markov decision process} (MDP) is a tuple
+$\mathcal{M} = (\mathcal{S}, \mathcal{A}, P, r, \gamma)$: a set of states
+$\mathcal{S}$; a set of actions $\mathcal{A}$; a transition kernel
+$P(s' \mid s,a)$; a reward function $r : \mathcal{S} \times \mathcal{A} \to \R$;
+and a discount factor $\gamma \in [0,1]$.
+\end{definition}
+
+A \emph{policy} maps states to distributions over actions. When the policy is
+represented by parameters $\theta$, we write $\pi_\theta(a \mid s)$. The value
+functions are
+
+\begin{align}
+v^{\pi}(s) &= \E_{\pi}\!\left[\textstyle\sum_{t \ge 0} \gamma^t r_t
+\;\middle|\; s_0 = s\right], &
+Q^{\pi}(s,a) &= \E_{\pi}\!\left[\textstyle\sum_{t \ge 0} \gamma^t r_t
+\;\middle|\; s_0 = s, a_0 = a\right],
+\end{align}
+
+and they satisfy the Bellman equations
+$v^\pi(s) = \sum_a \pi(a\mid s) Q^\pi(s,a)$ and
+$Q^\pi(s,a) = r(s,a) + \gamma \sum_{s'} P(s'\mid s,a)\, v^\pi(s')$.
+
+The \emph{objective} is the expected outcome of the initial states under the
+policy,
+\begin{equation}
+J(\theta) \;=\; \E_{s_0 \sim \rho}\!\left[ v^{\pi_\theta}(s_0) \right],
+\label{eq:objective}
+\end{equation}
+where $\rho$ is the distribution over starting states.
+
+Two specializations are worth stating at once, because the rest of this
+monograph uses them exclusively.
+
+\begin{remark}[Two-player perfect-information games as MDPs]
+For a deterministic, perfect-information, zero-sum game with two players, the
+following hold.
+\begin{enumerate}
+  \item $\mathcal{S}$ is the set of legal board positions, $\mathcal{A}$ the set
+        of legal moves at a position, and $P$ is deterministic: a move
+        determines the next position.
+  \item The reward is zero at every non-terminal step and equals the game
+        outcome at a terminal state. With outcomes in $\{-1, 0, +1\}$ and
+        $\gamma = 1$, the return from a terminal state is exactly the game
+        result, and every value lies in $[-1,1]$.
+  \item The two players' value functions are related by $v(s) = -v(s')$ when
+        $s'$ is the position seen by the opponent. This \emph{sign alternation}
+        is the single most common source of implementation defects
+        (Section~\ref{sec:tree}).
+\end{enumerate}
+\end{remark}
+
+\subsection{The likelihood-ratio identity, and REINFORCE}
+\label{sec:reinforce}
+
+The objective \eqref{eq:objective} is an expectation over trajectories, and
+the trajectories depend on $\theta$. The first step of the whole subject is to
+make that dependence disappear by differentiating a probability instead of a
+value.
+
+Let $\tau = (s_0, a_0, s_1, a_1, \dots, s_T)$ be a trajectory. Its probability
+under the policy factorizes:
+
+\begin{equation}
+p_\theta(\tau) \;=\; \rho(s_0) \prod_{t=0}^{T-1}
+\pi_\theta(a_t \mid s_t)\, P(s_{t+1} \mid s_t, a_t).
+\label{eq:trajprob}
+\end{equation}
+
+\begin{proposition}[Likelihood-ratio identity]
+\label{prop:likelihood-ratio}
+For any function $f$ of the trajectory,
+$\nabla_\theta\, \E_{\tau \sim p_\theta}[f(\tau)] =
+\E_{\tau \sim p_\theta}\!\left[ f(\tau)\, \nabla_\theta \log p_\theta(\tau) \right]$.
+\end{proposition}
+
+\begin{proof}
+$\nabla_\theta \E[f] = \nabla_\theta \int p_\theta(\tau) f(\tau) \dd\tau
+= \int f(\tau) \nabla_\theta p_\theta(\tau) \dd\tau$. Since
+$\nabla_\theta p_\theta = p_\theta \nabla_\theta \log p_\theta$, the identity
+follows, provided the exchange of derivative and integral is justified; this
+requires that $\pi_\theta$ be differentiable in $\theta$ and that the standard
+dominated-convergence conditions hold.
+\end{proof}
+
+Apply Proposition~\ref{prop:likelihood-ratio} with $f(\tau) = R(\tau)$, the
+return of the trajectory. Taking logarithms in \eqref{eq:trajprob}, the initial
+state distribution and the transition kernel do not depend on $\theta$, so all
+that remains is
+
+\begin{equation}
+\nabla_\theta \E[R] \;=\;
+\E\!\left[ R(\tau) \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t \mid s_t)
+\right].
+\label{eq:reinforce}
+\end{equation}
+
+This is the REINFORCE estimator \citep{williams1992reinforce}. It needs no
+model of $P$: samples and a score function suffice. With a
+\emph{return-to-go} refinement, $R(\tau)$ is replaced at step $t$ by
+$G_t = \sum_{t'\ge t} \gamma^{t'-t} r_{t'}$, because rewards before time $t$
+cannot be affected by $a_t$; the estimator is unchanged in expectation and
+lower in variance.
+
+For a board game with $\gamma = 1$ and outcome $z \in \{-1,0,+1\}$, the
+return-to-go from any non-terminal step is simply $z$. Equation
+\eqref{eq:reinforce} becomes
+
+\begin{equation}
+\nabla_\theta J(\theta) \;=\;
+\E\!\left[ z \sum_{t} \nabla_\theta \log \pi_\theta(a_t \mid s_t) \right],
+\label{eq:reinforce-game}
+\end{equation}
+
+that is: raise the log-probability of every move played in a won game, and
+lower it in a lost game. This is exactly the reinforcement-learning stage of
+AlphaGo (2016) \citep{silver2016alphago}. It is worth holding on to for two
+paragraphs, because it is the point at which the popular description of
+AlphaZero as ``policy gradient plus search'' goes wrong
+(Section~\ref{sec:loss}).
+
+A \emph{baseline} $b(s)$, any function of the state that does not depend on the
+action, leaves the estimator unbiased:
+
+\begin{equation}
+\E\!\left[ (G_t - b(s_t))\, \nabla_\theta \log \pi_\theta(a_t \mid s_t) \right]
+= \nabla_\theta J(\theta),
+\label{eq:baseline}
+\end{equation}
+
+because $\E_{a \sim \pi}[b(s) \nabla \log \pi(a|s)] = b(s) \nabla \sum_a \pi(a|s)
+= b(s) \nabla 1 = 0$. Choosing $b(s_t) = v^{\pi}(s_t)$ turns the multiplier into
+an advantage estimate and reduces variance by orders of magnitude in practice;
+choosing $b$ as a bootstrapped estimate is the actor--critic idea
+(Section~\ref{sec:actorcritic}).
+
+\subsection{The policy gradient theorem}
+\label{sec:pgt}
+
+Equation \eqref{eq:reinforce} has a weakness that is not visible in the board-game
+setting but is fatal elsewhere: the multiplier $G_t$ is the return of a whole
+sampled trajectory, so its variance grows with the horizon. It would be far
+better to weight the score function by a local quantity, $Q^\pi(s_t,a_t)$. The
+policy gradient theorem says that this is allowed, and that the price is a
+change of state distribution.
+
+\begin{theorem}[Policy gradient theorem, \citeauthor{sutton2000policygradient}]
+\label{thm:pgt}
+For a differentiable policy $\pi_\theta$ and any start-state distribution,
+\begin{equation}
+\nabla_\theta J(\theta) \;=\;
+\sum_{s} d^{\pi}(s) \sum_{a} Q^{\pi}(s,a)\, \nabla_\theta \pi_\theta(a \mid s),
+\label{eq:pgt}
+\end{equation}
+where $d^{\pi}(s) = \sum_{t\ge 0} \gamma^t \Prob(s_t = s)$ is the
+discounted state-visitation distribution under $\pi$.
+Equivalently,
+$\nabla_\theta J(\theta) = \E_{s \sim d^\pi}
+\!\left[\sum_a Q^\pi(s,a) \nabla_\theta \pi_\theta(a|s)\right]$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Write $J(\theta) = \sum_s d_0(s) v^{\pi_\theta}(s)$ and differentiate
+$v^{\pi_\theta}$ by unrolling one Bellman step:
+\[
+\nabla v^{\pi}(s)
+= \sum_a \Big[ \nabla \pi(a|s)\, Q^{\pi}(s,a)
+  + \pi(a|s) \sum_{s'} P(s'|s,a)\, \gamma\, \nabla v^{\pi}(s') \Big].
+\]
+Note which terms are missing: $Q^\pi$ is not differentiated. Substitute this
+expression into itself repeatedly. Every unrolling multiplies the state
+distribution by $\gamma \sum_a \pi(a|s) P(s'|s,a)$, so after infinitely many
+unrollings the outer distribution becomes exactly $d^\pi$, and the term
+$\nabla \pi$ is collected once at each level. Summing the resulting geometric
+series gives \eqref{eq:pgt}.
+\end{proof}
+
+The content of the theorem is what the proof sketch reveals: \emph{the
+derivative of the state distribution is never needed}. The distribution
+$d^\pi$ appears as a weight, not as a function to be differentiated. This is
+what makes sample-based estimation possible at all, and it is why
+\eqref{eq:reinforce} and \eqref{eq:pgt} agree in expectation: the sample return
+$G_t$ is an unbiased estimate of $Q^\pi(s_t,a_t)$ under the same distribution.
+
+Combining \eqref{eq:pgt} with the log-derivative trick gives the practical form
+
+\begin{equation}
+\nabla_\theta J(\theta) \;=\;
+\E_{s \sim d^\pi,\, a \sim \pi}\!\left[ Q^{\pi}(s,a)\, \nabla_\theta
+\log \pi_\theta(a \mid s) \right],
+\label{eq:pgt-score}
+\end{equation}
+
+which is the same as \eqref{eq:reinforce} except that the multiplier is now a
+\emph{state--action value}, not a trajectory return. Any unbiased estimate of
+$Q^\pi$ may be substituted; the choice of estimator is the actor--critic design
+space.
+
+\subsection{Actor--critic, bootstrapping, and the deadly triad}
+\label{sec:actorcritic}
+
+Substituting a learned approximation $Q_w(s,a) \approx Q^\pi(s,a)$ into
+\eqref{eq:pgt-score} gives the actor--critic architecture: an \emph{actor}
+$\pi_\theta$ that is improved by the gradient, and a \emph{critic} $Q_w$ that
+supplies the multiplier. There are two ways to train the critic, and they
+differ in a way that decides the whole stability picture.
+
+\paragraph{Monte Carlo.} Use the observed return $G_t$ as the target for
+$Q_w(s_t,a_t)$. The target is an unbiased sample of the true value under the
+current policy. The variance is high, because a single game outcome is a noisy
+estimate of one position's worth; the bias is zero.
+
+\paragraph{Temporal difference.} Use a one-step bootstrap
+$\hat{y}_t = r_t + \gamma\, Q_w(s_{t+1}, a_{t+1})$ as the target, and descend on
+the squared temporal-difference (TD) error
+\begin{equation}
+\delta_t \;=\; r_t + \gamma\, Q_w(s_{t+1},a_{t+1}) - Q_w(s_t,a_t).
+\label{eq:td}
+\end{equation}
+The target is biased, because it depends on the same estimate being trained.
+The variance is much lower, because it involves one transition rather than a
+whole episode. TD learning propagates information backwards through the state
+space, which is why it is sample-efficient; but the bias is real, and it becomes
+harmful in combination with the next two ingredients.
+
+\begin{remark}[The deadly triad]
+Divergence of value estimation is possible when three conditions hold
+simultaneously: \emph{function approximation}, \emph{bootstrapping}, and
+\emph{off-policy} learning \citep{suttonbarto2018}. Each is individually
+manageable. Approximate value functions alone may simply be inaccurate.
+Bootstrapping alone is the basis of TD learning. Off-policy learning alone
+requires importance weights but is sound. Together they can produce a feedback
+loop in which the approximation error of the target feeds the update, which
+enlarges the error.
+\end{remark}
+
+This remark returns in Section~\ref{sec:alphazero-why}, because one of the
+cleanest features of the AlphaZero design is that it removes the second
+ingredient completely: the value target is the raw game outcome, so the loop
+never bootstraps.
+
+\subsection{The deterministic policy gradient, and the DDPG branch}
+\label{sec:dpg}
+
+The policy gradient of Section~\ref{sec:pgt} integrates over actions. For a
+discrete game that integration is cheap: the number of legal moves is at most a
+few hundred. For a continuous action space it is the dominant cost, and the
+usual resolution is to make the policy deterministic.
+
+\begin{definition}[Deterministic policy]
+A deterministic policy is a differentiable map
+$\mu_\theta : \mathcal{S} \to \mathcal{A}$. Its objective is
+\begin{equation}
+J(\theta) \;=\; \E_{s \sim \rho^{\mu}}\!\left[ Q^{\mu}\!\left(s, \mu_\theta(s)\right)\right],
+\label{eq:dpg-objective}
+\end{equation}
+where $\rho^\mu$ is the discounted state distribution induced by $\mu_\theta$.
+\end{definition}
+
+Because the action is now a deterministic function of the state, the gradient
+of the objective with respect to $\theta$ can be taken by the chain rule -- the
+action distribution no longer depends on $\theta$ in a way that must be
+integrated out.
+
+\begin{proposition}[Deterministic policy gradient, \citeauthor{silver2014dpg}]
+\label{prop:dpg}
+Under the usual conditions on differentiability and on the existence of
+$\rho^\mu$,
+\begin{equation}
+\nabla_\theta J(\theta) \;=\;
+\E_{s \sim \rho^{\mu}}\!\left[
+\underbrace{\nabla_\theta \mu_\theta(s)}_{\text{how to move}}
+\cdot
+\underbrace{\nabla_a Q^{\mu}(s,a)\big|_{a = \mu_\theta(s)}}_{\text{which way is better}}
+\right].
+\label{eq:dpg}
+\end{equation}
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+Differentiate \eqref{eq:dpg-objective}. Two kinds of term appear: those in which
+$\theta$ enters through $\mu_\theta$ inside $Q^\mu$, and those in which $\theta$
+enters through the state distribution $\rho^\mu$. The second kind is
+$\sum_s \nabla_\theta \rho^\mu(s)\, Q^\mu(s,\mu_\theta(s))$. Using the
+consistency identity of the deterministic policy,
+$\nabla_\theta \rho^\mu(s) = \rho(s_0)\sum_t \gamma^t \nabla_\theta P(s_t = s)$,
+the state-distribution term can be rewritten as
+$\sum_t \gamma^t \sum_s \rho(s_0) \nabla_\theta P(s_t = s)
+\, Q^\mu(s,\mu_\theta(s))$. This expression vanishes because it is the
+derivative of $\sum_s P(s_t = s) = 1$ with respect to $\theta$, dotted with the
+constant factor $Q^\mu(s,\mu_\theta(s))$ evaluated at the same $s$; formally,
+it is an expectation of a total derivative of a probability and cancels by the
+same argument that removes the state-distribution derivative in
+Theorem~\ref{thm:pgt}. What remains is the two-factor product
+\eqref{eq:dpg}. The full argument, including the conditions, is
+\citet{silver2014dpg}.
+\end{proof}
+
+The two factors of \eqref{eq:dpg} have a direct reading that is worth keeping:
+$\nabla_\theta \mu_\theta(s)$ says how the chosen action changes when the
+parameters change, and $\nabla_a Q^\mu$ says which direction in action space
+improves the value. Their product is an ascent direction for the value, obtained
+without integrating over actions at all.
+
+The theorem also explains the relationship between the two branches. If the
+stochastic policy is a fixed-variance Gaussian,
+$\pi_\theta(a|s) = \mathcal{N}\!\left(\mu_\theta(s), \sigma^2 I\right)$, then the
+stochastic policy gradient of Theorem~\ref{thm:pgt} converges, as
+$\sigma \to 0$, to the deterministic gradient \eqref{eq:dpg} plus a term of order
+$\sigma^2$ involving the second derivative of $Q$ at the mean. In the limit, only
+the deterministic formula survives. That limit is the content of the connection,
+and it is the reason a deterministic actor can be trained at all: the gradient
+of the value with respect to the action is a usable teaching signal.
+
+\begin{remark}[Attribution, and a correction worth making once]
+The deterministic policy gradient is \citet{silver2014dpg}. The deep version of
+it -- an off-policy actor--critic with a replay buffer, target networks, and
+action-noise exploration, which is the algorithm usually called \emph{deep
+deterministic policy gradient} or DDPG -- is \citet{lillicrap2015ddpg}, whose
+author list begins with Lillicrap and Hunt and ends with Silver and Wierstra.
+Silver is a co-author of DDPG, not its author, and DDPG is not the parent of
+AlphaGo: it is a parallel branch. The two branches share the actor--critic
+frame, the chain rule through the action, and nothing else that matters. DDPG
+exists because continuous actions make a stochastic policy expensive to
+integrate over; AlphaZero exists because discrete games make a lookahead search
+cheap to run. DDPG learns a bootstrapped critic $Q_w$ and must inject
+exploration noise into a deterministic actor. AlphaZero learns no critic at all:
+the search supplies local action values, the value head supplies $v$, and the
+target is never bootstrapped. Section~\ref{sec:three-papers} resumes the
+AlphaZero branch and does not use DDPG again.
+\end{remark}
+
+\subsection{Approximate policy iteration}
+\label{sec:apxpi}
+
+Classical policy iteration alternates two steps in an exact MDP:
+
+\begin{enumerate}
+  \item \textbf{Policy evaluation}: compute $v^{\pi}$ for the current policy.
+  \item \textbf{Policy improvement}: set $\pi'(s) = \argmax_a Q^{\pi}(s,a)$.
+\end{enumerate}
+
+The guarantee for the second step is the improvement theorem: acting greedily
+with respect to the value of a policy produces a policy that is at least as
+good everywhere, and strictly better wherever the greedy action improves on the
+policy's own action \citep{suttonbarto2018}. Because the number of deterministic
+policies in a finite MDP is finite and the sequence is monotonically improving,
+policy iteration converges to an optimal policy in finitely many iterations.
+
+Both steps become approximations as soon as the state space is large. The
+improvement step still requires a maximization over actions -- cheap in a
+discrete game, impossible in a continuous one -- and the evaluation step
+requires a function approximator. The resulting scheme, \emph{approximate policy
+iteration}, has no general convergence guarantee, and there are classical
+counterexamples.
+
+The AlphaZero loop is an approximate policy iteration, and the AlphaGo Zero
+paper states exactly this:
+
+\begin{quote}
+``The AlphaGo Zero self-play algorithm can be understood as an approximate
+policy iteration scheme in which MCTS is used for both policy improvement and
+policy evaluation'' \citep{silver2017alphagozero}.
+\end{quote}
+
+The mapping onto the two steps is as follows.
+
+\emph{Improvement} is the tree search. Given the network's policy $p$ and value
+$v$, the search returns a distribution $\pi$ over the root's moves. That
+distribution is what the network's policy would become if it could look ahead:
+it is a better policy than $p$, for the same reasons a greedy step on an
+accurate $Q$ is better than the policy that generated the $Q$.
+
+\emph{Evaluation} is the value head trained on $z$, the outcome of games played
+with the improved policy. There is no separate critic; the value network is
+retrained on outcomes generated by the improved policy, which is precisely the
+policy-evaluation step of the loop.
+
+The loop is then: improve with search, evaluate by training on outcomes of the
+improved policy, re-derive the policy from the improved network, repeat. The
+structural reason it does not stall at the network's own level is the asymmetry
+between the two actors: the teacher (the search, which uses the network as a
+prior and as a leaf evaluator) is stronger than the student (the network alone),
+because the search corrects the network's errors by lookahead and by comparing
+alternatives. Every iteration distils that correction back into the weights,
+which raises the level at which the next search operates.
+
+\subsection{Expert Iteration}
+\label{sec:exit}
+
+The cleanest theoretical frame for the loop is \emph{Expert Iteration} (ExIt),
+introduced by \citet{anthony2017exit}. It separates the two roles explicitly.
+
+A \emph{apprentice} is a function approximator $\pi_\theta$ that imitates
+decisions. An \emph{expert} is a planner that improves upon the apprentice by
+lookahead and returns a better decision distribution. Expert Iteration repeats
+one step: plan with the expert on states, then refit the apprentice to the
+expert's improved decisions. Formally, with an expert operator
+$E(\pi_\theta)$ that maps a policy to a better one,
+
+\begin{equation}
+\pi_{\theta} \;\longmapsto\; E(\pi_\theta) \;\longmapsto\;
+\argmin_{\theta'} D\!\left(E(\pi_\theta) \, \|\, \pi_{\theta'}\right)
+\;\longmapsto\; \pi_{\theta'}, \qquad \text{repeat.}
+\label{eq:exit}
+\end{equation}
+
+\citet{anthony2017exit} prove that in the exact, tabular case -- an exact expert
+and an unrestricted apprentice -- this iteration converges to the optimal policy.
+The proof is a polytope argument: the expert's improvement step is a contraction
+in a suitable norm, and the imitation step is exact in the tabular case, so the
+sequence of policies is monotone.
+
+AlphaGo Zero is Expert Iteration with MCTS as the expert and a residual
+convolutional network as the apprentice. Everything the proof needs is lost in
+that instantiation: the expert is an approximation (a finite number of
+simulations), the apprentice is a deep network with a fixed architecture, the
+data distribution moves with the weights, and the imitation target is stochastic.
+The value network has no counterpart in ExIt at all; it is an addition that
+supplies the expert with a leaf evaluation. The frame is nevertheless the right
+one, because it names the two moving parts, and because it identifies exactly
+which assumption each practical departure violates. Section~\ref{sec:proven}
+returns to this inventory.
+
+\subsection{Bandits, UCT, and PUCT}
+\label{sec:bandits}
+
+Tree search in the AlphaZero line is a sequence of bandit problems, one per
+node. This is the mathematical content behind the selection rule; the rest of
+the search is bookkeeping.
+
+\paragraph{The bandit problem.} In a $K$-armed bandit, a player chooses one of
+$K$ options at each of $n$ rounds and observes a bounded reward from the chosen
+option. The quality of a strategy is its \emph{regret}: the expected difference
+between the reward of always playing the best arm and the reward actually
+collected. The problem is the canonical formalization of the
+exploration--exploitation trade-off.
+
+\paragraph{UCB1.} \citet{auer2002ucb1} give the rule
+\begin{equation}
+a_n \;=\; \argmax_{a}\,\left[\, \bar{Q}_a \;+\;
+\sqrt{\frac{2 \ln n}{n_a}} \,\right],
+\label{eq:ucb1}
+\end{equation}
+where $\bar{Q}_a$ is the sample mean reward of arm $a$ and $n_a$ its number of
+plays. The first term exploits; the second explores, shrinking as $n_a$ grows and
+growing as the total number of plays $n$ grows. UCB1 has logarithmic regret per
+arm, and the proof is a concentration argument: the exploration bonus is the
+width of a confidence interval for $\bar{Q}_a$ at the required confidence level,
+and an arm that could still be optimal is never ruled out permanently.
+
+\paragraph{UCT.} \citet{kocsis2006uct} apply the UCB1 rule at every node of a
+search tree instead of at a single bandit. A node's "arms" are its actions, the
+"reward" of an arm is the value of the state reached by it, and the values are
+backed up along the path to the root. The resulting algorithm is Upper Confidence
+bounds applied to Trees (UCT). Its theoretical attraction is a consistency
+result: as the number of simulations grows without bound, UCT's root decision
+converges to the minimax value, with finite-sample error bounds. UCT is the
+algorithm that made Monte Carlo Tree Search (MCTS) work in Go, a domain in which
+alpha--beta search had failed for decades \citep{coulom2006mcts, browne2012survey}.
+
+\paragraph{PUCT.} The published AlphaGo Zero selection rule adds a learned prior
+to the exploration bonus \citep{rosin2011puct}:
+
+\begin{equation}
+a^{*} \;=\; \argmax_a \left[\, Q(s,a) \;+\; c_{\mathrm{puct}}\,
+P(s,a)\, \frac{\sqrt{\sum_b N(s,b)}}{1 + N(s,a)} \,\right].
+\label{eq:puct}
+\end{equation}
+
+The three factors of the exploration bonus each do a job. $P(s,a)$ is the prior
+supplied by the network's policy head: it concentrates the search where the
+network believes the good moves are. $\sqrt{\sum_b N(s,b)}$ makes the bonus grow
+as the node is visited more often, so that a node is never abandoned. The
+denominator $1 + N(s,a)$ makes the bonus shrink for the specific arm that has
+been tried. The sum form of the growth term is the substantive difference from
+UCB1: \emph{any} sibling's visit raises the bonus for \emph{this} arm, so
+unexplored arms of a heavily visited node keep attracting attention, and the
+sequence of unvisited arms is enumerated rather than sampled at random.
+
+The practical difference between UCT and PUCT is the cost of finding out which
+arms are good. The classical UCB1 bonus has to spend visits to estimate every
+arm's mean, because it starts from total ignorance. In a game with 150 legal
+moves, most of which lose immediately or do nothing, that is most of the budget
+spent on distinguishing near-equal bad arms. A prior that is even roughly right
+focuses the budget on the few moves that matter, and the whole search becomes
+deeper instead of wider.
+
+\begin{remark}[What the prior costs, theoretically]
+The guarantee does not survive the prior. UCT's consistency proof needs the
+exploration term to be a genuine confidence sequence for an agnostic estimator.
+Once $P(s,a)$ comes from a learned function of the position, the bonus is no
+longer calibrated to any confidence level, and it can be systematically wrong.
+There is no published regret bound or consistency proof for PUCT with learned
+priors. This is not a defect of the implementation; it is the state of the
+theory, and Section~\ref{sec:proven} states it plainly.
+\end{remark}
+
+\paragraph{Proven values.} One classical refinement does carry over intact and is
+used directly in this monograph. \citet{winands2008solver} observe that some
+nodes have values that are \emph{exact}: a node whose game is over, or a node
+whose value has been proven by a sound argument, does not need estimation. Their
+MCTS-Solver propagates such values explicitly and stops sampling them. This is
+the mechanism that lets a search recognise a forced win, and it is the same
+mechanism that lets hand-written tactical detection feed exact labels into
+training (Section~\ref{sec:alphaepsilon}).
+
+\subsection{What is proven, and what is not}
+\label{sec:proven}
+
+The results collected in this section have very different status, and mixing them
+is the most common way to overstate the strength of an AlphaZero-style system.
+Table~\ref{tab:proven} separates them.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Status of the results used by an AlphaZero-style agent. The last three
+entries are the reason the systems work in practice; they are not theorems.}
+\label{tab:proven}
+\begin{tabularx}{\textwidth}{@{}X l@{}}
+\toprule
+Claim & Status \\
+\midrule
+UCB1 achieves logarithmic regret \citep{auer2002ucb1} & proven \\
+UCT converges to the minimax value \citep{kocsis2006uct} & proven \\
+Policy gradient with function approximation converges to a local
+optimum \citep{sutton2000policygradient} & proven \\
+The policy improvement theorem (greedy step does not harm the policy)
+\citep{suttonbarto2018} & proven \\
+Deterministic policy gradient formula \citep{silver2014dpg} & proven \\
+Expert Iteration converges to the optimum \citep{anthony2017exit} & proven,
+exact tabular case only \\
+PUCT with learned priors converges & \textbf{not proven} \\
+Approximate policy iteration with deep function approximation converges
+& \textbf{not proven} \\
+The AlphaZero loop (deep network $+$ MCTS $+$ self-play) converges
+& \textbf{not proven} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two consequences follow, and they shape the engineering in the rest of this
+monograph. First, the guarantees that do exist are guarantees about the
+\emph{skeleton} -- a bandit rule, an exact policy iteration, an exact expert.
+Every component that makes the system practical breaks an assumption of those
+proofs. Second, and consequently, correctness in an implementation must be
+established by testing against known facts rather than by appeal to theory. In
+the Gomoku setting, known facts are abundant: positions with exact values, and
+forced-win sequences that can be verified mechanically. Section~\ref{sec:tree}
+uses both.

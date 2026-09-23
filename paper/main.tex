@@ -1,0 +1,184 @@
+% ---------------------------------------------------------------------------
+%  From the Policy Gradient to Self-Play
+%  A tutorial monograph on the mathematics of AlphaZero-style reinforcement
+%  learning and its implementation in Rust and Burn.
+%
+%  Build:  pdflatex main && bibtex main && pdflatex main && pdflatex main
+%  Engine: pdfLaTeX. Do not use biblatex (biber is not installed).
+% ---------------------------------------------------------------------------
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[final]{microtype}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
+
+% --- page style ------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\parskip}{0.35em}
+
+% --- theorem-like environments --------------------------------------------
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}[definition]{Remark}
+\theoremstyle{plain}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem{theorem}[definition]{Theorem}
+
+% --- macros ----------------------------------------------------------------
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Prob}{\mathbb{P}}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\tensor}[1]{\mathsf{#1}}
+
+% --- code listings ---------------------------------------------------------
+\definecolor{codekw}{RGB}{0,90,160}
+\definecolor{codety}{RGB}{120,60,140}
+\definecolor{codestr}{RGB}{0,120,80}
+\definecolor{codecmt}{RGB}{110,110,110}
+\definecolor{codebg}{RGB}{250,250,250}
+\definecolor{coderule}{RGB}{210,210,210}
+
+% Listings in TeX Live 2022 (basic scheme) has no Rust language, so it is
+% defined here. Keep the keyword list short and stable.
+\lstdefinelanguage{RustX}{
+  keywords={as,break,const,continue,crate,else,enum,extern,false,fn,for,if,impl,
+            in,let,loop,match,mod,move,mut,pub,ref,return,self,Self,static,struct,
+            super,trait,true,type,unsafe,use,where,while,async,await,dyn},
+  ndkeywords={u8,u16,u32,u64,i8,i16,i32,i64,f32,f64,usize,isize,bool,
+              Vec,Option,Result,Some,None,Ok,Err,Box,Rc,RefCell,Arc,Mutex,
+              String,Send,Sync,Tensor,Module,Autodiff,Backend},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  string=[b]",
+  morestring=[b]',
+}
+
+\lstdefinestyle{rust}{
+  language=RustX,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecmt}\itshape,
+  stringstyle=\color{codestr},
+  emphstyle=\color{codety},
+  numbers=none,
+  showstringspaces=false,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{coderule},
+  backgroundcolor=\color{codebg},
+  framesep=4pt,
+  xleftmargin=3pt,
+  aboveskip=0.7em,
+  belowskip=0.7em,
+}
+
+\lstdefinestyle{plaintext}{
+  basicstyle=\ttfamily\footnotesize,
+  numbers=none,
+  showstringspaces=false,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{coderule},
+  backgroundcolor=\color{codebg},
+  framesep=4pt,
+  aboveskip=0.7em,
+  belowskip=0.7em,
+}
+
+\lstdefinestyle{algo}{
+  basicstyle=\ttfamily\footnotesize,
+  numbers=left,
+  numberstyle=\tiny\color{codecmt},
+  numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{coderule},
+  backgroundcolor=\color{codebg},
+  framesep=4pt,
+  aboveskip=0.8em,
+  belowskip=0.8em,
+}
+
+% ---------------------------------------------------------------------------
+\title{\bfseries From the Policy Gradient to Self-Play\\[0.4em]
+\large The mathematics of AlphaZero-style reinforcement learning,\\
+\large and the shape it takes in Rust and Burn}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+This monograph follows one continuous line of mathematics from its classical
+beginnings to a working self-play agent, and then follows the same line into
+code. The mathematical part starts with the Markov decision process, the
+policy gradient theorem, and the deterministic policy gradient; it continues
+through approximate policy iteration and Expert Iteration to the bandit
+results that justify tree search. The algorithmic part states the AlphaZero
+procedure exactly, gives the reason each component exists, and records which
+of its parts have a proof and which rest on experiment. The engineering part
+treats two problems that dominate an implementation: the representation of a
+search tree in a language without a garbage collector, and the parallel
+organisation of self-play against a single shared accelerator. The target
+application is freestyle Gomoku under the Swap2 opening rule, in Rust with
+the Burn framework; the same shapes apply to any two-player,
+perfect-information board game after a change of rules engine.
+
+The monograph is written for readers who know Rust at an intermediate level
+and machine learning at a graduate level. It gives derivations rather than
+citations alone, and it gives the reasoning behind implementation choices
+rather than complete programs. Code fragments are illustrative and
+deliberately short.
+\end{abstract}
+
+\tableofcontents
+
+\input{sections/01-introduction}
+\input{sections/02-foundations}
+\input{sections/03-alphazero}
+\input{sections/04-gomoku}
+\input{sections/05-tree-rust}
+\input{sections/06-parallel}
+\input{sections/07-training}
+\input{sections/08-closing}
+
+\appendix
+\input{sections/09-notation}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

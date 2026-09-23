@@ -1,0 +1,55 @@
+\section{Notation}
+\label{app:notation}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$\mathcal{S}, \mathcal{A}$ & sets of states and actions (positions and moves) \\
+$P(s' \mid s, a)$ & transition kernel; deterministic for a board game \\
+$\gamma$ & discount factor; $\gamma = 1$ for a game with terminal outcome \\
+$r, z$ & per-step reward, and the final outcome $z \in \{-1,0,+1\}$ \\
+$\rho(s_0)$, $d^\pi(s)$ & start-state distribution, and the discounted
+state-visitation distribution under $\pi$ \\
+$\pi_\theta(a \mid s)$ & stochastic policy with parameters $\theta$ \\
+$\mu_\theta(s)$ & deterministic policy \\
+$v^\pi(s)$, $Q^\pi(s,a)$ & state value and state--action value under $\pi$ \\
+$G_t$ & return-to-go from step $t$ \\
+$J(\theta)$ & the objective; expected outcome of the initial states \\
+$b(s)$ & baseline in the REINFORCE estimator \\
+$f_\theta(s) = (p, v)$ & the network: raw policy $p$, value $v = \E[z \mid s]$ \\
+$P(s,a)$, $N(s,a)$, $W(s,a)$, $Q(s,a)$ & prior, visit count, value sum, and mean
+value of an edge in the search tree \\
+$U(s,a)$ & the PUCT exploration bonus \\
+$c_{\mathrm{puct}}$ & PUCT exploration constant \\
+$\eta \sim \mathrm{Dir}(\alpha)$ & Dirichlet noise vector at the root \\
+$\varepsilon$ & noise mixture weight \\
+$\tau$ & sampling temperature \\
+$\pi_a$ & the improved policy: normalized root visit counts; the policy training
+target \\
+$\mathrm{NodeId}, \mathrm{EdgeId}$ & integer indices into the search arena \\
+$w$ & one arena node's value sum, accumulated from the chooser's perspective \\
+$\tau_0, \tau_1$ & fixed and per-item cost of one batched evaluation \\
+$B$, $t$ & batch cap and collection window of the evaluator service \\
+\bottomrule
+\end{tabularx}
+\caption{Symbols used throughout. Each is redefined at first use in the body.}
+\label{tab:notation}
+\end{table}
+
+\paragraph{Key numbered relations.}
+
+\begin{itemize}
+  \item \eqref{eq:objective}: the objective.
+  \item \eqref{eq:reinforce}: the REINFORCE gradient estimator.
+  \item \eqref{eq:pgt}: the policy gradient theorem.
+  \item \eqref{eq:td}: the temporal-difference error.
+  \item \eqref{eq:dpg}: the deterministic policy gradient.
+  \item \eqref{eq:ucb1}: the UCB1 selection rule.
+  \item \eqref{eq:puct}: the PUCT selection rule.
+  \item \eqref{eq:alphazero-loss}: the AlphaZero loss.
+  \item \eqref{eq:throughput}: self-play throughput.
+\end{itemize}

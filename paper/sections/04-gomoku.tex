@@ -1,0 +1,258 @@
+\section{The target game: Gomoku under Swap2}
+\label{sec:gomoku}
+
+\subsection{Rules}
+\label{sec:rules}
+
+The game is played on a $15\times15$ board. Two players, Black and White,
+alternate placing one stone of their colour on an empty cell. The first player to
+make five or more of their stones in an unbroken line horizontally, vertically,
+or diagonally wins. A line of six or more -- an \emph{overline} -- counts as a
+win; this is the \emph{freestyle} rule set, and it differs from the Renju rule
+set, in which an overline is not a win for Black and several move types are
+forbidden \citep{renju_rules}. The board has 225 cells, so a game that fills the
+board without a line is a draw; with $\gamma = 1$ and outcomes in $\{-1, 0, +1\}$,
+the setup is exactly the MDP specialization of Section~\ref{sec:mdp}.
+
+Four decisions in the rules affect the implementation and the learning problem,
+and each is worth stating while the rules are still in view.
+
+Overlines counting as wins means the win test is ``five or more in a row'' rather
+than ``exactly five'', which is a strictly simpler test: one that a bitmask
+formulation expresses as a single comparison rather than as a comparison plus a
+forbidden-neighbour check.
+
+A draw is reachable, if rare, so the value head's target set is $\{-1,0,+1\}$ and
+the last term of \eqref{eq:alphazero-loss} must handle $z = 0$ without special
+treatment. Mean squared error does this naturally.
+
+The rules are translation-invariant and invariant under the board's dihedral
+group: the eight rotations and reflections of the square. This is what makes
+symmetry augmentation legitimate and what makes the plane encoding and the policy
+output transform-compatible.
+
+Finally, the rules are \emph{forcing} at a structural level that Go is not. A
+threat that would complete five in a row on the next move \emph{must} be answered,
+so the defender's branching factor collapses to one at exactly the moments when
+the game is decided. Section~\ref{sec:alphaepsilon} turns this structural fact
+into a component.
+
+\subsection{A solved game, and why we play it anyway}
+\label{sec:solved}
+
+In 1993 and 1994 Allis, van den Herik, and Huntjens proved that freestyle Gomoku
+on $15\times15$ is a forced win for the first player
+\citep{allis1996gomoku,allis1994thesis}. The method was threat-space search
+combined with proof-number search: rather than search the full game tree, the
+argument exploits the forcing structure described above, so that the attacker
+considers only moves that create a threat and the defender only the forced
+replies. This reduced a tree far beyond brute-force reach to something provable.
+
+That the empty board is a first-player win does not trivialize the problem, for
+three reasons.
+
+First, competitive play does not start from the empty board. It uses an opening
+protocol -- Swap, Swap2 -- or restriction rules, precisely because the bare game
+is unbalanced. Under the Swap2 protocol the game has \emph{not} been solved, and
+between the empty board and the solved opening lines the theoretical values of
+most legal positions are unknown. A strong Swap2 agent operates on genuinely open
+ground.
+
+Second, a solver is not a learning agent. Threat-space search is a hand-crafted
+exploit of one game's structure. AlphaZero is the opposite kind of object: a
+general method that discovers structure. The scientific interest lies in the
+generality -- the same code should play any two-player perfect-information board
+game after the rules engine is exchanged.
+
+Third, a solved game supplies free test data. Positions with known exact values
+and forced-win sequences that can be verified mechanically are ideal test cases
+for a search implementation, and they exist before any learning has taken place.
+An agent that cannot win a won position is defective, and that can be established
+with a test suite and no gradients.
+
+\paragraph{The Swap2 protocol.} One player places three stones -- two of their
+own colour and one of the opponent's -- in any order and any positions. The other
+player then has three choices: take Black, take White, or place two more stones
+(one of each colour) and pass the colour choice to the first player. The protocol
+is a bidding mechanism: whoever believes the position favours them offers to take
+the disadvantaged colour.
+
+For an implementation, Swap2 has one important structural consequence: the first
+few moves do not alternate between players. A board representation that stores
+positions relative to the side to move -- the ``me/you'' view that
+Section~\ref{sec:architecture} describes as an input encoding -- cannot express
+the opening, because during the opening the same player places two stones in
+succession. The rules engine must therefore store \emph{absolute} colours, and
+the relative view is derived at encoding time. Separate the two concerns: the
+engine stores colours, the encoder produces the player-relative planes.
+
+\subsection{Why Gomoku suits the method}
+\label{sec:gomoku-suits}
+
+Three properties make Gomoku a favourable target, and they are the reason a
+modest budget produces a non-embarrassing agent.
+
+\emph{The horizon is short.} A game lasts roughly 30 to 70 moves. AlphaGo Zero
+used $\tau = 1$ for the first 30 moves of games that lasted around 200 moves, so
+that openings stayed diverse while the majority of the game was played greedily.
+Scaled to a 60-move game the equivalent phase is 10 to 12 moves, and the same
+argument applies with the same force. This is a scaling of a hyperparameter, not
+a change of algorithm, and it is the least controversial of the transfers.
+
+\emph{The tactics are shallow and recency-driven.} Influence in Go accumulates
+over hundreds of moves; in Gomoku, one forcing sequence decides the game, and it
+usually involves the last few moves. The practical consequence is that the
+history planes of AlphaGo Zero's encoding are largely wasted here: eight time
+steps of history cost channels and buy little, while the last two moves carry
+most of the temporal information a player needs. Published AlphaZero-style
+Gomoku agents use three planes; a small network of 32 filters and two residual
+blocks reached human playing strength in two days on one 2018-era GPU
+\citep{xie2018alphagomoku}. The architectural lesson is encouraging: two orders of
+magnitude fewer parameters than AlphaGo Zero.
+
+That paper also reports that a curriculum mattered -- imitation of synthetic
+attack and defence moves first, then a rule-based mentor, then self-play -- which
+is the second reason for the component in Section~\ref{sec:alphaepsilon}.
+
+\emph{The state space is small enough to test exhaustively at the level that
+matters.} Differential testing between a fast bitboard implementation and a naive
+array implementation is cheap and decisive: ten thousand random games compared
+ply by ply will find any disagreement between the two, and a disagreement is a
+bug in one of them. This is the practical form of ``verify before you claim'' for
+a rules engine, and it is available because Gomoku's rules are simple enough to
+write twice in different styles.
+
+\subsection{The alpha-epsilon position}
+\label{sec:alphaepsilon}
+
+A pure AlphaZero agent knows only the rules. The design described here keeps a
+small amount of hand-written game knowledge, and the honest name for such a
+system is not tabula rasa. What follows states precisely what the component may
+and may not do, because the value of a small amount of hand-written knowledge
+depends entirely on keeping it small and keeping it honest.
+
+\paragraph{What it is.} Three predicates, each computed by bit operations over
+the two players' stone sets:
+
+\begin{itemize}
+  \item \texttt{immediate\_wins(side)}: the empty cells where placing a stone
+        completes five in a row for \code{side}.
+  \item \texttt{forced\_blocks()}: the opponent's immediate wins, which are
+        therefore the moves the side to move is compelled to play.
+  \item \texttt{double\_threats(side)}: the cells after which \code{side} has at
+        least two immediate wins, which is unanswerable -- an open four or a
+        double four.
+\end{itemize}
+
+All three are instances of one primitive: place a stone hypothetically, and ask
+whether a win exists. On a 225-cell board that is roughly 225 cheap tests per
+call, which is inexpensive at leaf expansion and far too expensive inside a
+selection loop.
+
+\paragraph{What it is used for.} Four roles, in order of how much they matter.
+
+As a \emph{deterministic stand-in evaluator}, it lets the whole search be built
+and tested before a network exists. The mock evaluator assigns high priors and
+near-certain values to immediate wins and forced blocks and mild shaping
+elsewhere. The search can then be checked against tactical puzzles with known
+solutions: a correct implementation given a sane prior must find a win in one at
+50 simulations, must play the forced block, and must find short forced sequences.
+This is the single most valuable use, and it is a testing use, not a playing use.
+
+As a \emph{prior shaping term}, it gives a young network's near-uniform priors a
+useful tilt early in training. The blend weight should decay over iterations:
+hand-written knowledge is a scaffold, and a scaffold that never comes down limits
+the structure that can be learned.
+
+As a \emph{label generator}, it seeds a supervised phase with exact labels before
+self-play data is abundant. Here the component must be tightened, and that is
+what the next paragraph is about.
+
+As a \emph{fast path} during self-play, an immediate win can be played without a
+search, saving a full budget of simulations on a move whose value is already
+known.
+
+\paragraph{The prover, and the soundness rule.} The detection predicates say what
+is true now. A bounded threat-space search says what is \emph{forced}: it
+recursively searches the attacker's threat-creating moves and the defender's
+forced replies, and returns a certified winning sequence when it finds one.
+Because the defender's branching factor is approximately one, the search is
+small, and a node-and-depth budget is enough to keep it at microsecond-to-
+millisecond cost.
+
+Two properties make such a prover safe to use as a label generator, and both must
+be stated as policy rather than assumed.
+
+\emph{Soundness over completeness.} Exhausting the budget must mean ``no proof
+found'', never ``loss''. A missed win costs puzzle coverage; a wrong label
+poisons the value head with false certainty, which is far more expensive, because
+the network is the search's evaluator and a confidently wrong value propagates
+into selection.
+
+\emph{Every label is machine-verified.} A proof is emitted only after replaying
+the line while enumerating all defender alternatives at each defender turn. The
+replay is cheap precisely because the replies are forced. A proof object should
+behave like a witness: it carries the line, and it is checked rather than
+trusted.
+
+A verified proof becomes training data with an exact value target $z = \pm1$,
+which is not a bootstrap estimate. Such positions belong in an \emph{anchor set}:
+a small fraction of every batch, permanently retained rather than subject to
+replay-window eviction. Exact labels are the one kind of supervision whose value
+does not decay as the network improves.
+
+\paragraph{What it must not do.} The component must not encode strategy. It has
+no notion of a good opening, no positional evaluation, and no search beyond the
+bounded prover. Its purpose is to remove the first few thousand games of obvious
+mistakes, and to make the search testable before training exists. Anything beyond
+that is not epsilon; it is a solution to the game, and there is already one.
+
+\subsection{Scaling the hyperparameters}
+\label{sec:scaling}
+
+Table~\ref{tab:scaling} transfers the published constants to Gomoku. Two entries
+deserve comment.
+
+The Dirichlet concentration follows AlphaZero's own rule, $\alpha \approx
+10/(\text{typical legal moves})$, which yields $0.03$ at 361 Go intersections,
+$0.15$ at roughly 80 shogi moves, and $0.3$ at roughly 35 chess moves
+\citep{silver2018alphazero}. Gomoku's midgame offers roughly 100 to 150 legal
+moves, so $10/125 \approx 0.08$; the rule gives a smaller $\alpha$ than Go's,
+which is the correct direction, since a larger action set wants a spikier noise
+vector to concentrate the exploration.
+
+The simulation count is a pure cost--quality trade. AlphaZero used 800
+simulations per move with a well-trained network. A weaker network benefits less
+from deep search, because deep search over a poor evaluator mostly propagates the
+evaluator's errors, while self-play throughput benefits directly from a smaller
+budget: halving simulations halves the cost of every game. Four hundred
+simulations per move is a reasonable starting point for a first working system,
+to be raised once the network is strong enough to reward depth.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Published constants and their Gomoku counterparts. The final column
+marks whether a value is anchored in a primary source or is an experimental
+choice that must be settled by measurement.}
+\label{tab:scaling}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Quantity & Gomoku value & Basis \\
+\midrule
+Simulations per move & 400 & experimental; half of AlphaZero's 800 \\
+$c_{\mathrm{puct}}$ & 1.5 & not published by DeepMind; ELF OpenGo's value
+\citep{tian2019elf}; tune by $\pm0.5$ \\
+Dirichlet $\varepsilon$ & 0.25 & published \\
+Dirichlet $\alpha$ & 0.1 & derived from $\alpha \approx 10/(\text{legal moves})$ \\
+Temperature & $\tau=1$ for 12 moves, then $\to 0$ & derived by scaling AGZ's
+30-of-200 to a 60-move game \\
+Replay window & grow sublinearly from 250k positions & AlphaZero's window is
+unpublished; adopt KataGo's growth rule \citep{wu2019katago} \\
+Network & 128 channels, 10 residual blocks & derived; KataGo's second rung
+\citep{wu2019katago}, well above AlphaGomoku's 32 filters $\times$ 2 blocks \\
+Input planes & 2 to 4 & \code{me}, \code{you}, and optionally the last two moves \\
+Gating & none & AlphaZero removed it \\
+\bottomrule
+\end{tabularx}
+\end{table}

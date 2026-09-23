@@ -1,0 +1,110 @@
+\section{Closing}
+\label{sec:closing}
+
+\subsection{The chain, in one page}
+
+The mathematics begins with an expectation over trajectories
+\eqref{eq:objective} and makes its gradient estimable without a model of the
+environment \eqref{eq:reinforce}. The policy gradient theorem then replaces the
+trajectory return with a state--action value, at the price of weighting by the
+policy's own state distribution \eqref{eq:pgt}. Substituting a learned value
+gives the actor--critic family, and the choice of how to train that value decides
+the stability of everything above it: bootstrapping buys sample efficiency and
+risks divergence.
+
+In the deterministic branch, the same identity survives without the action
+integral \eqref{eq:dpg}, which makes continuous control tractable; that branch is
+where the deep deterministic policy gradient lives, and it is not the branch that
+produced AlphaGo.
+
+The AlphaGo branch replaces the gradient estimator entirely. Policy improvement
+becomes tree search; policy evaluation becomes regression on the outcome of games
+played by the improved policy; the network is refitted to both. The result is an
+approximate policy iteration whose two operators are a learned function and a
+search built on top of it, and its theoretical frame is Expert Iteration. The
+bandit results supply the selection rule and the only real guarantees in the
+system, and the guarantees stop where the learned prior begins.
+
+The engineering has two hard problems, and they are the same problem seen twice:
+a tree that owns its children in a language where recursive ownership is
+expensive to express, and a single accelerator that must serve many cheap,
+irregular searches. The answers are a flat arena with integer indices, and many
+independent trees feeding one batching service. Both answers trade a
+compile-time guarantee for a stated invariant, and both are worth the trade
+precisely because the invariants are small enough to write down
+(Section~\ref{sec:invariants}).
+
+\subsection{What is guaranteed, and what is measured}
+
+The system that this monograph describes is an empirically justified system. It
+contains, at its centre, three components with no convergence proof: PUCT with
+learned priors, approximate policy iteration with deep function approximation,
+and the self-play loop itself (Table~\ref{tab:proven}). Every one of them worked,
+in the primary sources and in several independent replications, and none of them
+comes with a theorem.
+
+That is not a defect to be fixed; it is the normal state of deep reinforcement
+learning, and it has one practical consequence that shapes the engineering more
+than any theoretical consideration: correctness must be established against
+known facts rather than by appeal to theory. Gomoku is unusually generous in this
+respect. Positions with exact values and forced-win sequences with mechanical
+verification are available without any learning, and they can be used to test
+the search, the prover's soundness, and the sign conventions before a single
+gradient is computed. A system that passes those tests is still not proven
+correct, but it is anchored to ground truth at the points where defects are most
+likely and most expensive.
+
+\subsection{The decisions that are expensive to reverse}
+
+Three choices in this monograph are worth more thought than the rest, because
+they are the ones that are painful to change later.
+
+\emph{The tree representation.} A flat arena with integer indices is not
+elegant, and it gives up a compile-time guarantee. It is chosen because the
+alternative representations either do not compile or pay runtime costs in the
+hottest loop in the system. Everything that touches the tree -- traversal,
+backup, reuse across moves, serialization for debugging -- is written against
+this representation, so changing it later is a rewrite of the search crate.
+
+\emph{Ownership of the model.} Making the network a single owner on a single
+thread, with plain messages as the interface, removes an entire class of
+concurrency problems from the design rather than managing them. The alternative
+-- shared weights behind a lock -- looks simpler in the first ten lines of code
+and is worse in every line after that.
+
+\emph{What the replay window stores.} Storing games rather than encoded positions
+keeps the encoding decisions mutable and reduces memory by orders of magnitude.
+It also means the corpus remains valid while the plane layout is still being
+experimented with, which is exactly the period during which the corpus is
+growing.
+
+\subsection{The order of the upgrades}
+
+Section~\ref{sec:proven} argues that the guarantees live in the skeleton, and
+Section~\ref{sec:scaling} transfers the published constants to a smaller problem.
+The natural next step is to change things, and the order matters, for one
+structural reason: some upgrades change the distribution of the training data and
+others do not. A change of the data distribution cannot be evaluated against a
+baseline whose data came from a different distribution, so such changes must come
+after a clean, working baseline exists, and must be made one at a time.
+
+The upgrades that leave the data distribution alone can be made early: growing
+the network, adding pooling to the heads, moving from phased to continuous
+execution, and improving the evaluation setups. The upgrades that change the data
+distribution -- sampling some moves with a smaller search budget, adding
+auxiliary prediction targets, changing the temperature schedule, changing the
+simulation count -- must wait, and must be measured against a frozen baseline by
+playing games rather than by watching the loss.
+
+The general rule is the one every part of this monograph has followed: decide
+what can be decided by argument, measure what cannot, and keep the set of things
+being changed at once to one.
+
+\subsection{Reading the primary sources}
+
+The three papers reward being read in sequence rather than separately, because
+the deletions of Table~\ref{tab:removals} are the argument. For the
+mathematics, the policy gradient theorem and the deterministic policy gradient
+papers are short and worth their length; Expert Iteration names the two moving
+parts of the loop; and the UCT and PUCT papers are the two ends of the search
+argument, including the place where its guarantee stops.

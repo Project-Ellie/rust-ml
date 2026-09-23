@@ -1,0 +1,415 @@
+\section{The search tree in Rust}
+\label{sec:tree}
+
+\subsection{The representational problem}
+
+A search tree is a recursively owned structure: a node owns its children, and
+each child owns its own children. In a language with a tracing garbage collector
+this is unremarkable. In Rust it collides directly with the ownership model,
+because the shape that is natural to draw is the shape that is hardest to express:
+a mutable reference from a node to its child, while the parent is still borrowed, is
+exactly what the borrow checker forbids.
+
+The standard solutions, and why the choice matters, are laid out in
+Table~\ref{tab:representations}. The important observation is that the tree is
+mutated from the root downwards during selection and from the leaves upwards
+during backup, that it is traversed millions of times over a training run, and
+that its nodes are small. These three facts point at one representation.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Tree representations in Rust. The arena is the standard choice for
+game-tree engines for the reasons in the right-hand column.}
+\label{tab:representations}
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Representation & Consequences \\
+\midrule
+\code{Box<Node>} children & Recursive ownership. Descent requires holding a
+\code{\&mut} to the parent while borrowing the child: not expressible. Descent
+becomes a loop of \code{take}/\code{replace} tricks, and each node is a separate
+allocation with pointer-chasing access. \\
+\code{Rc<RefCell<Node>{}>} & Compiles and is pleasant to read, at a price: runtime
+borrow checks on every access, reference-count traffic on every clone, and a
+\code{RefCell} borrow held across a search step can panic. Debugging is harder
+because a violation is a runtime panic instead of a compile error. \\
+Raw pointers with \code{unsafe} & No borrow checks, no reference counting,
+fastest in principle. The safety argument is entirely manual and unverifiable, in
+a component that runs a few thousand times per move. \\
+Flat arena
+(one \code{Vec}, integer indices) & One allocation region for the whole tree,
+cache-friendly traversal, no reference counting, no borrow conflicts, and
+trivially serializable and inspectable. The cost is that the compiler no longer
+proves that an index is valid, and that dangling indices are possible in
+principle. Both are manageable because the tree is append-only within one search
+(Section~\ref{sec:invariants}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The arena design}
+\label{sec:arena}
+
+The tree is two vectors and two integers: a vector of nodes, a vector of edges
+shared by all nodes, a root index, and the number of nodes. Edges refer to
+children by index, not by pointer.
+
+\begin{lstlisting}[style=rust,caption={The arena. Node ids and edge ids are
+integers; no node owns another.},label={lst:arena}]
+pub type NodeId = u32;
+pub type EdgeId = u32;
+
+pub struct Tree {
+    nodes: Vec<Node>,
+    edges: Vec<Edge>,     // all nodes' edges in one region
+    root: NodeId,
+    gen: u32,             // the network generation that produced the priors
+}
+
+pub struct Node {
+    first_edge: EdgeId,   // contiguous run of this node's edges
+    edge_count: u16,      // at most 225 legal moves fit in u16
+    parent: NodeId,       // unused at the root; kept for diagnostics only
+    visits: u32,          // sum of the children's visit counts
+    terminal: Option<i8>, // Some(z) if the position is over, in [-1, 1]
+}
+
+pub struct Edge {
+    mv: Move,             // 0..225, one byte
+    prior: f32,           // the network's P(s, a); never changes
+    visits: u32,          // N(s, a)
+    value_sum: f32,       // W(s, a), accumulated from the chooser's view
+    child: NodeId,        // meaning depends on the current generation
+}
+\end{lstlisting}
+
+Two details of this layout carry more weight than they appear to.
+
+\paragraph{Edges are contiguous and indexed by a range.} A node stores
+\code{first\_edge} and \code{edge\_count} rather than a \code{Vec<Edge>}. Child
+ranges of a node created in one expansion are appended together as a single run.
+Expansion therefore performs one growth of one vector for an entire node, rather
+than one allocation per node -- and it also means that a node's edges are
+adjacent in memory, which is where the traversal time is spent. The edge count
+fits in \code{u16} because the board has 225 cells; the size of a node is
+therefore fixed and small.
+
+\paragraph{\code{child} means ``child, if this node has been expanded''.} A
+freshly created edge has no child node yet: the node beyond it has never been
+visited, so it has never been evaluated, so there is nothing to store. The usual
+Rust encodings are \code{Option<NodeId>} or a sentinel. Both are workable; the
+sentinel is faster and easy to get wrong. If a sentinel is used, make it a named
+constant that no valid index can equal, and assert against it in debug builds.
+
+The generation field deserves a word. A prior belongs to the network that
+produced it. During self-play the network is replaced between iterations, so a
+tree that survives a network update -- or a tree reused across moves after an
+update -- can mix priors from two different networks. Storing the generation with
+the tree and discarding trees from older generations removes the possibility
+silently. This is a correctness invariant that costs one integer.
+
+\subsection{Invariants}
+\label{sec:invariants}
+
+An arena trades compile-time safety for a set of invariants that must be
+maintained. They should be written down, because they are the only reason an
+integer index is as safe as a reference. For a single search:
+
+\begin{enumerate}
+  \item \textbf{Ids are valid.} Every \code{NodeId} and \code{EdgeId} stored in the
+        arena is in range for that arena. This holds because both vectors only
+        grow, and no element is ever removed.
+  \item \textbf{The structure is a tree rooted at \code{root}.} Every node except
+        the root is reachable from the root through exactly one path of edges.
+        The board can be reconstructed from that path, which is how
+        Section~\ref{sec:walk} avoids storing a board per node.
+  \item \textbf{Edges are append-only and children are allocated once.} An edge's
+        child index, once set, is never changed within a generation. Repeated
+        visits to the same node reuse the existing child, which is what makes the
+        tree a tree and not a graph of duplicated subtrees.
+  \item \textbf{Priors are normalized over the legal moves of the node} and sum to
+        one (up to floating-point error) before root noise is applied.
+  \item \textbf{A terminal node has no edges.} Terminality is decided by the
+        rules engine before expansion, so a terminal node never acquires children
+        and never receives a network evaluation.
+\end{enumerate}
+
+Invariant 1 is the interesting one, because it is where an arena is weaker than
+\code{Rc}. It rules out \emph{generational indices} -- the standard technique for
+detecting stale references in an arena that \emph{does} free slots. No slot is
+freed here, so there is nothing to detect, and adding a generation counter to
+every id would only widen the id and slow the traversal. This is a case where the
+absence of deletion is what makes the representation simple: the invariant is
+maintained by construction rather than by checking.
+
+Invariant 3 is the one to guard, because it is where a plausible optimization
+goes wrong. Merging two edges that lead to the same position -- transposition
+detection, using the engine's incremental position hash -- would turn the tree
+into a directed acyclic graph. That is a real technique in classical search, and
+Section~\ref{sec:excluded} explains why it is deliberately not used here.
+
+\subsection{Descending: the walk, and what is borrowed}
+\label{sec:walk}
+
+Selection descends from the root by repeatedly choosing an edge and following its
+child. Three things change as the walk proceeds -- the current node, the board,
+and the path used for backup -- and the borrow discipline follows from keeping
+them separate.
+
+\begin{lstlisting}[style=rust,caption={Selection. The borrow of the node ends
+before the next iteration, so no conflict is possible.},label={lst:select}]
+fn select(&self, board: &mut Board, path: &mut Vec<EdgeId>) -> NodeId {
+    let mut node_id = self.root;
+    loop {
+        let node = &self.nodes[node_id as usize];   // immutable borrow ...
+        if node.terminal.is_some() || node.edge_count == 0 {
+            return node_id;                          // leaf: terminal or unexpanded
+        }
+        let edge_id = self.puct_argmax(node);        // reads only
+        let edge = &self.edges[edge_id as usize];
+        path.push(edge_id);
+        board.play(edge.mv);                         // board is a separate owner
+        node_id = edge.child;                        // ... borrow ends here
+    }
+}
+\end{lstlisting}
+
+Two properties make this loop compile and stay fast. The borrow of
+\code{self.nodes[node\_id]} ends at the last use, which is before the next
+iteration, because nothing derived from it is held across the loop body. And the
+board is not stored in the tree at all: it is passed in as a separate
+\code{\&mut Board}, mutated on the way down and unwound on the way up. The tree
+owns moves and statistics; the board owns stones.
+
+This separation is worth defending, because the alternative -- caching a board or
+a hash in each node -- is tempting for debugging and costs memory and copy time
+on paths that are already the hot loop.
+
+\paragraph{Clone or undo during the walk?} Both are available: the rules engine
+can clone a board cheaply (a few machine words, since the position is a set of
+bitboards), or it can play and undo moves along the path. Three considerations
+decide it. Cloning in place gives the evaluator an owned board and removes a
+class of lifetime problems; \code{play}/\code{undo} avoids the copy but requires
+the walk to be mirrored on the way back up, which is exactly where sign and
+ordering mistakes happen. For a board that is a handful of \code{u64} words, the
+clone is a few nanoseconds, which is small next to a network evaluation but not
+small next to the PUCT arithmetic. The measurement that settles it is a
+profile, not an argument; both are legitimate, and the choice should be
+revisited only with a profile in hand.
+
+\subsection{Expansion and the normalization order}
+\label{sec:expand}
+
+Expansion happens once per leaf, and it has four steps in a fixed order.
+
+\begin{enumerate}
+  \item \textbf{Terminal check first.} Ask the rules engine whether the position
+        is over. If it is, store the exact outcome as the node's value and stop.
+        No network call, and no edges. This ordering is not an optimization
+        detail; it is what makes exact values propagate (a search can learn that a
+        move forces a win precisely because the terminal values along the winning
+        line are exact).
+  \item \textbf{Encode and evaluate the leaf.} The encoder turns the board into
+        plain arrays; the evaluator returns a policy over all cells and a value.
+  \item \textbf{Mask, then normalize.} Discard the policy entries for illegal
+        cells, then normalize the rest with a softmax.
+  \item \textbf{Create the edges.} One edge per legal move, carrying the
+        normalized prior and zeroed statistics.
+\end{enumerate}
+
+Step 3 is the classic defect site, and the failure mode is quiet rather than
+loud. If the softmax is applied before masking, the probability mass of the
+illegal cells is not removed, it is redistributed over the legal cells by the
+renormalization --- and the resulting priors still sum to one, so nothing looks
+wrong. The search is then biased in a way that no test of the sum will catch. The
+rule is worth stating as a rule: \emph{the normalization is over the legal move
+set, not over the network's output}.
+
+The same care applies to the value. The network's $v$ is quoted from the
+perspective of the side to move at the leaf; the edge statistics are quoted from
+the perspective of the player who chose at the parent. One of the two must be
+negated, and the choice must be made once and written down (Section~\ref{sec:backup}).
+
+\paragraph{Allocation.} One growth of the edges vector for an entire node keeps
+the allocation count proportional to the number of expanded nodes rather than to
+the number of edges. Reserving capacity for the expected node count at the start
+of a search removes even that. A search with a budget of a few hundred
+simulations creates a few hundred to a few thousand nodes; the whole tree is a
+few hundred kilobytes, and no allocation is on a critical path.
+
+\subsection{Backup, and the sign convention}
+\label{sec:backup}
+
+Backup walks the recorded path in reverse and updates each edge:
+
+\begin{lstlisting}[style=rust,caption={Backup. The value alternates sign at every
+ply, because the players alternate.},label={lst:backup}]
+fn backup(&mut self, path: &[EdgeId], leaf_value: f32) {
+    let mut v = leaf_value;                 // from the view of the player to
+    for &edge_id in path.iter().rev() {     // move AT THE LEAF
+        let e = &mut self.edges[edge_id as usize];
+        e.visits += 1;
+        e.value_sum += v;
+        v = -v;                             // the parent's chooser sees the opposite
+    }
+}
+\end{lstlisting}
+
+Two equivalent conventions exist, and mixing them is the defect. Either
+\code{value\_sum} is accumulated from the perspective of the player who chose at
+the parent node, in which case the value is negated once before the loop and
+again at every step as above; or it is accumulated from the perspective of the
+side to move at the child, in which case the negation happens implicitly when
+$Q$ is read. Both are correct. A codebase that uses one of them in selection and
+the other in backup is wrong, and the error is silent: the search still runs, it
+merely prefers the wrong moves, more reliably against stronger opponents.
+
+Three defences are worth building, and none of them is the type system. A
+newtype wrapper for values does not catch a missing negation, because $v$ and
+$-v$ have the same type; the type system can only catch the case where two
+different \emph{logical} quantities share a representation, as in the
+absolute-colour versus me/you distinction of Section~\ref{sec:solved}. What does
+work is a hand-computed test: build a small tree by hand, set the leaf values,
+call backup, and compare every $Q$ against a value computed on paper. A second
+defence is the tactical suite of Section~\ref{sec:alphaepsilon}: a sign error in
+backup makes a search fail to play a win in one, which is immediately visible and
+is the reason the mock evaluator exists before the network does. A third is an
+invariant that is free to assert: at any node, the weighted average of the
+children's $Q$ values, weighted by their visit counts, must lie in $[-1,1]$,
+because every value fed into the tree comes from a bounded source.
+
+\subsection{From counts to a move}
+\label{sec:move-selection}
+
+After the budget is exhausted, the root's edges hold visit counts. Two outputs are
+needed: a move to play, and, during self-play, a distribution to train on.
+
+The training target is the normalized visit counts, $\pi_a = N_a / \sum_b N_b$.
+Using counts rather than the mean values $Q$ is deliberate, and it is a common
+implementation error: the visit count is the search's accumulated preference, and
+it already embeds the value comparisons. Using $Q$ instead would discard the
+search's exploration behaviour and produce a target that is closer to a greedy
+policy than to the improved policy the loop requires.
+
+The played move is drawn from $N_a^{1/\tau}$, which interpolates between uniform
+sampling at large $\tau$ and argmax as $\tau \to 0$. Two implementation points
+matter. First, the temperature exponent must be applied to the counts before
+normalization, and the sampling must be from the resulting distribution rather
+than from the raw counts, or the temperature has no effect. Second, the sampling
+must be driven by an explicitly seeded generator stored per worker, so that a
+self-play game is reproducible from a seed (Section~\ref{sec:determinism}).
+
+Root noise modifies the priors, not the counts, and only at the root, and only in
+self-play. Applying it at interior nodes injects randomness into every lookahead,
+which degrades the search; applying it in evaluation games blurs the strength
+measurement. Both errors are easy to make and hard to see, and both are caught by
+the same discipline: make the noise application a function of an explicit
+\code{Mode} value passed in, rather than a condition on a global flag read at the
+call site.
+
+\subsection{Reuse across moves, and the cost of re-rooting}
+\label{sec:reroot}
+
+After a move is played, the subtree below the played edge is a valid search tree
+rooted at the new position: its statistics reflect real simulations, its priors
+come from a valid network, and its subtree has been explored. Keeping it costs one
+index assignment and gives the next decision a head start.
+
+\begin{lstlisting}[style=rust,caption={Re-rooting. The arena is unchanged; only the
+root moves.},label={lst:reroot}]
+fn advance(&mut self, played: EdgeId) {
+    self.root = self.edges[played as usize].child;
+}
+\end{lstlisting}
+
+Three consequences must be accepted. The abandoned part of the arena -- the old
+root's other subtrees -- remains allocated and unreachable; with a few thousand
+nodes per search this is negligible, and it is the price of not compacting.
+Second, the node's \code{parent} field is now stale for the new root and remains
+valid for everything below it, so \code{parent} must not be used for anything
+that assumes it reaches the root; traversal is always root-to-leaf, and the
+parent link exists only for diagnostics. Third, the new root's priors carry no
+noise, because noise is applied at expansion time to the node that was the root
+of that search. That is correct for the next move -- noise is applied fresh to
+the new root before the next search -- but it does mean that a reused tree must
+not skip the noise application on the grounds that expansion already happened.
+
+Whether to reuse at all is an experiment worth running explicitly. Reuse
+improves the strength of a fixed simulation budget, and it changes the
+distribution of the training targets, because a reused tree's visit counts are
+the result of more simulations than the budget alone would produce. Both effects
+are real; only measurement separates them.
+
+\subsection{The evaluator boundary}
+\label{sec:evaluator}
+
+The tree needs one thing from the outside world: for a position, a policy and a
+value. Making that a named trait, rather than a closure parameter, buys three
+things at once.
+
+\begin{lstlisting}[style=rust,caption={The whole coupling between search and
+network. Plain data in, plain data out.},label={lst:evaluator}]
+pub struct EvalRequest { pub planes: Planes, pub legal: MoveSet }
+pub struct EvalResult  { pub policy: Vec<f32>, pub value: f32 }
+
+pub trait Evaluator {
+    fn evaluate(&mut self, req: EvalRequest) -> EvalResult;
+}
+\end{lstlisting}
+
+First, the search becomes testable without a network. A mock implementation that
+derives priors and values from the tactical predicates of
+Section~\ref{sec:alphaepsilon} is deterministic and needs no framework, so the
+entire search can be built and verified with no GPU present.
+
+Second, the production implementation is genuinely stateful: it holds a channel
+sender and blocks on a reply. A closure type would have to hide that state in a
+captured environment, which obscures the ownership structure and makes the
+blocking behaviour invisible at the call site. A named trait makes the state
+explicit, and it makes the fact that \code{evaluate} may block a property of the
+type rather than a comment.
+
+Third, the search crate never depends on the deep-learning framework. The
+boundary carries plain arrays and one scalar, so no tensor type, no backend type
+parameter, and no device handle ever crosses into the search. This is what keeps
+the search compilable and testable on a machine with no accelerator, and it is
+what makes the batching service of Section~\ref{sec:parallel} possible without a
+single lock on shared weights.
+
+For a single-threaded search, a synchronous interface is the right shape even
+though the implementation behind it will block on a channel. The search does not
+need to know that its call crosses a thread boundary; that indirection is the
+trait's entire purpose.
+
+\subsection{What is deliberately excluded}
+\label{sec:excluded}
+
+Two classical techniques are deliberately absent, and the reasons are worth
+recording because both are the obvious things to try next.
+
+\paragraph{Transposition tables.} Two move orders can reach the same position, and
+a transposition table merges them so the second arrival reuses the first's
+statistics. In Gomoku the rate of transposition is low, because stones never move
+once placed and the reachable positions from a fixed move order differ broadly.
+More importantly, merged nodes interact badly with PUCT: the prior stored on an
+edge belongs to one path, the visit counts belong to several, and the
+sign convention of Section~\ref{sec:backup} assumes a unique parent. A merged
+node can have several parents to whose perspective its value must be
+re-presented, which is exactly the bookkeeping that the tree structure exists to
+avoid. The technique is worth revisiting only if profiling shows duplicate
+subtrees dominating the search.
+
+\paragraph{Tree parallelization with virtual loss.} The classical way to
+parallelize a single search tree is to let several threads descend at once and
+penalize the paths under active exploration, so that followers choose elsewhere.
+The penalty is a virtual loss: temporarily record a loss on the visited edges,
+then undo it. AlphaGo (2016) used exactly this construction
+\citep{chaslot2008parallel,segal2011paralleluct,silver2016alphago}. It is the
+right answer to a problem defined by scarcity of evaluations relative to the
+depth of a single search. Section~\ref{sec:parallel} argues that the situation is
+inverted in a self-play system on one accelerator, and that the correct
+parallelism is across games rather than within a tree. The mechanisms for the
+other case are catalogued and available, but they should be introduced only when
+single-game latency, not aggregate throughput, has become the binding
+constraint.

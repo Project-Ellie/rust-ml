@@ -1,0 +1,231 @@
+\section{Training, and where the framework belongs}
+\label{sec:training}
+
+\subsection{The framework boundary}
+\label{sec:framework-boundary}
+
+The single most useful structural decision in a Rust implementation is where the
+deep-learning framework is allowed to appear. Here it appears in exactly one
+place: the crate that owns the network. The rules engine has no dependency on it,
+the search has no dependency on it, and the parallelism layer has no dependency
+on it. Data crosses the boundary as plain arrays and scalars.
+
+The concrete flow is worth writing out, because three design decisions arrive at
+the same diagram:
+
+\begin{lstlisting}[style=plaintext,caption={The only framework-aware seam in the
+system. Everything above the dotted line compiles and runs with no accelerator
+present.},label={lst:seam}]
+board  (rules engine: bitboards, absolute colours)
+  |  encode()                          -- no framework types
+  v
+planes [C, 17, 17] u8   (player-relative view, border ring set)
+  |  convert                           -- THE ONLY framework-aware step
+  v
+Tensor<B, 4> [batch, C, 17, 17]
+  |  forward
+  v
+policy logits [batch, 225] , value [batch, 1]
+\end{lstlisting}
+
+Three properties follow, and each is a practical benefit rather than an aesthetic
+one.
+
+\emph{The search is testable without a device.} Because the evaluator trait
+carries plain data (Section~\ref{sec:evaluator}), the entire search can be built
+and verified against a deterministic mock evaluator, on a machine with no
+accelerator, before any network code exists. This is the difference between
+debugging a search and debugging a search and a network simultaneously.
+
+\emph{Compile times stay usable.} A framework and its backend machinery are heavy
+dependencies. Confining them to one crate keeps incremental builds of the
+frequently edited crates fast, which matters over a project measured in months.
+
+\emph{The relative view is derived, never stored.} The engine stores absolute
+colours, because the Swap2 opening does not alternate players
+(Section~\ref{sec:solved}); the encoder produces the player-relative planes,
+which halves the state space the network must learn. Mixing the two is a
+well-known source of subtle bugs, and separating them physically -- different
+crate, different types -- makes mixing them a compile error rather than a
+misread.
+
+\paragraph{Planes and the border ring.} A detail of the encoding carries more
+learning consequence than its size suggests. The board is $15\times15$, but the
+encoded planes are $17\times17$, with an extra ring of cells whose contents are
+set to the \emph{opponent} for every position. The reason is convolutional
+symmetry: with a border, a same-padding convolution at an edge cell sees a wall
+of opponent stones, which is how a wall really constrains a line, instead of
+seeing zeros and having to learn what an edge means. The border is a property of
+the encoding layer and not of the engine's storage, so the engine keeps
+$15\times15$ semantics throughout. The policy head still emits 225 logits, one
+per real cell, so border cells can never become move targets.
+
+One invariant makes this safe, and it is testable: the border ring is invariant
+under the board's dihedral group, and the symmetry transforms are defined on the
+$15\times15$ board, so encoding commutes with every transform. Applying a
+transform and then encoding must equal encoding and then applying the transformed
+transform. That property test catches an entire class of augmentation bugs,
+including the ones that only affect one of the eight transforms.
+
+\subsection{Backend genericity, and why it is not ceremony}
+\label{sec:backends}
+
+Training code should be generic over an autodiff backend; inference code should
+be generic over a plain backend. In Burn's type system that means a model written
+as \code{Module<B: Backend>}, instantiated during training with
+\code{Autodiff<B>} to obtain gradients and during inference with \code{B} alone.
+The binary fixes the concrete choice -- on a CPU-only path, the pure-Rust
+\code{Flex} backend; with an accelerator feature enabled, the GPU backend.
+
+Generic backends are usually presented as portability. The real benefit here is
+\emph{testing}. Two gates depend on it directly.
+
+The \emph{overfit test} is cheap on a CPU backend and proves the loss, the
+encoding, and the training loop are wired together correctly: take a handful of
+positions, train on them alone, and require the policy accuracy to approach
+certainty. A loop that cannot overfit a few dozen samples has a defect that no
+amount of training data will fix.
+
+The \emph{backend parity test} is the executable form of a genuine risk. The same
+weights and the same batch, evaluated on the CPU backend and on the accelerator
+backend, must agree to within a small tolerance on the forward pass -- and, more
+importantly, one full training step must produce parameter deltas within a
+relative tolerance. Forward agreement alone does not establish that gradients or
+optimizer updates are correct on the accelerator. Until the parity test passes,
+training belongs on the CPU backend; once it passes, accelerator training is a
+measured claim rather than an assumption. Deterministic-operation concerns on
+accelerators, including non-deterministic autotuning, are the reason the
+tolerance is a tolerance and not an equality.
+
+\subsection{The training loop}
+\label{sec:loop}
+
+The AlphaZero training step needs a manual loop rather than a supervised-training
+helper, for two reasons that are properties of the data and not of the
+framework. Samples do not exist until they are generated: a mini-batch is
+assembled by drawing games from the replay window, replaying each to a random
+ply, encoding, and applying augmentation, all during training. And the policy
+target is a full distribution over a masked action set, not a class index. Both
+are ordinary in AlphaZero and both are outside the shape a supervised trainer
+expects.
+
+The loop is therefore: draw a game, replay it to a ply, encode, augment, and
+repeat until the batch is full; forward; compute the loss; backward; step. The
+only subtlety worth naming is that the augmentation transform must be applied to
+the input planes \emph{and} to the policy target consistently, and that a move
+index must be remapped through the same transform. Applying the transform to the
+board but not to the target distribution is a silent corruption: the loss still
+decreases, and the network learns a consistently permuted policy.
+
+\subsection{The loss in practice}
+\label{sec:loss-practice}
+
+Equation \eqref{eq:alphazero-loss} becomes three pieces of ordinary code.
+
+The value term is a mean squared error between the value head's output and the
+scalar $z$, which takes values in $\{-1,0,+1\}$.
+
+The policy term is a cross-entropy against a \emph{soft} target, which is the one
+place a standard loss function cannot be used directly, because most
+cross-entropy implementations take a class index. The expression is
+
+\begin{equation}
+\mathcal{L}_{\text{pol}}(\pi, p) \;=\; - \sum_{a \in \mathcal{A}_{\text{legal}}}
+\pi_a \log p_a ,
+\end{equation}
+
+where $p$ is the softmax of the network's logits over the legal actions. Compute
+it as \code{-(pi * log\_softmax(logits)).sum()} for numerical stability, and
+restrict the sum to legal actions, which is the same masking discipline as
+Section~\ref{sec:expand}: the target $\pi$ is already zero on illegal cells, but
+an explicit mask keeps a bug in the target construction from silently leaking
+mass.
+
+The regularization term is normally not written in the loss at all but expressed
+through the optimizer, which brings the next decision.
+
+\subsection{Optimizer and schedule}
+\label{sec:optimizer}
+
+The primary sources train with stochastic gradient descent and momentum $0.9$,
+with an $L_2$ penalty of $10^{-4}$ inside the loss and a step-decay learning-rate
+schedule \citep{silver2017alphagozero,silver2018alphazero}.
+Neither paper explains the choice, which is itself informative: in 2017 the
+recipe for a deep residual network was SGD with momentum and step decay, and the
+architecture was chosen to match the state of the art in image recognition
+\citep{he2016resnet}. The optimizer came with the architecture, and every major
+replication kept it \citep{tian2019elf,wu2019katago}.
+
+For a single-device run at a much smaller batch size, AdamW
+\citep{kingma2014adam,loshchilov2017adamw} is a defensible substitute, and the
+reason is worth stating precisely so that the substitution is not mistaken for a
+free improvement. With SGD, an $L_2$ penalty in the loss and decoupled weight
+decay are nearly the same mechanism, differing by a learning-rate factor. With
+Adam they are not the same at all, because the penalty's gradient passes through
+the adaptive preconditioner; that difference is the AdamW result. So the
+mechanism the papers rely on -- a weight-decay rate of $10^{-4}$ acting as a
+smoothness control on a search-critical function
+(Section~\ref{sec:loss}) -- can be preserved under AdamW by using decoupled
+decay. The reasons to prefer adaptive methods at small scale are the standard
+ones: faster early convergence and far less sensitivity to the learning rate.
+The reason the papers did not need them is the standard counter-argument:
+adaptive methods have been reported to generalize worse on image-classification-
+style tasks, and training on a distribution that never stops moving is a
+generalization problem throughout the run \citep{wilson2017adaptive}.
+
+Both choices should be configuration, not a rewrite, so that a fidelity
+experiment is a one-line change.
+
+The learning-rate schedule needs the same treatment. AlphaGo Zero stepped
+$10^{-2} \to 10^{-3} \to 10^{-4}$; AlphaZero started at $0.2$ and dropped three
+times, in step with a doubled batch size. Those schedules are tuned for SGD at
+batches of two to four thousand and do not transfer to a batch of a thousand with
+an adaptive optimizer. A linear warmup followed by cosine decay is the more
+useful starting point, and the specific numbers are an experiment, not a
+citation.
+
+\subsection{Records, checkpoints, and one trap}
+\label{sec:records}
+
+Checkpointing a model in a reduced-precision format is a standard space
+optimization and a bad idea in this system. If candidate and baseline are
+compared by playing games against each other, and the candidate's weights have
+been rounded to half precision while the baseline's have not, the comparison
+measures quantization noise as well as training. Precision loss of that kind is
+exactly the size of the differences the arena is trying to resolve. The rule is
+therefore: store models at full precision.
+
+Checkpoint often, and keep the checkpoints. A run measured in days should never
+lose more than one iteration to a fault, and disk is cheaper than a week of
+compute.
+
+\subsection{Verification gates}
+\label{sec:gates}
+
+The order of the following gates matters, because each one makes the next one
+meaningful.
+
+\begin{enumerate}
+  \item \textbf{Rules engine, differentially.} A fast bitboard implementation
+        against a naive array implementation, on ten thousand random games,
+        compared ply by ply. Any disagreement is a defect in one of them.
+  \item \textbf{Search, against known facts.} Tactical puzzles with verifiable
+        solutions, driven by the deterministic mock evaluator: a win in one must
+        be found at a small simulation budget, forced blocks must be played,
+        short forced sequences must be found. This is the test that catches the
+        sign convention of Section~\ref{sec:backup}.
+  \item \textbf{Prover soundness.} Every emitted line is re-verified by replaying
+        it while enumerating all defender alternatives. On shallow positions,
+        brute-force adjudication must agree with every proof claim. The prover
+        may miss wins; it must never certify one that is not there.
+  \item \textbf{Network shapes and overfitting.} Forward shapes on both backends,
+        and the overfit test of Section~\ref{sec:backends}.
+  \item \textbf{Backend parity.} One full training step, both backends,
+        parameter deltas within tolerance.
+\end{enumerate}
+
+Nothing trains at length until gate 5 passes. The reason is that the failure it
+detects -- a correct-looking forward pass with wrong gradients -- produces a run
+that looks normal, costs days, and produces a weak agent. That failure is
+indistinguishable from a bad hyperparameter at the point where it is observed,
+which is why it must be excluded early and mechanically.
