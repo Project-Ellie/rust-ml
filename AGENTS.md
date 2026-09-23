@@ -11,7 +11,7 @@ This repo resurrects the TensorFlow
 [DeepGomoku](https://github.com/Project-Ellie/DeepGomoku) as an
 AlphaZero-style Gomoku agent in Rust with Burn 0.21.0. The root package
 is a finished MNIST curriculum (`docs/` chapters 1–8, `examples/`); the
-`gomoku/` workspace is the real project (chapters 9–13). Freestyle
+`gomoku/` workspace is the real project (chapters 9–15). Freestyle
 Gomoku 15×15, overlines win, Swap2 opening, "alpha-epsilon" approach
 (hand-woven tactics head start). System design: `docs/12-gomoku-architecture.md`;
 engine design: `docs/13-engine-design.md`.
@@ -40,9 +40,12 @@ engine design: `docs/13-engine-design.md`.
 
 ## Layout
 
-- `docs/` — the wiki: chapters 1–13, `tutorials/`, `WARM-UP.md`
+- `docs/` — the wiki: chapters 1–15, `tutorials/`, `WARM-UP.md`
+- `data/` — external corpora for openings and puzzles (bulk content is local-only)
+- `paper/` — LaTeX monograph on the AlphaZero mathematics
 - `src/`, `examples/` — MNIST curriculum (root package, done)
-- `gomoku/crates/engine` — rules engine (milestone 1, in progress)
+- `gomoku/crates/engine` — rules engine (milestone 1, done)
+- `gomoku/crates/mcts` — arena tree (milestone 2, started)
 - `gomoku/crates/cli` — terminal UI on either board (side quest, done)
 
 ## Status snapshot
@@ -50,6 +53,8 @@ engine design: `docs/13-engine-design.md`.
 Milestone 1 (engine): COMPLETE — all 10 slices done (oracle, bitboard
 Board, win detection, Zobrist, symmetry/encode, tactics, TSS prover,
 Swap2, benches) + CLI side quest with Swap2 hotseat flow and TSS proof
-overlay. Details and verification commands:
-[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-19----update-this-section-as-work-lands).
+overlay. Milestone 2 (mcts) started — the crate holds the arena tree
+only; `docs/tutorials/mcts-tutorial/` is its build tutorial. Details and
+verification commands:
+[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-23--update-this-section-as-work-lands).
 Keep that section current as work lands.

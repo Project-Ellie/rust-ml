@@ -47,10 +47,13 @@ rust-ml/                    root package "rust-ml" (the MNIST curriculum)
 ├── src/                    shared MNIST library: data, model, training, inference
 ├── examples/               01_tensors … 06_mnist_infer — one per curriculum chapter
 ├── artifacts/mnist/        training output (git-ignored)
-├── docs/                   the wiki: 13 chapters + tutorials/ + this file
+├── data/                   external corpora: opening lists, puzzles, game records
+├── docs/                   the wiki: 15 chapters + tutorials/ + this file
+├── paper/                  LaTeX monograph on the AlphaZero mathematics
 └── gomoku/                 SEPARATE Cargo workspace (resolver 3, edition 2024)
     └── crates/
         ├── engine/         rules engine — dependency island: no Burn, no I/O
+        ├── mcts/           arena tree — milestone 2 (search still to come)
         └── cli/            `gomoku` binary: terminal UI on either board
 ```
 
@@ -126,7 +129,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-19 — update this section as work lands)
+## Current status (verified 2026-09-23 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -182,12 +185,18 @@ Fixed glossary (tutorial README has the full version):
   feature (`naive-engine`); lean builds use `--no-default-features`.
 
 Verified: `cargo test -p engine --features testutil` → 92 unit + 5
-differential + 2 doc-tests green; `cargo test -p cli` → 41 green;
-`cargo bench -p engine` meets the milestone-1 bar.
+differential + 2 doc-tests green; `cargo test -p cli` → 45 green;
+`cargo test -p mcts` → 5 green; `cargo bench -p engine` meets the
+milestone-1 bar.
 
-Milestones 2–8 (mcts, net+train on synthetic data, TSS anchor set,
-selfplay service, the phased loop, hardening, upgrades) have not
-started — no code exists beyond `engine` and `cli`.
+Milestone 2 (mcts) started: the `mcts` crate holds the arena tree
+(`NodeId`, `Edge` with `(P, N, W)`, `Tree`); the modules its `lib.rs`
+names (`select`, `eval`, `expand`, `backup`, `search`, `policy`,
+`mock`) are still to be written. The build tutorial is
+[mcts-tutorial](tutorials/mcts-tutorial/README.md) (primer + 10
+chapters). Milestones 3–8 (net+train on synthetic data, TSS anchor
+set, selfplay service, the phased loop, hardening, upgrades) have not
+started.
 
 ## How the tutorials work (respect the pedagogy)
 
