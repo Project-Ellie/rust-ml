@@ -28,7 +28,7 @@ fn main() {
     let test = MnistDataset::test();
     for index in [42, 7, 1234] {
         println!("=== test item {index} ===");
-        infer::<B>(artifact_dir, device.clone(), test.get(index).unwrap());
+        infer::<B>(artifact_dir, device, test.get(index).unwrap());
         println!();
     }
 

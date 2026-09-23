@@ -236,7 +236,7 @@ mod tests {
             w: 42.0,
             child: None,
         };
-        assert_eq!(edge.q(), 0.0);
+        assert!(edge.q().abs() < 1e-6);
     }
 
     #[test]
