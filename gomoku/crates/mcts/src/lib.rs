@@ -26,6 +26,7 @@
 // narrowing, not a logic bug.
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 
+pub mod backup;
 pub mod eval;
 pub mod expand;
 pub mod select;
