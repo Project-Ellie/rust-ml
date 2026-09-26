@@ -129,7 +129,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-23 — update this section as work lands)
+## Current status (verified 2026-09-26 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -186,15 +186,17 @@ Fixed glossary (tutorial README has the full version):
 
 Verified: `cargo test -p engine --features testutil` → 92 unit + 5
 differential + 2 doc-tests green; `cargo test -p cli` → 45 green;
-`cargo test -p mcts` → 5 green; `cargo bench -p engine` meets the
+`cargo test -p mcts` → 10 green; `cargo bench -p engine` meets the
 milestone-1 bar.
 
-Milestone 2 (mcts) started: the `mcts` crate holds the arena tree
-(`NodeId`, `Edge` with `(P, N, W)`, `Tree`); the modules its `lib.rs`
-names (`select`, `eval`, `expand`, `backup`, `search`, `policy`,
-`mock`) are still to be written. The build tutorial is
-[mcts-tutorial](tutorials/mcts-tutorial/README.md) (primer + 10
-chapters). Milestones 3–8 (net+train on synthetic data, TSS anchor
+Milestone 2 (mcts) in progress: tutorial chapters 01–03 done — the
+arena tree (`NodeId`, `Edge` with `(P, N, W)`, `Tree`) plus PUCT
+selection (`select.rs`: `puct_score`, `Selection`, `select`). Next is
+chapter 04 (the evaluation seam); `eval`, `expand`, `backup`,
+`search`, `policy`, and `mock` are still to be written. The build
+tutorial is
+[mcts-tutorial](tutorials/mcts-tutorial/README.md) (00-mcts-primer +
+10 chapters). Milestones 3–8 (net+train on synthetic data, TSS anchor
 set, selfplay service, the phased loop, hardening, upgrades) have not
 started.
 
