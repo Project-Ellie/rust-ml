@@ -27,5 +27,6 @@
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 
 pub mod eval;
+pub mod expand;
 pub mod select;
 pub mod tree;
