@@ -14,7 +14,7 @@ Milestone 2 is the **policy improvement operator**: the Monte Carlo Tree
 Search that turns a raw network opinion `(p, v)` into a stronger move and
 a training target `π`. The theory, the parallelization story, and the
 list of things we deliberately do *not* build are all in
-[primer.md](primer.md) §§1–2 and §7. This tutorial is the doing. Each
+[00-mcts-primer.md](00-mcts-primer.md) §§1–2 and §7. This tutorial is the doing. Each
 chapter is one hour-sized step, and every chapter follows the same five
 sections you read about in the README: Context, Intention, Mental
 mapping, Low-level design, Solution, TDD checklist, Done when.
@@ -190,7 +190,7 @@ Notes:
 //! single-threaded so it can be tested and reasoned about in
 //! isolation.
 //!
-//! Design document (locked): `docs/tutorials/mcts-tutorial/primer.md`
+//! Design document (locked): `docs/tutorials/mcts-tutorial/00-mcts-primer.md`
 //! in the rust-ml repository. The code follows the notation and sign
 //! convention of primer §§3–6 exactly.
 //!

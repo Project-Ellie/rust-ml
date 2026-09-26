@@ -340,7 +340,7 @@ bootstrap taking over as it becomes reliable.
 - [docs/13-engine-design.md](13-engine-design.md) — ch. 13:
   decision 1 (freestyle rules), decision 5 (absolute colors), Swap2
   typestate contract.
-- [docs/tutorials/mcts-tutorial/primer.md](tutorials/mcts-tutorial/primer.md)
+- [docs/tutorials/mcts-tutorial/00-mcts-primer.md](tutorials/mcts-tutorial/00-mcts-primer.md)
   — MCTS design: value/prior roles, root-noise discipline (§5).
 - [docs/references/catalogue.md](references/catalogue.md) and
   [docs/references/findings-external-data.md](references/findings-external-data.md)

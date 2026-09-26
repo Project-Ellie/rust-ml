@@ -33,7 +33,7 @@ rand = "0.9"
 //! single-threaded so it can be tested and reasoned about in
 //! isolation.
 //!
-//! Design document (locked): `docs/tutorials/mcts-tutorial/primer.md`
+//! Design document (locked): `docs/tutorials/mcts-tutorial/00-mcts-primer.md`
 //! in the rust-ml repository. The code follows the notation and sign
 //! convention of primer §§3–6 exactly.
 //!

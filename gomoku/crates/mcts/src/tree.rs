@@ -81,13 +81,18 @@ impl Node {
         self.state
     }
 
+    /// mutable state
+    pub fn state_mut(&mut self) -> &mut NodeState {
+        &mut self.state
+    }
+
     /// Outgoing edges in creation order
     #[must_use]
     pub fn edges(&self) -> &[Edge] {
         &self.edges
     }
 
-    /// Mutable outg
+    /// Mutable outgoing edges
     #[must_use]
     pub fn edges_mut(&mut self) -> &mut Vec<Edge> {
         &mut self.edges

@@ -2,7 +2,7 @@
 
 The build-it-yourself tutorial for the `mcts` crate. The theory,
 the design decisions, and the integration story are **not** here —
-they are in [primer.md](primer.md), which you read first (or at least
+they are in [00-mcts-primer.md](00-mcts-primer.md), which you read first (or at least
 keep open; every chapter points at the primer sections it implements).
 This folder is the *doing*: ten small steps from an empty crate to a
 proven Monte Carlo Tree Search, each one sized so that you always know

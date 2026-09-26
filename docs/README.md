@@ -70,7 +70,7 @@ write-it-yourself slices. Current:
 - [mcts-tutorial](tutorials/mcts-tutorial/README.md) — milestone 2, the
   `mcts` crate: a baby-steps build tutorial (arena tree, PUCT, backup,
   move selection, mock evaluator, acceptance suite). Start with its
-  [primer](tutorials/mcts-tutorial/primer.md), the reading document on
+  [primer](tutorials/mcts-tutorial/00-mcts-primer.md), the reading document on
   how Monte Carlo Tree Search works in this project and how the tree
   integrates the engine and the evaluation network.
 
