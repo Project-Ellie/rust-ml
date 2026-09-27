@@ -29,5 +29,6 @@
 pub mod backup;
 pub mod eval;
 pub mod expand;
+pub mod search;
 pub mod select;
 pub mod tree;
