@@ -263,8 +263,12 @@ Integration tests use `std::process::Command` and
 
 1. `datagen_runs_end_to_end_with_tiny_quotas`:
    * Create a unique temp dir.
-   * Run the binary with `--seed 7 --win 2 --block 2 --quiet 3 --out <dir>`.
+   * Run the binary with `--seed 7 --win 2 --block 2 --quiet 3 --out <dir>`
+     and capture `stdout` and `stderr`.
    * Assert `status.success()`.
+   * Assert `stderr` contains the soundness-pass confirmation
+     (`"Soundness gate passed"`).
+   * Assert `stdout` contains the stats report (`"Stats {"`).
    * Assert `manifest.json` exists and parses into a `Manifest` with
      matching seed and quotas.
    * Assert at least one `shard-*.bin` exists.

@@ -53,6 +53,9 @@ pub use sample::Sample;
 //!
 //! ```text
 //! datagen --out <DIR> [--seed <u64>] [--win <n>] [--block <n>] [--quiet <n>]
+//!
+//! Use `--flag value` only; `--flag=value` is not supported.
+//! If a flag appears more than once, the last value wins.
 //! ```
 
 use std::env;
@@ -97,7 +100,9 @@ fn main() {
         Err(msg) => {
             eprintln!("{msg}");
             eprintln!(
-                "Usage: datagen --out <DIR> [--seed <u64>] [--win <n>] [--block <n>] [--quiet <n>]"
+                "Usage: datagen --out <DIR> [--seed <u64>] [--win <n>] [--block <n>] [--quiet <n>]\n\
+                 Use `--flag value` only; `--flag=value` is not supported.\n\
+                 If a flag appears more than once, the last value wins."
             );
             process::exit(2);
         }
@@ -272,7 +277,7 @@ fn datagen_runs_end_to_end_with_tiny_quotas() {
     let out_dir = unique_temp_dir("train-datagen-integration");
     let _ = fs::remove_dir_all(&out_dir);
 
-    let status = Command::new(env!("CARGO_BIN_EXE_datagen"))
+    let output = Command::new(env!("CARGO_BIN_EXE_datagen"))
         .args([
             "--seed".as_ref(),
             "7".as_ref(),
@@ -285,10 +290,21 @@ fn datagen_runs_end_to_end_with_tiny_quotas() {
             "--out".as_ref(),
             out_dir.as_os_str(),
         ])
-        .status()
+        .output()
         .expect("datagen binary should be runnable");
 
-    assert!(status.success(), "datagen should exit with status 0");
+    assert!(output.status.success(), "datagen should exit with status 0");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Soundness gate passed"),
+        "stderr should confirm the soundness gate passed"
+    );
+    assert!(
+        stdout.contains("Stats {"),
+        "stdout should contain the stats report"
+    );
 
     let manifest_path = out_dir.join("manifest.json");
     assert!(manifest_path.exists(), "manifest.json should exist");
@@ -353,17 +369,17 @@ fn datagen_rejects_unknown_flag() {
 
     let status = Command::new(env!("CARGO_BIN_EXE_datagen"))
         .args([
-            "--seed",
-            "1",
-            "--win",
-            "1",
-            "--block",
-            "1",
-            "--quiet",
-            "1",
-            "--out",
-            out_dir.to_str().unwrap(),
-            "--nonsense",
+            "--seed".as_ref(),
+            "1".as_ref(),
+            "--win".as_ref(),
+            "1".as_ref(),
+            "--block".as_ref(),
+            "1".as_ref(),
+            "--quiet".as_ref(),
+            "1".as_ref(),
+            "--out".as_ref(),
+            out_dir.as_os_str(),
+            "--nonsense".as_ref(),
         ])
         .status()
         .expect("datagen binary should be runnable");
