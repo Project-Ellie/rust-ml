@@ -7,9 +7,10 @@ function that runs seeded random games, samples a small number of
 plies from each game, classifies the resulting positions, and keeps
 samples until per-class quotas are met. Positions are deduplicated by
 their Zobrist key, so a given board state enters the dataset at most
-once. By the end you will have a deterministic collector with three
+once. By the end you will have a deterministic collector with four
 unit tests: exact per-class counts for tiny quotas, uniqueness of
-Zobrist keys, and bit-identical reproduction under the same seed.
+Zobrist keys, bit-identical reproduction under the same seed, and a
+seeded regression test proving terminal plies are never sampled.
 
 ## Glossary
 
@@ -50,9 +51,10 @@ large enough to pre-train the network.
    class bucket is not yet full and its Zobrist key has not been seen.
 4. Make the function deterministic under a seeded RNG: no hidden
    state, no thread-local randomness, no I/O.
-5. Write three tests: tiny quotas produce exact win/block/quiet counts;
+5. Write four tests: tiny quotas produce exact win/block/quiet counts;
    all collected samples have unique Zobrist keys; two runs with the
-   same seed produce identical sample vectors.
+   same seed produce identical sample vectors; and a deterministic
+   regression test that fails if terminal plies are collected.
 
 Observable done-state: `cargo test -p train` passes, `cargo clippy
 --all-targets -- -D warnings` is green, and `cargo fmt --all --
@@ -208,6 +210,11 @@ Inside `#[cfg(test)] mod tests` in `collect.rs`:
    `StdRng::seed_from_u64(42)` and assert the two `Vec<Sample>` are
    equal. `Sample` implements `PartialEq`, so the comparison includes
    the sparse policy vectors and value targets.
+4. `terminal_ply_is_never_sampled` — collect the tiny quotas with
+   `StdRng::seed_from_u64(0)` and assert that every rebuilt board has
+   `engine::Status::Ongoing`. Seed 0 was verified to sample a
+   `Won(Black)` terminal position when the Ongoing skip is removed,
+   so this test deterministically guards the skip.
 
 ## Solution (opt-in)
 
@@ -220,12 +227,12 @@ after you have finished the chapter and want to compare.
 ## TDD checklist
 
 1. **Red:** Create `collect.rs` with the `Quotas` struct, the
-   `collect` function signature, and the three tests, leaving the
+   `collect` function signature, and the four tests, leaving the
    function body as `todo!()`. Register `pub mod collect;` in
    `lib.rs`. Run `cargo test -p train` and expect failures from the
    `todo!()` panics.
 2. **Green:** Implement `collect`. Re-run `cargo test -p train`. All
-   fifteen tests (three from this chapter plus twelve from chapters
+   sixteen tests (four from this chapter plus twelve from chapters
    1–3) should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or

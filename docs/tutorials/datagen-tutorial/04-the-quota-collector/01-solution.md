@@ -47,6 +47,7 @@ pub struct Quotas {
 /// deduplicated by Zobrist key; each game yields at most
 /// [`MAX_PLIES_PER_GAME`] samples. Terminal plies are skipped because
 /// the network is never asked to evaluate finished positions.
+/// All-zero quotas return an empty vector immediately.
 /// Deterministic under `rng` seed.
 pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
     let targets = [quotas.win, quotas.block, quotas.quiet];
@@ -100,7 +101,8 @@ fn class_index(class: TacticalClass) -> usize {
 fn board_at_prefix(history: &[engine::Move], ply: usize) -> Board {
     let mut board = Board::new();
     for &mv in &history[..ply] {
-        // `random_game` only ever plays legal moves.
+        // `random_game` only ever plays legal moves, and any prefix of a
+        // legal move sequence is itself legal.
         board.play(mv).expect("history prefix must be legal");
     }
     board
@@ -144,6 +146,28 @@ mod tests {
         assert_eq!(block, quotas.block, "block count mismatch");
         assert_eq!(quiet, quotas.quiet, "quiet count mismatch");
         assert_eq!(samples.len(), quotas.win + quotas.block + quotas.quiet);
+
+        for sample in &samples {
+            let board = sample.board().expect("sample must rebuild");
+            assert_eq!(
+                board.status(),
+                engine::Status::Ongoing,
+                "collected sample must be an ongoing position"
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_ply_is_never_sampled() {
+        // seed 0 provably samples a terminal ply if the Ongoing skip is
+        // removed (verified against the pre-fix implementation).
+        let quotas = Quotas {
+            win: 2,
+            block: 2,
+            quiet: 3,
+        };
+        let mut rng = StdRng::seed_from_u64(0);
+        let samples = collect(quotas, &mut rng);
 
         for sample in &samples {
             let board = sample.board().expect("sample must rebuild");
