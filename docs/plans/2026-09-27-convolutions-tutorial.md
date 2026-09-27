@@ -50,8 +50,12 @@ Side-quest tutorial between datagen and net tutorials. Deliverables:
   (`B: Backend`) from the first line.
 - `naive.rs`: the learner's hand-rolled cross-correlation on plain
   Rust arrays (chapter 1's code) — contract: `cross_correlate(input:
-  &[Vec<Vec<f32>>], kernel: &[Vec<Vec<f32>>], bias: f32) ->
-  Vec<Vec<f32>>` with valid (no) padding, plus a ReLU wrapper.
+  &[Vec<f32>], kernel: &[Vec<f32>], bias: f32) -> Vec<Vec<f32>>`
+  (single 2D channel in, single map out) with valid (no) padding,
+  plus a ReLU wrapper. Single-channel is deliberate: chapter 1
+  teaches the minimal loop; the multi-channel lift belongs to
+  chapter 2, where Burn makes channels a tensor dimension (controller
+  amendment after T0 spec review, 2026-09-27).
 - Spike A (idioms, recorded in SPIKE.md): manual weight assignment to
   a `Conv2d` module on `NdArray`; naive-vs-Burn equivalence test with
   small-integer random inputs/weights (exact f32 equality required);
