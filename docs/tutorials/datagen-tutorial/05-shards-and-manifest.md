@@ -5,8 +5,8 @@
 This chapter adds the first file I/O to the `train` crate: a streaming
 shard writer that persists the collected [`Sample`](01-the-train-crate.md)
 records to length-delimited bincode files, plus a JSON manifest that
-records provenance (seed, quotas, engine version) and per-class counts.
-By the end you will have a deterministic `write_dataset` function, three
+records provenance (seed, quotas, workspace version) and per-class counts.
+By the end you will have a deterministic `write_dataset` function, four
 unit tests, and the reasoning needed to defend the streaming format
 against the obvious alternative of one giant file.
 
@@ -15,7 +15,7 @@ against the obvious alternative of one giant file.
 | Term | Definition |
 |------|------------|
 | **Shard** | One bincode file containing a stream of `Sample` records, at most [`SHARD_SIZE`] per file. |
-| **Manifest** | The small JSON file next to the shards: seed, quotas, class counts, shard list, and engine version. |
+| **Manifest** | The small JSON file next to the shards: seed, quotas, class counts, shard list, and workspace version. |
 | **Length-delimited framing** | Writing a `u32` little-endian length prefix before each bincode record so the reader knows where one record ends and the next begins. |
 | **Streaming serialization** | Encoding and writing records one at a time, without holding the entire dataset in a single buffer. |
 | **Crash safety** | The property that a partial write leaves previously completed shards intact and readable. |
@@ -47,7 +47,7 @@ append-friendly and crash-safe.
 2. Create `gomoku/crates/train/src/shard.rs` and register
    `pub mod shard;` in `gomoku/crates/train/src/lib.rs`.
 3. Define `pub const SHARD_SIZE: usize = 4096`.
-4. Define `Manifest { seed, quotas, counts, shards, engine_version }`
+4. Define `Manifest { seed, quotas, counts, shards, workspace_version }`
    with serde derives.
 5. Implement `write_dataset(samples, out_dir, seed, quotas) -> io::Result<Manifest>`:
    * Create `out_dir` if it does not exist.
@@ -58,11 +58,12 @@ append-friendly and crash-safe.
    * Encode each sample with bincode, prefix with a little-endian `u32`
      length, and write to the current shard.
    * Count samples by class and write `manifest.json` via `serde_json`.
-6. Add `serde_json` to `crates/train/Cargo.toml` as a workspace
-   dependency.
-7. Write three tests: ten samples produce exactly one shard plus a
-   manifest, the shard decodes back to the same samples, and an
-   existing shard file causes an error rather than an overwrite.
+6. Inherit the workspace package version in `crates/train/Cargo.toml`
+   and add `serde_json` as a workspace dependency.
+7. Write four tests: ten samples produce exactly one shard plus a
+   manifest, the shard decodes back to the same samples, an existing
+   shard file causes an error, and an existing `manifest.json` causes
+   an error.
 
 Observable done-state: `cargo test -p train` passes, `cargo clippy
 --all-targets -- -D warnings` is green, and `cargo fmt --all --
@@ -139,25 +140,21 @@ records:
 * `quotas` — the collection targets that shaped the class distribution.
 * `counts` — the actual number of win / block / quiet samples written.
 * `shards` — the ordered list of shard files.
-* `engine_version` — the version of the code that produced the labels.
+* `workspace_version` — the workspace package version shared by the crates that produced the labels.
 
 This mirrors the run-journal philosophy in
 [`docs/12-gomoku-architecture.md`](../../12-gomoku-architecture.md):
 a training artifact should carry enough metadata to reproduce or audit
 it. If a future model behaves strangely, the manifest lets you check
 whether the dataset was generated with the same seed, quotas, and
-engine version as a known-good run.
+workspace version as a known-good run.
 
-> **Honest note — `engine_version` is the train crate version**
+> **Honest note — `workspace_version` is the workspace package version**
 >
-> The manifest field is named `engine_version` because the label comes
-> from the engine's tactics module, but `env!("CARGO_PKG_VERSION")`
-> inside `train` returns the train crate's version. In this workspace
-> all crates share the same workspace version, so the two are the
-> same. The implementation documents this explicitly rather than
-> pretending it captured the engine's package string through a build
-> script. A later upgrade can add a build-time engine-version probe if
-> the workspace versions ever diverge.
+> `train` and `engine` both inherit `version.workspace = true`, so
+> `env!("CARGO_PKG_VERSION")` inside `train` returns the same value as
+> it would inside `engine`. The field name reflects that structural
+> fact: it records the shared workspace version, not a per-crate string.
 
 ## Low-level design
 
@@ -174,9 +171,17 @@ gomoku/crates/train/
 
 ### `Cargo.toml`
 
-Add `serde_json` under `[dependencies]`:
+Inherit the workspace package version (so the manifest records the
+same version as `engine`) and add `serde_json` under `[dependencies]`:
 
 ```toml
+[package]
+name = "train"
+description = "Synthetic training-data generator for the Gomoku AlphaZero-style agent."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
 [dependencies]
 engine = { path = "../engine" }
 serde = { workspace = true }
@@ -214,7 +219,12 @@ pub struct Manifest {
     pub quotas: crate::collect::Quotas,
     pub counts: std::collections::BTreeMap<String, usize>,
     pub shards: Vec<String>,
-    pub engine_version: String,
+    /// Version string captured from the workspace package version.
+    ///
+    /// This crate inherits `version.workspace = true`, so the value is
+    /// structurally shared by every crate that does the same — including
+    /// `engine`, whose tactics module produced the labels.
+    pub workspace_version: String,
 }
 
 pub fn write_dataset(
@@ -267,11 +277,14 @@ Inside `#[cfg(test)] mod tests` in `shard.rs`:
    * Manifest counts match the samples re-classified through
      `label::classify(sample.board().unwrap())`.
    * `manifest.seed`, `manifest.quotas`, `manifest.shards`, and
-     `manifest.engine_version` are correct.
+     `manifest.workspace_version` are correct.
 2. `refuses_to_overwrite_existing_shard` — create the output
    directory and an empty `shard-000.bin`, then call `write_dataset`
    and assert it returns an error.
-3. `empty_dataset_writes_no_shards_and_zero_counts` — write an empty
+3. `refuses_to_overwrite_existing_manifest` — create the output
+   directory and an empty `manifest.json`, then call `write_dataset`
+   and assert it returns an error.
+4. `empty_dataset_writes_no_shards_and_zero_counts` — write an empty
    slice and assert no shard files are created, the manifest exists,
    and all class counts are zero.
 
@@ -291,13 +304,14 @@ after you have finished the chapter and want to compare.
 
 ## TDD checklist
 
-1. **Red:** Add `serde_json` to `Cargo.toml`, add serde derives to
-   `Quotas`, create `shard.rs` with the `Manifest` struct, the
-   `write_dataset` signature, and the three tests, leaving the body as
-   `todo!()`. Register `pub mod shard;` in `lib.rs`. Run `cargo test
-   -p train` and expect failures from the `todo!()` panics.
+1. **Red:** Inherit the workspace package version in `Cargo.toml`,
+   add `serde_json`, add serde derives to `Quotas`, create `shard.rs`
+   with the `Manifest` struct, the `write_dataset` signature, and the
+   four tests, leaving the body as `todo!()`. Register `pub mod shard;`
+   in `lib.rs`. Run `cargo test -p train` and expect failures from the
+   `todo!()` panics.
 2. **Green:** Implement `write_dataset`. Re-run `cargo test -p train`.
-   All nineteen tests (three from this chapter plus sixteen from
+   All twenty tests (four from this chapter plus sixteen from
    chapters 1–4) should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
@@ -310,7 +324,7 @@ after you have finished the chapter and want to compare.
   changes this slice).
 * `cargo clippy --all-targets -- -D warnings` passes from `gomoku/`.
 * `cargo fmt --all -- --check` makes no changes.
-* Commit message in the reference worktree: `feat(train): shard writer + manifest`.
+* Commit message in the reference worktree: `fix(train): workspace-inherited version + manifest overwrite test`.
 
 Next: Chapter 06 — Reading back.
 

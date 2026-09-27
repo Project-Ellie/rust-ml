@@ -5,9 +5,17 @@ reference worktree exactly.
 
 ## `Cargo.toml`
 
-Add `serde_json` as a workspace dependency:
+Inherit the workspace package version and add `serde_json` as a
+workspace dependency:
 
 ```toml
+[package]
+name = "train"
+description = "Synthetic training-data generator for the Gomoku AlphaZero-style agent."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
 [dependencies]
 engine = { path = "../engine" }
 serde = { workspace = true }
@@ -15,6 +23,9 @@ thiserror = { workspace = true }
 bincode = { version = "2", features = ["serde"] }
 serde_json = { workspace = true }
 rand = "0.10.3"
+
+[dev-dependencies]
+engine = { path = "../engine", features = ["testutil"] }
 ```
 
 ## `src/collect.rs`
@@ -93,11 +104,12 @@ pub struct Manifest {
     pub counts: BTreeMap<String, usize>,
     /// Shard file names, in order.
     pub shards: Vec<String>,
-    /// Version string captured from the train crate.
+    /// Version string captured from the workspace package version.
     ///
-    /// The train crate shares the workspace version with the engine
-    /// crate, so this is also the engine version for this dataset.
-    pub engine_version: String,
+    /// This crate inherits `version.workspace = true`, so the value is
+    /// structurally shared by every crate that does the same — including
+    /// `engine`, whose tactics module produced the labels.
+    pub workspace_version: String,
 }
 
 /// Write `samples` to `out_dir` as length-delimited bincode shards and a JSON manifest.
@@ -183,7 +195,7 @@ pub fn write_dataset(
         quotas,
         counts,
         shards,
-        engine_version: env!("CARGO_PKG_VERSION").to_string(),
+        workspace_version: env!("CARGO_PKG_VERSION").to_string(),
     };
 
     let manifest_path = out_dir.join("manifest.json");
@@ -283,9 +295,9 @@ mod tests {
         assert_eq!(manifest.quotas, quotas);
         assert_eq!(manifest.shards, vec!["shard-000.bin"]);
         assert_eq!(
-            manifest.engine_version,
+            manifest.workspace_version,
             env!("CARGO_PKG_VERSION"),
-            "engine_version records the train crate version"
+            "workspace_version records the workspace package version"
         );
 
         let _ = fs::remove_dir_all(&out_dir);
@@ -317,6 +329,39 @@ mod tests {
             },
         );
         assert!(result.is_err(), "must fail when shard file already exists");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn refuses_to_overwrite_existing_manifest() {
+        let out_dir = unique_temp_dir("train-manifest-overwrite");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+        fs::File::create(out_dir.join("manifest.json")).unwrap();
+
+        let samples = collect(
+            Quotas {
+                win: 1,
+                block: 0,
+                quiet: 0,
+            },
+            &mut StdRng::seed_from_u64(1),
+        );
+        let result = write_dataset(
+            &samples,
+            &out_dir,
+            1,
+            Quotas {
+                win: 1,
+                block: 0,
+                quiet: 0,
+            },
+        );
+        assert!(
+            result.is_err(),
+            "must fail when manifest.json already exists"
+        );
 
         let _ = fs::remove_dir_all(&out_dir);
     }
