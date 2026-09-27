@@ -52,14 +52,14 @@ pub fn select_move(dist: &[(Move, u32)], temperature: f32, rng: &mut impl Rng) -
         );
     }
 
-    let exponent = 1.0 / temperature;
+    let exponent = 1.0 / f64::from(temperature);
 
     // Compute weights = N^(1/τ). For N == 0, weight is 0 unless all
     // counts are zero (e.g. before any simulations), in which case we
     // fall back to uniform.
     let mut weights: Vec<f64> = dist
         .iter()
-        .map(|(_, n)| f64::from((*n as f32).powf(exponent)))
+        .map(|(_, n)| f64::from(*n).powf(exponent))
         .collect();
 
     if weights.iter().all(|&w| w == 0.0) {
