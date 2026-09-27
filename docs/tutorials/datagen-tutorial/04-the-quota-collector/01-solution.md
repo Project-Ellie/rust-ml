@@ -45,7 +45,9 @@ pub struct Quotas {
 
 /// Run random games until every class bucket is full. Positions are
 /// deduplicated by Zobrist key; each game yields at most
-/// [`MAX_PLIES_PER_GAME`] samples. Deterministic under `rng` seed.
+/// [`MAX_PLIES_PER_GAME`] samples. Terminal plies are skipped because
+/// the network is never asked to evaluate finished positions.
+/// Deterministic under `rng` seed.
 pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
     let targets = [quotas.win, quotas.block, quotas.quiet];
     let mut counts = [0_usize; 3];
@@ -58,6 +60,10 @@ pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
 
         for ply in plies {
             let board = board_at_prefix(&history, ply);
+            // Terminals are never evaluated by the network, so they never enter the dataset.
+            if board.status() != engine::Status::Ongoing {
+                continue;
+            }
             let class = classify(&board);
             let idx = class_index(class);
 
@@ -138,6 +144,15 @@ mod tests {
         assert_eq!(block, quotas.block, "block count mismatch");
         assert_eq!(quiet, quotas.quiet, "quiet count mismatch");
         assert_eq!(samples.len(), quotas.win + quotas.block + quotas.quiet);
+
+        for sample in &samples {
+            let board = sample.board().expect("sample must rebuild");
+            assert_eq!(
+                board.status(),
+                engine::Status::Ongoing,
+                "collected sample must be an ongoing position"
+            );
+        }
     }
 
     #[test]

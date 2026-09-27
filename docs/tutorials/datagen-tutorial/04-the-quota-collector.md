@@ -160,12 +160,16 @@ Implementation notes:
   3. For each `ply` in `plies`, rebuild the board at that prefix. The
      cleanest way is to replay `history[..ply]` through a fresh
      `Board::new()`, because the collector owns the full history.
-  4. `let class = classify(&board);`
-  5. If the corresponding bucket is already full, `continue`.
-  6. `let key = board.zobrist();` — if `!seen.insert(key)`, `continue`.
-  7. `let (policy, value) = label(&board);`
-  8. `samples.push(Sample::from_position(&history, ply, policy, value));`
-  9. Increment the bucket counter.
+  4. Skip the ply if `board.status() != engine::Status::Ongoing`.
+     Terminal positions are never evaluated by the network — MCTS
+     returns exact values for finished positions without calling the
+     network — so they must never enter the dataset.
+  5. `let class = classify(&board);`
+  6. If the corresponding bucket is already full, `continue`.
+  7. `let key = board.zobrist();` — if `!seen.insert(key)`, `continue`.
+  8. `let (policy, value) = label(&board);`
+  9. `samples.push(Sample::from_position(&history, ply, policy, value));`
+  10. Increment the bucket counter.
 * Determinism holds because the only source of variation is the RNG,
   and every branch (skip because bucket full, skip because duplicate)
   is a deterministic function of the board and the current counters.
@@ -174,6 +178,18 @@ Implementation notes:
   `{win: 2, block: 2, quiet: 3}` the collector typically finishes in
   a few dozen games, while larger chapter-8 quotas run into the
   hundreds or thousands.
+
+> **Excursion — why terminal plies must be skipped**
+>
+> The engine's tactics functions are only meaningful on ongoing
+> positions. On a board that is already won, `forced_blocks`
+> degenerates: the winner's five survives any legal placement, so
+> every empty cell appears to "block" an unstoppable threat. The
+> position would be mislabeled as a Block with a meaningless uniform
+> policy target. Worse, the network is never asked to evaluate
+> terminals — MCTS handles them exactly — so there is no valid
+> supervision signal to learn from. Skipping them keeps the dataset
+> rules-true.
 
 ### Tests
 
