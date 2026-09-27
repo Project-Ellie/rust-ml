@@ -56,6 +56,13 @@ use crate::sample::Sample;
 /// This mirrors the framing written by [`crate::shard::write_dataset`].
 const LENGTH_PREFIX_BYTES: usize = 4;
 
+/// Maximum allowed length for a single length-delimited shard record.
+///
+/// A [`Sample`] bincode payload is tiny; this cap is a guard against a
+/// corrupted length prefix forcing a huge allocation. It is intentionally
+/// much larger than any legitimate record.
+const MAX_RECORD_LEN: usize = 1 << 20; // 1 MiB
+
 /// Soundness violations detected by [`check_soundness`].
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum SoundnessError {
@@ -68,6 +75,9 @@ pub enum SoundnessError {
     /// The policy masses do not sum to 1 within tolerance.
     #[error("policy masses do not sum to 1")]
     BadPolicyMass,
+    /// The value target does not match the position's tactical class.
+    #[error("value target does not match tactical class")]
+    InconsistentValue,
 }
 
 /// Tolerance for the policy-mass sum check.
@@ -120,6 +130,12 @@ fn read_shard(reader: &mut impl Read, samples: &mut Vec<Sample>) -> io::Result<(
         }
 
         let len = u32::from_le_bytes(len_buf) as usize;
+        if len > MAX_RECORD_LEN {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("shard record length {len} exceeds maximum allowed {MAX_RECORD_LEN}"),
+            ));
+        }
         let mut bytes = vec![0u8; len];
         reader.read_exact(&mut bytes)?;
 
@@ -136,6 +152,8 @@ fn read_shard(reader: &mut impl Read, samples: &mut Vec<Sample>) -> io::Result<(
 /// * Rebuilds the board via [`Sample::board`].
 /// * Verifies policy masses sum to 1 within [`MASS_TOLERANCE`].
 /// * Classifies the position via [`crate::label::classify`].
+/// * Verifies the value target matches the tactical class
+///   (`+1.0` win, `-1.0` block, `0.0` quiet).
 /// * For [`TacticalClass::Win`], the policy argmax must be in
 ///   [`engine::immediate_wins`](engine::immediate_wins).
 /// * For [`TacticalClass::Block`], the policy argmax must be in
@@ -161,6 +179,9 @@ pub fn check_soundness(sample: &Sample) -> Result<(), SoundnessError> {
     }
 
     let class = classify(&board);
+    if value_class(sample.value) != Some(class) {
+        return Err(SoundnessError::InconsistentValue);
+    }
     match class {
         TacticalClass::Win => {
             let wins = engine::immediate_wins(&board, board.to_move());
@@ -182,12 +203,30 @@ pub fn check_soundness(sample: &Sample) -> Result<(), SoundnessError> {
     Ok(())
 }
 
+/// Return the move with the highest policy mass.
+///
+/// # Panics
+///
+/// Panics if `policy` is empty. Callers must ensure at least one policy
+/// entry before calling this helper.
 fn policy_argmax(policy: &[(engine::Move, f32)]) -> engine::Move {
     policy
         .iter()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .map(|(m, _)| *m)
         .expect("policy mass check guarantees at least one entry")
+}
+
+/// Map the exact value target to its implied tactical class.
+///
+/// Returns `None` for any value other than `+1.0`, `-1.0`, or `0.0`.
+fn value_class(value: f32) -> Option<TacticalClass> {
+    match value {
+        1.0 => Some(TacticalClass::Win),
+        -1.0 => Some(TacticalClass::Block),
+        0.0 => Some(TacticalClass::Quiet),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -337,6 +376,41 @@ mod tests {
         assert_eq!(
             check_soundness(&corrupted),
             Err(SoundnessError::IllegalPosition)
+        );
+    }
+
+    #[test]
+    fn record_length_cap_rejects_invalid_shard() {
+        let out_dir = unique_temp_dir("train-dataset-cap");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let bad_len = (MAX_RECORD_LEN + 1) as u32;
+        fs::write(out_dir.join("shard-000.bin"), bad_len.to_le_bytes()).unwrap();
+
+        let err = read_dataset(&out_dir).expect_err("should reject oversized length prefix");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains("exceeds maximum allowed"),
+            "error should name the cap: {err}"
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn inconsistent_value_fails() {
+        let samples = tiny_dataset();
+        let mut corrupted = samples
+            .iter()
+            .find(|s| s.value == 1.0)
+            .expect("tiny dataset contains a win sample")
+            .clone();
+        corrupted.value = 0.0;
+
+        assert_eq!(
+            check_soundness(&corrupted),
+            Err(SoundnessError::InconsistentValue)
         );
     }
 

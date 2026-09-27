@@ -118,6 +118,10 @@ pub struct Manifest {
 /// `manifest.json` already exists, to avoid silently overwriting a
 /// previous dataset.
 ///
+/// A failed run may leave partial shards behind. Because of the overwrite
+/// protection, a retry will then be refused until the output directory is
+/// cleaned.
+///
 /// Shards are named `shard-000.bin`, `shard-001.bin`, ... Each shard
 /// contains up to [`SHARD_SIZE`] samples. Each sample is encoded with
 /// bincode and prefixed with its length as a little-endian `u32`.
@@ -214,6 +218,7 @@ mod tests {
     use super::*;
     use crate::collect::{Quotas, collect};
     use crate::label::{self, TacticalClass};
+    use engine::Move;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use std::fs;
@@ -362,6 +367,46 @@ mod tests {
             result.is_err(),
             "must fail when manifest.json already exists"
         );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn shard_rollover_after_shard_size_samples() {
+        let mv = Move::new(7, 7).unwrap();
+        let sample = Sample::from_position(&[mv], 1, Vec::new(), 0.0);
+        let samples = vec![sample; SHARD_SIZE + 1];
+
+        let out_dir = unique_temp_dir("train-shard-rollover");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let manifest = write_dataset(
+            &samples,
+            &out_dir,
+            0,
+            Quotas {
+                win: 0,
+                block: 0,
+                quiet: SHARD_SIZE + 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.shards,
+            vec!["shard-000.bin", "shard-001.bin"],
+            "expected exactly two shards"
+        );
+
+        let first = read_shard(&out_dir.join("shard-000.bin"));
+        assert_eq!(first.len(), SHARD_SIZE, "first shard must be full");
+
+        let second = read_shard(&out_dir.join("shard-001.bin"));
+        assert_eq!(second.len(), 1, "second shard must hold the remainder");
+
+        assert_eq!(first, samples[..SHARD_SIZE]);
+        assert_eq!(second, samples[SHARD_SIZE..]);
 
         let _ = fs::remove_dir_all(&out_dir);
     }

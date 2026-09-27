@@ -24,6 +24,13 @@ use rand::{Rng, RngExt};
 pub const MAX_PLIES_PER_GAME: usize = 3;
 
 /// Play a uniformly random legal game to terminal; return the move history.
+///
+/// # Panics
+///
+/// This function does not panic in correct engine usage: `empty_moves`
+/// returns only legal cells, and the loop only plays while the status is
+/// `Ongoing`. The `.expect("empty_moves returns only legal moves")` is
+/// therefore unreachable under the engine's contract.
 pub fn random_game(rng: &mut impl Rng) -> Vec<Move> {
     let mut board = Board::new();
     while board.status() == Status::Ongoing {
@@ -38,6 +45,9 @@ pub fn random_game(rng: &mut impl Rng) -> Vec<Move> {
 
 /// Choose `n` distinct ply indices in `1..=game_len` (uniform without
 /// replacement), so one game contributes at most `n` positions.
+///
+/// If `n` is larger than `game_len`, the result is saturated: every index
+/// in `1..=game_len` is returned, giving `game_len` plies.
 pub fn sample_plies(game_len: usize, n: usize, rng: &mut impl Rng) -> Vec<usize> {
     if game_len == 0 || n == 0 {
         return Vec::new();

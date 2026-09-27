@@ -45,6 +45,8 @@ not need the manifest.
    * `BadPolicyMass` — policy masses do not sum to 1 within tolerance.
    * `ArgmaxNotTactical` — for win/block samples, the policy argmax is
      not in the required tactical set.
+   * `InconsistentValue` — the value target does not match the
+     position's tactical class.
 3. Implement `read_dataset(dir: &Path) -> io::Result<Vec<Sample>>`:
    * Discover files matching `shard-*.bin`.
    * Sort them lexicographically.
@@ -57,6 +59,8 @@ not need the manifest.
      mass sum.
    * Sum the policy masses and check within `1e-5` of `1.0`.
    * Classify via [`crate::label::classify`](03-tactics-labels.md).
+   * Check that the value target matches the class (`+1.0` win,
+     `-1.0` block, `0.0` quiet).
    * For Win, require the argmax ∈ `engine::immediate_wins(&board, board.to_move())`.
    * For Block, require the argmax ∈ `engine::forced_blocks(&board)`.
    * Quiet has no tactical argmax requirement.
@@ -160,6 +164,7 @@ pub enum SoundnessError {
     IllegalPosition,
     ArgmaxNotTactical,
     BadPolicyMass,
+    InconsistentValue,
 }
 
 pub fn read_dataset(dir: &std::path::Path) -> std::io::Result<Vec<crate::sample::Sample>>;
@@ -192,7 +197,9 @@ Implementation notes:
     `wins.contains(argmax)`.
   * For `TacticalClass::Block`, compute `engine::forced_blocks(&board)`,
     find the policy argmax, and require `blocks.contains(argmax)`.
-  * For `TacticalClass::Quiet`, only the mass check applies.
+  * Check that `sample.value` is consistent with the tactical class
+  (`+1.0` for Win, `-1.0` for Block, `0.0` for Quiet).
+* For `TacticalClass::Quiet`, only the mass and value checks apply.
 * Use `thiserror` derives for `SoundnessError`; it is already a
   dependency.
 
@@ -215,7 +222,13 @@ Inside `#[cfg(test)] mod tests` in `dataset.rs`:
 5. `illegal_position_fails` — take any collected sample, copy one of
    its white stones into the black list (or vice versa), and assert
    `IllegalPosition`.
-6. `read_empty_dataset_directory_returns_empty_vector` — create an
+6. `record_length_cap_rejects_invalid_shard` — create a shard file
+   whose length prefix exceeds the reader's 1 MiB cap and assert that
+   `read_dataset` returns `InvalidData` without allocating.
+7. `inconsistent_value_fails` — take a win sample, flip its value to
+   `0.0`, and assert `check_soundness` returns
+   `SoundnessError::InconsistentValue`.
+8. `read_empty_dataset_directory_returns_empty_vector` — create an
    empty temp directory and assert `read_dataset` returns an empty
    vector without error.
 
@@ -239,7 +252,8 @@ after you have finished the chapter and want to compare.
    `pub mod dataset;` in `lib.rs`. Run `cargo test -p train` and expect
    failures from the `todo!()` panics.
 2. **Green:** Implement `read_dataset` and `check_soundness`. Re-run
-   `cargo test -p train`. All tests should pass.
+   `cargo test -p train`. All thirty tests (nine from this chapter plus
+   twenty-one from chapters 1–5) should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
    formatting issues.

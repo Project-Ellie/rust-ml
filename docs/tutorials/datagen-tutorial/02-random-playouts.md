@@ -204,7 +204,8 @@ Implementation notes:
   `expect` is justified because `empty_moves` returns only legal cells
   and the game is not over.
 * `sample_plies` uses the partial Fisher–Yates shuffle described above.
-  If `game_len == 0` or `n == 0` it returns an empty vector.
+  If `game_len == 0` or `n == 0` it returns an empty vector. If `n` is
+  larger than `game_len`, the result is saturated to `game_len` plies.
 * `rng` is `&mut impl Rng` so tests can pass a seeded `StdRng` and
   production code can pass any `rand` RNG.
 

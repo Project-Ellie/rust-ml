@@ -64,7 +64,7 @@ pub fn is_holdout(sample: &Sample) -> bool {
 }
 
 /// Statistics for a slice of samples.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stats {
     /// Total number of samples.
     pub total: usize,
@@ -85,8 +85,11 @@ pub struct Stats {
 /// Compute [`Stats`] over `samples`.
 ///
 /// Rebuilds each board to determine its tactical class and stone count.
-/// Panics if a sample cannot be rebuilt; a sound dataset should not
-/// contain such records.
+///
+/// # Panics
+///
+/// Panics if a sample cannot be rebuilt into a legal board. A sound
+/// dataset should not contain such records.
 pub fn stats(samples: &[Sample]) -> Stats {
     let mut win = 0;
     let mut block = 0;
@@ -105,15 +108,15 @@ pub fn stats(samples: &[Sample]) -> Stats {
             TacticalClass::Quiet => quiet += 1,
         }
 
-        if is_holdout(sample) {
+        if board.zobrist() % 10 == 0 {
             holdout += 1;
         }
 
-        let ply = sample.black.len() + sample.white.len();
-        if ply >= ply_histogram.len() {
-            ply_histogram.resize(ply + 1, 0);
+        let stones = sample.black.len() + sample.white.len();
+        if stones >= ply_histogram.len() {
+            ply_histogram.resize(stones + 1, 0);
         }
-        ply_histogram[ply] += 1;
+        ply_histogram[stones] += 1;
     }
 
     Stats {
@@ -139,6 +142,21 @@ mod tests {
             quiet: 3,
         };
         collect(quotas, &mut StdRng::seed_from_u64(42))
+    }
+
+    /// Push one stone into the opposite-color list so the position can no
+    /// longer be rebuilt into a legal board.
+    fn corrupt_sample(sample: &mut Sample) {
+        if let Some(mv) = sample.white.first().copied() {
+            sample.black.push(mv);
+        } else {
+            let mv = sample
+                .black
+                .first()
+                .copied()
+                .expect("sample has at least one stone");
+            sample.white.push(mv);
+        }
     }
 
     #[test]
@@ -200,12 +218,12 @@ mod tests {
         assert_eq!(s.ply_histogram.iter().sum::<usize>(), s.total);
 
         for sample in &samples {
-            let ply = sample.black.len() + sample.white.len();
+            let stones = sample.black.len() + sample.white.len();
             assert!(
-                ply < s.ply_histogram.len(),
-                "histogram must be long enough for ply {ply}"
+                stones < s.ply_histogram.len(),
+                "histogram must be long enough for stone count {stones}"
             );
-            assert!(s.ply_histogram[ply] > 0);
+            assert!(s.ply_histogram[stones] > 0);
         }
     }
 
@@ -214,16 +232,7 @@ mod tests {
         let mut samples = tiny_dataset();
         let mut corrupted = samples.pop().expect("dataset is non-empty");
         // Create an overlapping stone so the board cannot be rebuilt.
-        if let Some(mv) = corrupted.white.first().copied() {
-            corrupted.black.push(mv);
-        } else {
-            let mv = corrupted
-                .black
-                .first()
-                .copied()
-                .expect("sample has at least one stone");
-            corrupted.white.push(mv);
-        }
+        corrupt_sample(&mut corrupted);
 
         assert!(
             is_holdout(&corrupted),
@@ -236,16 +245,7 @@ mod tests {
     fn stats_panics_on_unbuildable_sample() {
         let mut samples = tiny_dataset();
         let mut corrupted = samples.pop().expect("dataset is non-empty");
-        if let Some(mv) = corrupted.white.first().copied() {
-            corrupted.black.push(mv);
-        } else {
-            let mv = corrupted
-                .black
-                .first()
-                .copied()
-                .expect("sample has at least one stone");
-            corrupted.white.push(mv);
-        }
+        corrupt_sample(&mut corrupted);
 
         stats(&[corrupted]);
     }

@@ -183,7 +183,7 @@ lives in `split`.
 /// so quota ordering cannot skew the split.
 pub fn is_holdout(sample: &crate::sample::Sample) -> bool;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stats {
     pub total: usize,
     pub per_class: [(&'static str, usize); 3],
@@ -202,10 +202,14 @@ Implementation notes:
   `true` so the invalid sample is excluded from training.
 * `stats` iterates over `samples`, rebuilds each board, and classifies it
   with `crate::label::classify`. It accumulates counts for win / block /
-  quiet and increments `holdout` when `is_holdout(sample)` is true.
+  quiet and increments `holdout` when the rebuilt board's Zobrist key
+  modulo 10 is 0 (reusing the already-built board rather than calling
+  `is_holdout` again).
+* `stats` panics if a sample cannot be rebuilt into a legal board.
 * `ply_histogram` is built by resizing the vector as needed: for a sample
-  with `black.len() + white.len()` stones, ensure the vector is at least
-  that long and increment `histogram[stones]`.
+  with `black.len() + white.len()` stones, the local variable is called
+  `stones`, the vector is grown to at least that length, and
+  `histogram[stones]` is incremented.
 * `train` is computed as `samples.len() - holdout`.
 
 ### Tests
@@ -229,7 +233,9 @@ Inside `#[cfg(test)] mod tests` in `split.rs`:
 5. `unbuildable_sample_is_treated_as_holdout` — corrupt a sample so that
    `Sample::board()` fails and assert `is_holdout` returns `true`.
 6. `stats_panics_on_unbuildable_sample` — pass a corrupted sample to
-   `stats` and assert it panics with a clear message.
+   `stats` and assert it panics with a clear message. Both corruption
+   tests share a small `corrupt_sample` helper that pushes one stone into
+   the opposite-color list.
 
 ## Solution (opt-in)
 

@@ -60,10 +60,10 @@ append-friendly and crash-safe.
    * Count samples by class and write `manifest.json` via `serde_json`.
 6. Inherit the workspace package version in `crates/train/Cargo.toml`
    and add `serde_json` as a workspace dependency.
-7. Write four tests: ten samples produce exactly one shard plus a
-   manifest, the shard decodes back to the same samples, an existing
-   shard file causes an error, and an existing `manifest.json` causes
-   an error.
+7. Write five tests: ten samples produce exactly one shard plus a
+   manifest, the shard decodes back to the same samples, `SHARD_SIZE + 1`
+   samples roll over into exactly two shards, an existing shard file
+   causes an error, and an existing `manifest.json` causes an error.
 
 Observable done-state: `cargo test -p train` passes, `cargo clippy
 --all-targets -- -D warnings` is green, and `cargo fmt --all --
@@ -102,6 +102,11 @@ write, but it has two problems that matter for a training pipeline:
 > shard file on disk and rebuild the manifest from them. The reverse
 > order — manifest first, shards second — would leave a manifest
 > pointing at missing or partial shards.
+>
+> Because `write_dataset` refuses to overwrite existing files, a failed
+> run that leaves partial shards behind also blocks a retry until the
+> output directory is cleaned. This is intentional: it prevents a
+> half-finished dataset from being mistaken for a complete one.
 
 ### Why length-delimited framing?
 
@@ -278,13 +283,18 @@ Inside `#[cfg(test)] mod tests` in `shard.rs`:
      `label::classify(sample.board().unwrap())`.
    * `manifest.seed`, `manifest.quotas`, `manifest.shards`, and
      `manifest.workspace_version` are correct.
-2. `refuses_to_overwrite_existing_shard` — create the output
+2. `shard_rollover_after_shard_size_samples` — build `SHARD_SIZE + 1`
+   cheap samples via `Sample::from_position`, write them, and assert
+   that exactly two shards are produced, the first holds `SHARD_SIZE`
+   samples, the second holds one, and both roundtrip back to the
+   original samples.
+3. `refuses_to_overwrite_existing_shard` — create the output
    directory and an empty `shard-000.bin`, then call `write_dataset`
    and assert it returns an error.
-3. `refuses_to_overwrite_existing_manifest` — create the output
+4. `refuses_to_overwrite_existing_manifest` — create the output
    directory and an empty `manifest.json`, then call `write_dataset`
    and assert it returns an error.
-4. `empty_dataset_writes_no_shards_and_zero_counts` — write an empty
+5. `empty_dataset_writes_no_shards_and_zero_counts` — write an empty
    slice and assert no shard files are created, the manifest exists,
    and all class counts are zero.
 
@@ -311,7 +321,7 @@ after you have finished the chapter and want to compare.
    in `lib.rs`. Run `cargo test -p train` and expect failures from the
    `todo!()` panics.
 2. **Green:** Implement `write_dataset`. Re-run `cargo test -p train`.
-   All twenty tests (four from this chapter plus sixteen from
+   All twenty-one tests (five from this chapter plus sixteen from
    chapters 1–4) should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
