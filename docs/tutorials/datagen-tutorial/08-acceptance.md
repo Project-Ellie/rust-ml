@@ -8,8 +8,8 @@ public surface with `#![deny(missing_docs)]`, and defines the
 milestone-3 acceptance ritual. By the end you will have
 `gomoku/crates/train/src/bin/datagen.rs`, an integration test in
 `gomoku/crates/train/tests/datagen.rs`, a documented public surface,
-and a written acceptance bar that the QA agent will execute after you
-finish.
+and a written acceptance bar whose full-scale results are quoted
+below (50 000 samples, measured on the reference implementation).
 
 ## Glossary
 
@@ -298,8 +298,7 @@ diff -r /tmp/datagen-a /tmp/datagen-b && echo "BYTE-IDENTICAL"
 ```
 
 A successful diff confirms that the dataset is deterministic from seed
-to bytes. This is the ritual the QA agent will repeat at the default
-quotas.
+to bytes. This is the ritual to repeat at the default quotas.
 
 ## Solution (opt-in)
 

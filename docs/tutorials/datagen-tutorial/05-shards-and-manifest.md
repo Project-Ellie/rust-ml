@@ -334,7 +334,7 @@ after you have finished the chapter and want to compare.
   changes this slice).
 * `cargo clippy --all-targets -- -D warnings` passes from `gomoku/`.
 * `cargo fmt --all -- --check` makes no changes.
-* Commit message in the reference worktree: `fix(train): workspace-inherited version + manifest overwrite test`.
+* Commit message in the reference worktree: `feat(train): shard writer + manifest`.
 
 Next: Chapter 06 — Reading back.
 
