@@ -6,8 +6,8 @@ This chapter turns a raw board position into a supervised training
 example. You will add a `label` module to the `train` crate that
 classifies every position as **win**, **block**, or **quiet** using the
 engine's tactics functions, then shapes a sparse policy target and a
-side-to-move value target. By the end you will have three ASCII-puzzle
-unit tests and a clean clippy/fmt gate. The lesson also fixes a common
+side-to-move value target. By the end you will have five unit tests
+(three ASCII puzzles plus two edge cases) and a clean clippy/fmt gate. The lesson also fixes a common
 bug: copying the MCTS mock evaluator's scaffolding values (`+0.95` /
 `−0.90`) into training labels.
 
@@ -55,9 +55,10 @@ and [`Board::empty_moves`](../../../gomoku/crates/engine/src/board.rs).
    the 90/10 policy split for win/block and a uniform target for quiet.
 5. Value targets must be exact `+1.0`, `−1.0`, or `0.0` — not the MCTS
    mock's scaffolding values.
-6. Write three ASCII-puzzle tests: open four for the side to move
-   (win), closed four for the opponent (block), and a scattered quiet
-   position.
+6. Write the five tests: open four for the side to move (win),
+   closed four for the opponent (block), a scattered quiet position,
+   a both-sides-have-an-immediate-win position (win takes precedence),
+   and a full-board draw (empty policy, value 0.0).
 
 Observable done-state: `cargo test -p train` passes,
 `cargo clippy --all-targets -- -D warnings` is green, and
@@ -183,9 +184,12 @@ Implementation notes:
   delegates to a private `shape` helper for win/block. Quiet positions
   get a uniform target.
 * The helper assigns `0.9 / k` to each tactical move and `0.1 / rest`
-  to each non-tactical move. Because `f32` cannot represent every
-  fraction exactly, the last entry is adjusted so the distribution sums
-  to `1.0`; tests check the sum to `±1e-6` and each mass to `±1e-5`.
+  to each non-tactical move. The direct form expresses the 90/10
+  contract literally; the `f32` total is within rounding error of `1.0`
+  and downstream consumers normalize. Tests check each mass to
+  `±1e-5` and the sum to `±1e-5`.
+* Add a short precondition comment on `shape`: `tactical` must be a
+  subset of `legal`, otherwise `rest = n - k` would underflow.
 * Value targets are exact literals: `1.0`, `-1.0`, `0.0`.
 
 ### Tests
@@ -195,7 +199,7 @@ Inside `#[cfg(test)] mod tests` in `label.rs`:
 1. `open_four_for_side_to_move_is_win` — build a board where Black
    (the side to move) has an open four; assert `classify` is `Win`,
    value is `1.0`, policy argmax is in `immediate_wins`, masses sum to
-   `1.0 ± 1e-6`, tactical moves carry `0.9 / k`, and the rest carries
+   `1.0 ± 1e-5`, tactical moves carry `0.9 / k`, and the rest carries
    `0.1 / rest`.
 2. `closed_four_for_opponent_is_block` — build a board where White is
    to move and Black has a closed four; assert `classify` is `Block`,
@@ -204,6 +208,13 @@ Inside `#[cfg(test)] mod tests` in `label.rs`:
 3. `scattered_position_is_quiet_and_uniform` — build a quiet board;
    assert `classify` is `Quiet`, value is `0.0`, and every legal move
    carries `1.0 / legal_count`.
+4. `win_takes_precedence_when_both_sides_have_immediate_win` — build
+   an ASCII position where both sides have an immediate win; assert
+   `classify` returns `Win` because the side to move plays first.
+5. `full_board_terminal_draw_has_empty_policy_and_zero_value` — build
+   a full-board draw (reuse the no-five stripe pattern from the MCTS
+   `terminal_draw_leaf_returns_zero` test); assert `label` returns
+   `(Vec::new(), 0.0)`.
 
 All three puzzles use `engine::reference::board_from_ascii`. Remember
 that the parser enforces alternating-reachable stone counts: equal
@@ -222,11 +233,11 @@ after you have finished the chapter and want to compare.
 
 1. **Red:** Add the `testutil` dev-dependency, create `label.rs` with
    the `TacticalClass` enum, the two public function signatures, and
-   the three tests, leaving the function bodies as `todo!()`. Register
+   the five tests, leaving the function bodies as `todo!()`. Register
    `pub mod label;` in `lib.rs`. Run `cargo test -p train` and expect
    failures from the `todo!()` panics.
 2. **Green:** Implement `classify` and `label`. Re-run
-   `cargo test -p train`. All ten tests (three from this chapter plus
+   `cargo test -p train`. All twelve tests (five from this chapter plus
    seven from chapters 1–2) should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
