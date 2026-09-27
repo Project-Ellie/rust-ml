@@ -57,6 +57,11 @@ impl Sample {
         policy: Vec<(Move, f32)>,
         value: f32,
     ) -> Self {
+        assert!(
+            ply <= history.len(),
+            "ply {ply} exceeds history length {}",
+            history.len()
+        );
         let prefix = &history[..ply];
         let mut black = Vec::with_capacity(ply.div_ceil(2));
         let mut white = Vec::with_capacity(ply / 2);
@@ -143,6 +148,13 @@ mod tests {
         assert_eq!(sample.black, vec![mv(0, 0), mv(0, 1), mv(0, 2)]);
         assert_eq!(sample.white, vec![mv(1, 1), mv(1, 0)]);
         assert_eq!(sample.to_move, Color::White);
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds history length")]
+    fn from_position_panics_when_ply_exceeds_history() {
+        let history = [mv(0, 0), mv(1, 1), mv(0, 1)];
+        Sample::from_position(&history, 5, Vec::new(), 0.0);
     }
 
     #[test]

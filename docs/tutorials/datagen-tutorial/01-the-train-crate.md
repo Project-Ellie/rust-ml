@@ -47,8 +47,8 @@ arrive in later chapters.
 datagen tutorial.
 4. Implement the `Sample` record and its two methods:
    `Sample::from_position` and `Sample::board`.
-5. Write three tests: a bincode roundtrip, a parity/alternation test,
-   and a board-rebuild test.
+5. Write four tests: a bincode roundtrip, a parity/alternation test,
+   a panic test for an out-of-bounds `ply`, and a board-rebuild test.
 
 Observable done-state: `cargo test -p train` passes from `gomoku/`,
 `cargo clippy --all-targets -- -D warnings` is green, and `cargo fmt
@@ -199,6 +199,9 @@ pub struct Sample {
 impl Sample {
     /// Build from a played move prefix: `history[..ply]` is on the
     /// board; colors alternate from Black; `to_move` follows from parity.
+    ///
+    /// # Panics
+    /// Panics if `ply` is greater than `history.len()`.
     pub fn from_position(
         history: &[engine::Move],
         ply: usize,
@@ -233,7 +236,10 @@ Inside `#[cfg(test)]` in `sample.rs`:
 2. `from_position_splits_by_alternation` — build a sample at `ply = 4`
    and `ply = 5` from the same history; verify the stone lists and
    `to_move`.
-3. `board_roundtrip_rebuilds_position` — build a sample from a 5-move
+3. `from_position_panics_when_ply_exceeds_history` — call
+   `Sample::from_position` with a `ply` larger than `history.len()` and
+   assert it panics with `#[should_panic]`.
+4. `board_roundtrip_rebuilds_position` — build a sample from a 5-move
    history, call `board()`, and assert `empty_moves().count() == 225 -
 ply`.
 
