@@ -29,7 +29,10 @@
 pub mod backup;
 pub mod eval;
 pub mod expand;
+pub mod mock;
 pub mod policy;
 pub mod search;
 pub mod select;
 pub mod tree;
+
+pub use mock::TacticsEvaluator;

@@ -80,7 +80,10 @@ fn terminal_value(board: &Board) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TacticsEvaluator;
     use crate::eval::UniformEvaluator;
+    use engine::Color;
+    use engine::reference::board_from_ascii;
 
     #[test]
     fn uniform_search_visits_sum_to_simulations() {
@@ -96,5 +99,100 @@ mod tests {
         let root_edges = outcome.tree.node(outcome.root).edges();
         let total: u32 = root_edges.iter().map(|e| e.n).sum();
         assert_eq!(config.simulations, total);
+    }
+
+    #[test]
+    fn immediate_win_for_side_to_move_gets_most_visits() {
+        // Black has an open four on row 7; (7,3) or (7,8) wins.
+        let b = board_from_ascii(
+            "
+            O . O . O . O . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . X X X X . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            ",
+        );
+        assert_eq!(b.status(), Status::Ongoing);
+        assert_eq!(b.to_move(), Color::Black);
+
+        let mut ev = TacticsEvaluator;
+
+        let outcome = search(
+            &b,
+            &mut ev,
+            &SearchConfig {
+                simulations: 50,
+                c_puct: 1.5,
+            },
+        );
+
+        let root_edges = outcome.tree.node(outcome.root).edges();
+        let best = root_edges
+            .iter()
+            .max_by_key(|e| e.n)
+            .expect("Root has edges");
+        let wins = engine::immediate_wins(&b, b.to_move());
+        assert!(
+            wins.contains(best.mv),
+            "Best move {:?} must be a winning move",
+            best.mv
+        );
+    }
+
+    #[test]
+    fn opponent_immediate_win_forces_block() {
+        // White has an open four on row 9; Black to move must block.
+        use engine::reference::board_from_ascii;
+        let b = board_from_ascii(
+            "
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . O O O O . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            X . X . X . X . . . . . . . .
+            ",
+        );
+        assert_eq!(b.to_move(), Color::Black);
+        assert!(!engine::forced_blocks(&b).is_empty());
+
+        let mut ev = TacticsEvaluator;
+        let outcome = search(
+            &b,
+            &mut ev,
+            &SearchConfig {
+                simulations: 50,
+                c_puct: 1.5,
+            },
+        );
+
+        let root_edges = outcome.tree.node(outcome.root).edges();
+        let best = root_edges.iter().max_by_key(|e| e.n).unwrap();
+        let blocks = engine::forced_blocks(&b);
+        assert!(
+            blocks.contains(best.mv),
+            "Best move {:?} must be a block.",
+            best.mv
+        );
     }
 }
