@@ -93,7 +93,8 @@ it), so that the net tutorial can focus on training.
    bias, and a ReLU express precise Boolean stone/empty conditions —
    the "power of convolutional networks" made concrete.
 3. Introduce Burn 0.21 tensors, `Conv2d`, manual weight assignment,
-   and batching — the exact machinery the net tutorial will reuse.
+   batching, and the backend abstraction (CPU by default, GPU on an
+   opt-in feature) — the exact machinery the net tutorial will reuse.
 4. Reproduce the engine's tactics *as a feed-forward network* and
    prove it by differential testing.
 5. Deliver the double-three fork detector — an empty-cell map that
@@ -260,14 +261,32 @@ The public result is a `ThreatMaps` struct carrying the named maps
 (wins, double threats, double threes, plus the per-direction
 three/four maps the heatmap demo visualizes).
 
-### 4.4 Burn usage and batching
+### 4.4 Burn usage, backends, and batching
 
-Backend: `NdArray` (pure Rust, CPU), no autodiff — evaluation only.
+The crate is **backend-generic** (`B: Backend`) from the start — the
+backend abstraction is itself a teaching goal, and the net tutorial
+will train on GPU (ch. 12's phased scheduling). No autodiff:
+evaluation only.
+
+- **Default backend: `NdArray`** (pure Rust, CPU). The differential
+  gates and per-chapter tests run on it: deterministic on every
+  machine, light dependency tree, fast iteration.
+- **Optional `gpu` feature** (`patterns/gpu = ["burn/wgpu"]`):
+  chapter 7 runs the *same* network with the *same* weights on the
+  `Wgpu` backend and adds a CPU-vs-GPU differential-equality test.
+  Numerical exactness is guaranteed by construction — all inputs and
+  weights are small integers, so f32 sums are exact on any backend.
+  The feature is off by default so the heavy wgpu dependency tree
+  costs nothing until the learner opts in; the GPU test is run
+  explicitly (`cargo test -p patterns --features gpu`) and is
+  documented as environment-dependent (it needs a working GPU
+  adapter), so it is not part of the default gates.
+
 Weights are assigned manually by constructing each `Conv2d` from its
 config and overwriting the parameter tensors with the values from the
 pattern table. The exact Burn 0.21 idiom for manual weight assignment
-is verified against the pinned source in the Task-0 spike (hard rule
-1: no main-branch or 0.22 APIs).
+— on both backends — is verified against the pinned source in the
+Task-0 spike (hard rule 1: no main-branch or 0.22 APIs).
 
 Both colors are evaluated as a batch of two (black's planes, white's
 planes), introducing the batch dimension on something the learner can
@@ -343,7 +362,9 @@ per-chapter gates (`cargo test -p patterns`, clippy, fmt).
   cases.
 - **07 — seeing it**: threat potential as sparse policy; the heatmap
   demo binary on showcase positions (the classic fork and the corner
-  fork from the engine's own tests).
+  fork from the engine's own tests); the GPU section — same network,
+  same weights, `Wgpu` backend, with the CPU-vs-GPU equality test
+  (opt-in `gpu` feature).
 - **08 — acceptance**: full gates at scale, showcase map assertions,
   crate polish (`#![deny(missing_docs)]`), workspace gates green.
 
@@ -361,6 +382,9 @@ per-chapter gates (`cargo test -p patterns`, clippy, fmt).
    `cargo clippy --all-targets -- -D warnings`,
    `cargo fmt --all -- --check`; `cargo check -p engine` stays
    Burn-free.
+7. GPU portability: `cargo test -p patterns --features gpu` passes on
+   a GPU-capable machine (documented as environment-dependent and
+   excluded from the default gates).
 
 ## 8. What this is for, later
 
@@ -386,9 +410,9 @@ Motivation only — none of this is built in the tutorial:
    pedagogically (same discipline as datagen: chapters describe
    verified code).
 2. **Burn 0.21 manual weight assignment.** The exact idiom
-   (`Param::from_tensor`, module field types on the `NdArray` backend)
-   must be checked against the pinned `v0.21.0` source — hard rule 1.
-   Part of the spike.
+   (`Param::from_tensor`, module field types) must be checked against
+   the pinned `v0.21.0` source — hard rule 1 — on both the `NdArray`
+   and `Wgpu` backends. Part of the spike.
 3. **Semantic drift from the engine.** Where the tutorial claims
    equality with `double_threats`, it must reproduce the engine's
    documented simplifications exactly. The gate enforces it; the
