@@ -52,6 +52,9 @@ not need the manifest.
    * Return the concatenated `Vec<Sample>`.
 4. Implement `check_soundness(sample: &Sample) -> Result<(), SoundnessError>`:
    * Rebuild the board via [`Sample::board`](01-the-train-crate.md).
+   * Reject any policy probability that is not finite; NaN comparisons
+     are false, so finiteness must be checked explicitly before the
+     mass sum.
    * Sum the policy masses and check within `1e-5` of `1.0`.
    * Classify via [`crate::label::classify`](03-tactics-labels.md).
    * For Win, require the argmax ∈ `engine::immediate_wins(&board, board.to_move())`.
@@ -60,9 +63,10 @@ not need the manifest.
 5. Write tests for: roundtrip read-back equals the written samples;
    every collected sample passes soundness; a win sample with a
    non-tactical argmax fails with `ArgmaxNotTactical`; a sample with
-   halved masses fails with `BadPolicyMass`; an overlapping-stone
-   sample fails with `IllegalPosition`; and reading an empty dataset
-   directory returns an empty vector.
+   halved masses fails with `BadPolicyMass`; a win sample whose policy
+   contains `NaN` or `+inf` fails with `BadPolicyMass` instead of
+   panicking; an overlapping-stone sample fails with `IllegalPosition`;
+   and reading an empty dataset directory returns an empty vector.
 
 Observable done-state: `cargo test -p train` passes, `cargo clippy
 --all-targets -- -D warnings` is green, and `cargo fmt --all --

@@ -150,6 +150,11 @@ pub fn check_soundness(sample: &Sample) -> Result<(), SoundnessError> {
         .board()
         .map_err(|_| SoundnessError::IllegalPosition)?;
 
+    // NaN comparisons are false, so finiteness must be checked explicitly.
+    if sample.policy.iter().any(|(_, p)| !p.is_finite()) {
+        return Err(SoundnessError::BadPolicyMass);
+    }
+
     let mass_sum: f32 = sample.policy.iter().map(|(_, p)| p).sum();
     if (mass_sum - 1.0).abs() > MASS_TOLERANCE {
         return Err(SoundnessError::BadPolicyMass);
@@ -289,6 +294,28 @@ mod tests {
             check_soundness(&corrupted),
             Err(SoundnessError::BadPolicyMass)
         );
+    }
+
+    #[test]
+    fn non_finite_policy_mass_fails() {
+        let samples = tiny_dataset();
+        let win = samples
+            .iter()
+            .find(|s| s.value == 1.0)
+            .expect("tiny dataset contains a win sample")
+            .clone();
+
+        for bad in [f32::NAN, f32::INFINITY] {
+            let mut corrupted = win.clone();
+            let mv = corrupted.policy[0].0;
+            corrupted.policy = vec![(mv, bad)];
+
+            assert_eq!(
+                check_soundness(&corrupted),
+                Err(SoundnessError::BadPolicyMass),
+                "{bad:?} policy mass must be rejected, not panic"
+            );
+        }
     }
 
     #[test]
