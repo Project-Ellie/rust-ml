@@ -151,6 +151,13 @@ pub struct Quotas {
 pub fn collect(quotas: Quotas, rng: &mut impl rand::Rng) -> Vec<crate::sample::Sample>;
 ```
 
+> **Forward note — extra `Quotas` derives come in chapter 5.**
+>
+> The final `Quotas` struct also derives `PartialEq, serde::Serialize,
+> serde::Deserialize`; chapter 5 adds those so the manifest can store
+> the quotas that produced each dataset. They are not needed for the
+> collector itself.
+
 Implementation notes:
 
 * Keep three counters (win, block, quiet) and a `HashSet<u64>` of seen

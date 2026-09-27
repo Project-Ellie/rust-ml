@@ -4,6 +4,10 @@ This file shows the reference implementation for chapter 04. It is
 identical to the verified `collect.rs` in the reference worktree, plus
 the one-line registration change in `lib.rs`.
 
+The `Quotas` derives `PartialEq, serde::Serialize, serde::Deserialize`
+are added by chapter 5 for manifest serialization; the quote below
+shows the file's final form.
+
 ## `gomoku/crates/train/src/lib.rs`
 
 Add `pub mod collect;` with the other module declarations:
@@ -33,7 +37,7 @@ use crate::playout::{MAX_PLIES_PER_GAME, random_game, sample_plies};
 use crate::sample::Sample;
 
 /// Per-class collection targets.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Quotas {
     /// How many unique win positions to collect.
     pub win: usize,
