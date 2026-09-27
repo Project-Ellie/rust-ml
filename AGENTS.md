@@ -45,7 +45,7 @@ engine design: `docs/13-engine-design.md`.
 - `paper/` — LaTeX monograph on the AlphaZero mathematics
 - `src/`, `examples/` — MNIST curriculum (root package, done)
 - `gomoku/crates/engine` — rules engine (milestone 1, done)
-- `gomoku/crates/mcts` — arena tree (milestone 2, started)
+- `gomoku/crates/mcts` — PUCT search (milestone 2, done)
 - `gomoku/crates/cli` — terminal UI on either board (side quest, done)
 
 ## Status snapshot
@@ -53,8 +53,10 @@ engine design: `docs/13-engine-design.md`.
 Milestone 1 (engine): COMPLETE — all 10 slices done (oracle, bitboard
 Board, win detection, Zobrist, symmetry/encode, tactics, TSS prover,
 Swap2, benches) + CLI side quest with Swap2 hotseat flow and TSS proof
-overlay. Milestone 2 (mcts) started — the crate holds the arena tree
-only; `docs/tutorials/mcts-tutorial/` is its build tutorial. Details and
-verification commands:
+overlay. Milestone 2 (mcts): COMPLETE — full PUCT search (selection,
+evaluation seam, expansion, backup, simulation loop, temperature +
+Dirichlet policy, tactics-shaped mock evaluator) with tactical +
+1000-game acceptance suite; built chapter-by-chapter via
+`docs/tutorials/mcts-tutorial/`. Details and verification commands:
 [docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-23--update-this-section-as-work-lands).
 Keep that section current as work lands.

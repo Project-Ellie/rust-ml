@@ -129,7 +129,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-26 — update this section as work lands)
+## Current status (verified 2026-09-27 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -186,19 +186,44 @@ Fixed glossary (tutorial README has the full version):
 
 Verified: `cargo test -p engine --features testutil` → 92 unit + 5
 differential + 2 doc-tests green; `cargo test -p cli` → 45 green;
-`cargo test -p mcts` → 10 green; `cargo bench -p engine` meets the
-milestone-1 bar.
+`cargo test -p mcts` → 33 unit + 4 acceptance green; `cargo bench -p
+engine` meets the milestone-1 bar.
 
-Milestone 2 (mcts) in progress: tutorial chapters 01–03 done — the
-arena tree (`NodeId`, `Edge` with `(P, N, W)`, `Tree`) plus PUCT
-selection (`select.rs`: `puct_score`, `Selection`, `select`). Next is
-chapter 04 (the evaluation seam); `eval`, `expand`, `backup`,
-`search`, `policy`, and `mock` are still to be written. The build
-tutorial is
+**Milestone 2 (mcts) COMPLETE** — all 10 chapters of the
 [mcts-tutorial](tutorials/mcts-tutorial/README.md) (00-mcts-primer +
-10 chapters). Milestones 3–8 (net+train on synthetic data, TSS anchor
-set, selfplay service, the phased loop, hardening, upgrades) have not
-started.
+10 chapters) landed:
+
+- Arena tree (chapter 02): `NodeId`, `Edge` with `(P, N, W)`, `Tree`
+  with `add_child`.
+- PUCT selection (03): `puct_score`, `Selection`, `select` — read-only
+  descent, stops at unexpanded/terminal.
+- Evaluation seam (04): `EvalRequest` (planes + legal moves, no
+  `Board`), `EvalResult` (policy logits + side-to-move value),
+  object-safe `Evaluator` trait, `masked_softmax` (mask-first, f64
+  accumulator, degenerate-uniform fallback), `UniformEvaluator`.
+- Expansion (05): terminal-first via `board.status()` (exact values,
+  evaluator never called), eager child creation, idempotent
+  re-expansion.
+- Backup (06): side-to-move sign convention — negate once, flip per
+  level, one rule for terminal and network values.
+- Simulation loop (07): `search` + `SearchConfig{simulations: 400,
+  c_puct: 1.5}` (ELF's value, not DeepMind's) — root pre-expansion
+  gives the invariant `sum(root edge N) == simulations`.
+- Policy (08): `visit_distribution`, `select_move` (argmax /
+  temperature sampling), `add_dirichlet_noise` (k Gamma(α,1) draws
+  normalized); RNG threaded as `&mut impl Rng`, tests seeded.
+- Tactics-shaped mock (09): `TacticsEvaluator` shapes priors from
+  engine truth (`immediate_wins` / `forced_blocks`); reconstructs a
+  `Board` from planes via stone-count parity; sign sentinels green
+  (win-in-1 and forced block get most visits at 50 sims).
+- Acceptance (10): `tests/acceptance.rs` — win-in-1 @50 sims, forced
+  block @50, win-in-3 first move @200, and a seeded 1000-game uniform
+  sanity flood (every move legal, every game ≤225 plies); crate locked
+  with `#![deny(missing_docs)]` and a curated re-export surface.
+
+Milestone 3 (net + train on tactics-generated synthetic data) is next;
+milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
+hardening, upgrades) have not started.
 
 ## How the tutorials work (respect the pedagogy)
 
