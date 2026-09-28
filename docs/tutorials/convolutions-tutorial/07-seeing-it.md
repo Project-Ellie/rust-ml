@@ -309,7 +309,9 @@ The default command renders the double-three fork showcase:
 cargo run -p patterns --bin patterndemo
 ```
 
-Captured output (verbatim from the reference worktree):
+Captured output (verbatim from the reference worktree; the snippets
+omit Cargo's own `Finished`/`Running` lines that precede the binary's
+stdout):
 
 ```text
 Showcase: double-three fork | Map: double-three forks | Backend: NdArray
