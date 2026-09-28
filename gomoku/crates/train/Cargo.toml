@@ -1,0 +1,11 @@
+[package]
+name = "train"
+version = "0.1.0"
+edition = "2024"
+description = "Synthetic training-data generator for the Gomoku AlphaZero-style agent."
+
+[dependencies]
+engine = { path = "../engine" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+bincode = { version = "3.0.0", features = ["serde"]}
