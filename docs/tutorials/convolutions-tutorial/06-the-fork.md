@@ -245,7 +245,10 @@ Run these tests from `gomoku/` with `cargo test -p patterns`.
 
 The reference file defines the following `#[test]` functions. The
 exact set verified from the reference is 16 tests (the three vertical
-variants come from the Task-1 quality round):
+variants come from the Task-1 quality round). Note that
+`cargo test -p patterns --test oracle -- --list` reports 20 tests:
+the binary also runs the 4 generator helper tests from
+`tests/common/mod.rs`; the 16 below are the oracle assertions:
 
 1. `quiet_board_has_no_three_makers`
 2. `xxx_pattern_fires_horizontally`

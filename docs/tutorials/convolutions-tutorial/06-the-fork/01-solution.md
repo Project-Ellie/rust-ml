@@ -214,5 +214,4 @@ fn open_three_at(
 
     false
 }
-
 ````
