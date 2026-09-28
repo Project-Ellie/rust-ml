@@ -73,8 +73,8 @@ and `src/naive.rs`.
 3. Write the unit tests listed in the TDD checklist below.
 
 Observable done-state: `cargo test -p patterns` passes from `gomoku/`,
-`cargo clippy --all-targets -- -D warnings` is green, and `cargo fmt
---all` makes no changes.
+`cargo clippy --all-targets -- -D warnings` is green from `gomoku/`,
+and `cargo fmt --all` makes no changes from `gomoku/`.
 
 ## Mental mapping
 
@@ -95,8 +95,11 @@ The fix is to materialize the padding. `planes` returns two channels:
   `0.0` on empty in-board cells.
 
 Now a kernel can require emptiness by placing a negative weight on the
-*sum* of both channels at a cell: if either channel is `1.0`, the cell
-is not empty. The border is treated as blocked, not empty, so edge
+*sum* of both channels at a cell (each channel has its own kernel
+weight at that offset, and a conv layer adds the per-channel weighted
+sums — so this means a negative weight on both the stones and the
+blocked channel there): if either channel is `1.0`, the cell is not
+empty. The border is treated as blocked, not empty, so edge
 patterns fall out correctly without any special-case geometry.
 
 The padding radius is `5`, not `4`, because the broken-three patterns
