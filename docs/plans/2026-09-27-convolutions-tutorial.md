@@ -156,8 +156,13 @@ solution quotes byte-verified.
 - `potential.rs`: maps → `policy(b, s) -> Vec<(Move, f32)>` (sparse,
   `Sample`-shaped; combination weights `[experiment]`, documented).
 - `patterndemo`: renders board + selected threat map as ANSI heatmap;
-  built-in showcase positions (classic fork, corner fork from engine
-  tests); exact-cell-set regression tests.
+  built-in showcase positions: `classic-fork` and `corner-fork` (the
+  exact boards from the engine's tactics tests), `double-three-fork`
+  (the plus-sign board from `net::tests` — the tutorial's headline
+  target and the demo's DEFAULT showcase; controller amendment after
+  T9 spec review: the engine's classic fork is a double-THREAT fork
+  and shows nothing under the default `double_threes` map), and
+  `quiet`; exact-cell-set regression tests.
 - GPU: `--features gpu` equality test (CPU vs Wgpu, exact) + demo
   flag; documented environment-dependence.
 - Chapter 7 docs + solution. Full review cycle (this is a code slice).
