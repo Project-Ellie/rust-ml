@@ -129,7 +129,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-27 — update this section as work lands)
+## Current status (verified 2026-09-28 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -221,9 +221,35 @@ engine` meets the milestone-1 bar.
   sanity flood (every move legal, every game ≤225 plies); crate locked
   with `#![deny(missing_docs)]` and a curated re-export surface.
 
-Milestone 3 (net + train on tactics-generated synthetic data) is next;
-milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
-hardening, upgrades) have not started.
+**Milestone 3 (synthetic data + net) IN PROGRESS** — two of its three
+tutorial tracks are written and verified end-to-end (reference
+implementations built TDD-first in disposable worktrees, reviewed,
+acceptance-measured, then deleted per convention; the solution files
+are the durable record). The crates land on `main` as the owner works
+the chapters learn-by-doing — neither `train` nor `patterns` exists
+in the workspace yet:
+
+- [datagen-tutorial](tutorials/datagen-tutorial/README.md) (primer + 8
+  chapters + opt-in solutions): the `train` crate — `Sample` record,
+  seeded playouts, tactics labels (win/block/quiet, 90/10 shaped
+  policy, ±1/0 values), quota collector with Zobrist dedup, bincode
+  shards + manifest, soundness gate, key-hash held-out split, and the
+  `datagen` binary. Verified acceptance: 50k samples in 45 s (debug),
+  13 shards / 41 MB, 9.84% holdout, byte-identical regeneration.
+- [convolutions-tutorial](tutorials/convolutions-tutorial/README.md)
+  (side quest; primer + 8 chapters + solutions): the `patterns` crate
+  — a hand-written 152-channel conv net (Burn 0.21, backend-generic,
+  `NdArray` default + opt-in `gpu` feature) producing threat maps
+  (wins, double threats, double-three forks) plus the `patterndemo`
+  heatmap binary. Verified acceptance: three differential gates at
+  1000 boards × 2 colors vs `engine::{immediate_wins, double_threats}`
+  and an in-crate naive three-oracle — exact; full proof 8.9 s
+  release / ~620 s debug (gate-scheduling lesson in ch. 8); exact
+  CPU-vs-Wgpu parity.
+
+The net tutorial (phase-0 supervised training on the synthetic data)
+is next; milestones 4–8 (TSS anchor set, selfplay service, the phased
+loop, hardening, upgrades) have not started.
 
 ## How the tutorials work (respect the pedagogy)
 

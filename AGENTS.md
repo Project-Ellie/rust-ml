@@ -57,6 +57,10 @@ overlay. Milestone 2 (mcts): COMPLETE — full PUCT search (selection,
 evaluation seam, expansion, backup, simulation loop, temperature +
 Dirichlet policy, tactics-shaped mock evaluator) with tactical +
 1000-game acceptance suite; built chapter-by-chapter via
-`docs/tutorials/mcts-tutorial/`. Details and verification commands:
-[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-23--update-this-section-as-work-lands).
+`docs/tutorials/mcts-tutorial/`. Milestone 3: IN PROGRESS — datagen
+and convolutions tutorials written and verified end-to-end
+(`docs/tutorials/datagen-tutorial/`, `docs/tutorials/convolutions-tutorial/`);
+the `train` and `patterns` crates land on `main` as the owner works
+the chapters. Details and verification commands:
+[docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-28--update-this-section-as-work-lands).
 Keep that section current as work lands.
