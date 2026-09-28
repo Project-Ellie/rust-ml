@@ -113,6 +113,13 @@ SPIKE.md finalized.
   #1. Any deliberate semantic divergence found here must be resolved
   in favor of the oracle or escalated via the clarification protocol;
   never by weakening the gate.
+- **Gate scheduling (controller amendment after T2 spec review):**
+  the full 1000-board gates take ~620 s in debug — unacceptable as the
+  per-chapter `cargo test -p patterns` gate. The default suite runs
+  the gates at 100 boards (~60 s); the full 1000-board proofs are
+  `#[ignore]`d and run explicitly (`cargo test -p patterns -- --ignored`,
+  or `--release` for speed) as the Task-10 acceptance ritual. The
+  1000-board proofs passed at T2 delivery (CPU and GPU-feature runs).
 - **Acceptance:** all three gates green at scale; gates + clippy +
   fmt; SPIKE.md complete (idioms, channel count, semantic decisions).
 - Commit: `feat(patterns): hand-written threat maps + differential gates`.
