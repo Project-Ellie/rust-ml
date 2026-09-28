@@ -199,8 +199,11 @@ A horizontal base shape places `c` at offset `k` in a 4-cell segment
 
 * `stone_offsets`: the three cells in the segment other than `c`.
 * `empty_offsets`: the two cells immediately outside the segment,
-  `(-k-1)` and `(-k+4)`. These act as the anti-five margin: if either
-  held a stone, the shape would not be an open four.
+  `(-k-1)` and `(-k+4)`. These are required-empty cells: the pattern
+  only matches when both ends are empty, and with both ends empty no
+  five-in-line through `c` is possible. The end requirements therefore
+  double as five-prevention, so no separate margin offsets are needed
+  for open fours.
 * `completing_offsets`: the two empty end cells.
 
 There are 4 base shapes, giving `4 × 4 = 16` layer-1 channels.
@@ -221,8 +224,16 @@ gap ≠ `c`), giving `20 × 4 = 80` layer-1 channels.
 
 ### Layer-2 structure
 
-Layer 2 is a 1×1 conv from `LAYER1_OUT` (= 152) channels to
-`LAYER2_OUT` (= 9) channels:
+The pattern table grows across the tutorial: chapter 3 added 20
+`FiveCompleter` channels; this chapter adds 16 `OpenFourMaker` and 80
+`BrokenFourMaker` channels, for a chapter-4 total of 116 channels.
+Chapters 5–6 will add the 36 three-maker channels, bringing the final
+table to 152 channels. The quoted solution file shows that final form;
+while working through this chapter your `LAYER1_OUT` is 116 and layer 2
+emits only the first five outputs.
+
+Layer 2 is a 1×1 conv from `LAYER1_OUT` (= 116) channels to
+`LAYER2_OUT` (= 5) channels:
 
 | Output channel | Meaning |
 |---------------|---------|
@@ -231,15 +242,13 @@ Layer 2 is a 1×1 conv from `LAYER1_OUT` (= 152) channels to
 | `2` | Five-completing cells created in the vertical direction. |
 | `3` | Five-completing cells created in the diagonal-down direction. |
 | `4` | Five-completing cells created in the diagonal-up direction. |
-| `5` | Open-three makers in the horizontal direction. |
-| `6` | Open-three makers in the vertical direction. |
-| `7` | Open-three makers in the diagonal-down direction. |
-| `8` | Open-three makers in the diagonal-up direction. |
+
+Channels 5–8 (open-three makers per direction) are added in chapters
+5–6; the solution file shows the final 9-output layout.
 
 The four-created channels weight `OpenFourMaker` by 2.0 and
 `BrokenFourMaker` by 1.0, so each channel carries a count of
-five-completing cells. The three-maker channels are placeholders for
-chapters 5–6.
+five-completing cells.
 
 ### `ThreatMaps`
 
@@ -254,7 +263,9 @@ pub struct ThreatMaps {
 ```
 
 All maps are restricted to the 15×15 in-board region. Occupied cells
-are zeroed by the glue.
+are zeroed by the glue. The `double_threes` and `threes_per_dir`
+fields are populated in chapters 5–6; they appear here because the
+quoted solution shows the final struct.
 
 ### `analyze` and `analyze_both`
 
@@ -313,8 +324,9 @@ The complete reference `src/net.rs` for the finished crate lives in
 [04-the-four-level/01-solution.md](04-the-four-level/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare. The file is
-quoted in its final form; the three-maker channels are still
-placeholders here and land in chapters 5–6.
+quoted in its final form (datagen-tutorial precedent). At this point
+in the tutorial the pattern table contains only the families built so
+far; the three-maker families land in chapters 5–6.
 
 ## TDD checklist
 
@@ -332,19 +344,21 @@ From `tests/differential.rs` (default suite):
 
 1. `wins_default`
 2. `double_threats_default`
-3. `double_threes_default`
 
 From `tests/differential.rs` (full proof suite, run with
 `cargo test -p patterns -- --ignored`):
 
 1. `wins_full`
 2. `double_threats_full`
-3. `double_threes_full`
 
 The win-map tests from chapter 3
 (`open_four_win_map_matches_engine` and
 `broken_four_win_map_matches_engine`) continue to pass and are part
 of the default gate.
+
+All tests from previous chapters (planes, naive, spike, chapter-3
+kernels and win map) also keep passing and are part of the chapter-4
+gate; this checklist lists only the tests that are new in chapter 4.
 
 Follow the red-green-refactor rhythm:
 
@@ -399,6 +413,6 @@ Next: [Chapter 05 — Three-makers](05-three-makers.md)
 * `gomoku/crates/engine/src/tactics.rs` — the engine's
   `double_threats` definition and its three documented v1
   simplifications.
-* `gomoku/crates/patterns/SPIKE.md` — the Task-2 spike, including
-  the degenerate shared-completing-cell case and the `created +
-  before` decomposition.
+* The Task-2 spike verified the Burn idioms for hand-rolled kernels
+  and revealed the degenerate shared-completing-cell case that makes
+  the `created + before` decomposition necessary.

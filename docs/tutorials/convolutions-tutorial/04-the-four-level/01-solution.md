@@ -1,11 +1,12 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes `src/net.rs` from the verified reference crate in
-> its **final** form. The three-maker channels are still place-holders
-> at this stage of the tutorial and are filled in chapters 5–6; the
-> `kernels.rs` source was quoted in chapter 3. Quoting the finished
-> file here lets you compare the shape of the `ThreatMaps` glue and the
-> layer-2 integration without spoiling the incremental build.
+> its **final** form (datagen-tutorial precedent). The pattern table
+> grows across chapters: 20 channels in chapter 3, 116 in chapter 4
+> after adding the four-makers, and 152 in chapters 5–6 once the
+> three-makers are added. Quoting the finished file here lets you
+> compare the shape of the `ThreatMaps` glue and the layer-2
+> integration without spoiling the incremental build.
 
 ````rust
 //! Hand-written Burn threat network and `ThreatMaps` glue.
