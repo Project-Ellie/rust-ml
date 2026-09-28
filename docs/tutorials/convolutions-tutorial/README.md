@@ -55,11 +55,11 @@ Chapter 8 quotes the measured numbers.
 
 ## References
 
-- [Design spec](../specs/2026-09-27-convolutions-tutorial-design.md) —
+- [Design spec](../../specs/2026-09-27-convolutions-tutorial-design.md) —
   the semantic contracts this tutorial implements.
-- [Implementation plan](../plans/2026-09-27-convolutions-tutorial.md) —
+- [Implementation plan](../../plans/2026-09-27-convolutions-tutorial.md) —
   how the tutorial was built.
-- [`docs/12-gomoku-architecture.md`](../12-gomoku-architecture.md) —
+- [`docs/12-gomoku-architecture.md`](../../12-gomoku-architecture.md) —
   alpha-epsilon philosophy (§3).
 - The [mcts tutorial](../mcts-tutorial/README.md) and
   [datagen tutorial](../datagen-tutorial/README.md) — format
