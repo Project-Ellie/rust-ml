@@ -12,6 +12,7 @@
 //!   layout, serialization decision, and the store-games replay-buffer rule.
 //! * `docs/specs/2026-09-27-datagen-tutorial-design.md` — synthetic data
 //!   generator design for milestone 3.
+
 pub mod sample;
 
 pub use sample::Sample;

@@ -2,7 +2,7 @@
 //! Slice 3. Deliberately separate from the internal stride-16 `Bitboard`.
 
 /// A legal Gomoku cell: `row * 15 + col`, always in `0..=224`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Move(u8);
 
 impl Move {

@@ -6,7 +6,7 @@ use crate::zobrist;
 
 /// Absolute stone color. Black moves first in normal play; during the
 /// Swap2 opening colors are placed non-alternatingly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
 pub enum Color {
     /// The first-moving color.
     Black,
