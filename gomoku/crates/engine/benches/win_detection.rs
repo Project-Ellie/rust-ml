@@ -1,8 +1,9 @@
 //! Criterion benchmarks for the engine's hottest primitives.
 //! Slice 10. See docs/13-engine-design.md, "Test plan".
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use engine::{Board, Color, Move};
+use std::hint::black_box;
 
 /// Build a board by filling four consecutive rows starting at `row`.
 /// Produces ~60 stones with no five-in-a-row (alternating play gives a
