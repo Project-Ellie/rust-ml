@@ -15,9 +15,9 @@
 
 extern crate core;
 
+pub mod collect;
+pub mod label;
 pub mod playout;
 pub mod sample;
-
-pub mod label;
 
 pub use sample::Sample;
