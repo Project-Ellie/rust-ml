@@ -9,6 +9,7 @@ license.workspace = true
 
 [features]
 testutil = []
+utils = []
 
 [dependencies]
 thiserror.workspace = true

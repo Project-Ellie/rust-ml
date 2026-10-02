@@ -21,6 +21,9 @@ mod tss;
 mod win;
 mod zobrist;
 
+#[cfg(feature = "utils")]
+pub mod utils;
+
 #[cfg(any(test, feature = "testutil"))]
 #[allow(missing_docs)]
 pub mod reference;

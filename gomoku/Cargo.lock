@@ -1018,8 +1018,8 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "engine",
+ "rand 0.10.3",
  "serde",
- "thiserror",
 ]
 
 [[package]]

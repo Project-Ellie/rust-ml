@@ -5,7 +5,7 @@ edition = "2024"
 description = "Synthetic training-data generator for the Gomoku AlphaZero-style agent."
 
 [dependencies]
-engine = { path = "../engine" }
+engine = { path = "../engine", features = ["utils"]}
 serde = { workspace = true }
-thiserror = { workspace = true }
+rand = "0.10.3"
 bincode = { version = "2.0.1", features = ["serde"]}
