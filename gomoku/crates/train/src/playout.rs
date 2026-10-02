@@ -16,6 +16,7 @@ use rand::{Rng, RngExt};
 pub const MAX_PLIES_PER_GAME: usize = 3;
 
 /// Focus mode would place the stone preferrably near the center, generating lines earlier.
+#[derive(Clone, Copy, Debug)]
 pub enum RandomMode {
     NoFocus,
     Focus,

@@ -13,7 +13,11 @@
 //! * `docs/specs/2026-09-27-datagen-tutorial-design.md` — synthetic data
 //!   generator design for milestone 3.
 
+extern crate core;
+
 pub mod playout;
 pub mod sample;
+
+pub mod label;
 
 pub use sample::Sample;

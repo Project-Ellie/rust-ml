@@ -9,3 +9,6 @@ engine = { path = "../engine", features = ["utils"]}
 serde = { workspace = true }
 rand = "0.10.3"
 bincode = { version = "2.0.1", features = ["serde"]}
+
+[dev-dependencies]
+engine = { path = "../engine", features = ["testutil"]}

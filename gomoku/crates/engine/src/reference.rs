@@ -216,6 +216,40 @@ pub fn naive_double_threats(b: &crate::board::Board, side: Color) -> MoveSet {
     out
 }
 
+/// The 225 plies of a complete game that fills the board without
+/// either side making five — a draw. Cells are split black/white by
+/// the stripe pattern BBWW BBWW … (inverted on odd rows) and played
+/// strictly alternating, Black first. After ply 224 the game is still
+/// `Ongoing`; ply 225 fills the last cell and ends in `Status::Draw`.
+///
+/// Shared test fixture for any test that needs a completely filled,
+/// undecided board: play the returned moves in order into either the
+/// reference board or the fast board.
+pub fn draw_game_moves() -> Vec<Move> {
+    let mut blacks = Vec::with_capacity(113);
+    let mut whites = Vec::with_capacity(112);
+    for r in 0..15u8 {
+        for c in 0..15u8 {
+            let stripe = (c % 4) < 2; // BBWW repeating
+            let black = stripe != (r % 2 == 1); // inverted on odd rows
+            let mv = Move::new(r, c).unwrap();
+            if black {
+                blacks.push(mv);
+            } else {
+                whites.push(mv);
+            }
+        }
+    }
+
+    let mut moves = Vec::with_capacity(225);
+    for i in 0..112 {
+        moves.push(blacks[i]);
+        moves.push(whites[i]);
+    }
+    moves.push(blacks[112]); // move 225 — board full
+    moves
+}
+
 /// Parses rows of `X` / `O` / `.` into a fast Board (Black = X,
 /// White = O): 15 whitespace-separated cells per row, 15 non-blank
 /// rows (blank lines are tolerated, so raw-string literals can
@@ -622,37 +656,21 @@ mod tests {
     #[test]
     fn full_board_without_five_is_a_draw() {
         let mut b = Board::new();
+        let moves = draw_game_moves();
+        assert_eq!(moves.len(), 225);
 
-        // Split the 225 cells into black/white by the stripe pattern:
-        //   row pattern BBWW BBWW …, inverted on odd rows.
-        let mut blacks = Vec::new(); // 113 cells
-        let mut whites = Vec::new(); // 112 cells
-        for r in 0..15u8 {
-            for c in 0..15u8 {
-                let stripe = (c % 4) < 2; // BBWW repeating
-                let black = stripe != (r % 2 == 1); // inverted on odd rows
-                if black {
-                    blacks.push(Move::new(r, c).unwrap());
-                } else {
-                    whites.push(Move::new(r, c).unwrap());
-                }
-            }
-        }
-
-        // Alternate strictly: Black, White, Black, White, …
-        for i in 0..112 {
-            b.play(blacks[i]).unwrap();
-            b.play(whites[i]).unwrap();
+        for mv in &moves[..224] {
+            b.play(*mv).unwrap();
         }
         assert_eq!(b.status(), Status::Ongoing); // 224 moves: still playing
 
-        b.play(blacks[112]).unwrap(); // move 225 — board full
+        b.play(moves[224]).unwrap(); // move 225 — board full
         assert_eq!(b.status(), Status::Draw);
         assert_eq!(b.moves().len(), 225);
 
         // A decided game rejects further moves — even though no cell
         // is free, GameOver (checked first) is the honest answer.
-        assert_eq!(b.play(blacks[0]), Err(PlayError::GameOver));
+        assert_eq!(b.play(moves[0]), Err(PlayError::GameOver));
     }
 
     #[test]
