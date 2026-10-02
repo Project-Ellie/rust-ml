@@ -26,13 +26,30 @@ pub struct Quotas {
 /// the network is never asked to evaluate finished positions.
 /// All-zero quotas return an empty vector immediately.
 /// Deterministic under `rng` seed.
+///
+/// # Panics
+///
+/// Panics if the quotas are still unmet after [`GAME_BUDGET`] games.
+/// Random play produces far more quiet positions than tactical ones,
+/// so an unreachable quota would otherwise hang forever; the budget
+/// turns that into an error with the missing counts attached.
 pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
     let targets = [quotas.win, quotas.block, quotas.quiet];
     let mut counts = [0_usize; 3];
     let mut seen: HashSet<u64> = HashSet::new();
     let mut samples: Vec<Sample> = Vec::with_capacity(targets.iter().sum());
+    let mut games = 0_usize;
 
     while !buckets_full(&counts, &targets) {
+        games += 1;
+        assert!(
+            games <= GAME_BUDGET,
+            "quotas unmet after {GAME_BUDGET} games — unsatisfiable? \
+             still missing: win {}, block {}, quiet {}",
+            targets[0] - counts[0],
+            targets[1] - counts[1],
+            targets[2] - counts[2],
+        );
         let history = random_game(rng, RandomMode::NoFocus);
         let plies = sample_plies(history.len(), MAX_PLIES_PER_GAME, rng);
 
@@ -41,16 +58,19 @@ pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
             if board.status() != Ongoing {
                 continue;
             }
+            // Dedup before classifying: a known position need not pay
+            // for the tactics scan a second time.
+            let key = board.zobrist();
+            if seen.contains(&key) {
+                continue;
+            }
             let class = classify(&board);
             let idx = class_index(class);
 
             if counts[idx] >= targets[idx] {
                 continue;
             }
-            let key = board.zobrist();
-            if !seen.insert(key) {
-                continue;
-            }
+            seen.insert(key);
 
             let (policy, value) = label(&board);
             samples.push(Sample::from_position(&history, ply, policy, value));
@@ -59,6 +79,11 @@ pub fn collect(quotas: Quotas, rng: &mut impl Rng) -> Vec<Sample> {
     }
     samples
 }
+
+/// Upper bound on games played before quotas must be met. Chapter-8
+/// quotas need hundreds to thousands of games; two orders of
+/// magnitude above that means the quota is unsatisfiable, not slow.
+const GAME_BUDGET: usize = 100_000;
 
 fn buckets_full(counts: &[usize; 3], targets: &[usize; 3]) -> bool {
     counts.iter().zip(targets.iter()).all(|(c, t)| c >= t)
