@@ -127,14 +127,16 @@ mod tests {
     #[test]
     fn sample_plies_are_distinct_and_in_range() {
         let mut rng = StdRng::seed_from_u64(42);
-        let game_len = rng.random_range(1..225);
-        let n = rng.random_range(0..10);
-        let plies = sample_plies(game_len, n, &mut rng);
-        assert!(plies.len() <= n.min(game_len));
-        assert!(plies.iter().all(|&p| p >= 1 && p <= game_len));
-        let mut sorted = plies.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.len(), plies.len(), "duplicated found")
+        for _ in 0..200 {
+            let game_len = rng.random_range(1..225);
+            let n = rng.random_range(0..10);
+            let plies = sample_plies(game_len, n, &mut rng);
+            assert!(plies.len() <= n.min(game_len));
+            assert!(plies.iter().all(|&p| p >= 1 && p <= game_len));
+            let mut sorted = plies.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(sorted.len(), plies.len(), "duplicated found");
+        }
     }
 }
