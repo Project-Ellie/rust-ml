@@ -3,8 +3,8 @@
 //! This crate stores labelled training positions as stone lists, not as
 //! neural-network planes. Planes are derived on read in the `net` crate, and
 //! a single position can be augmented with a random D4 transform every time it
-//! is loaded. At this slice the crate has no Burn dependency, no I/O, and no
-//! randomness yet.
+//! is loaded. At this slice the crate has no Burn dependency; randomness lives
+//! in the `playout` module and file I/O lives in the `shard` module.
 //!
 //! Design documents (locked):
 //!
@@ -12,8 +12,6 @@
 //!   layout, serialization decision, and the store-games replay-buffer rule.
 //! * `docs/specs/2026-09-27-datagen-tutorial-design.md` — synthetic data
 //!   generator design for milestone 3.
-
-extern crate core;
 
 pub mod collect;
 pub mod label;

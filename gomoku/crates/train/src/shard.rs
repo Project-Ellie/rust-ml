@@ -17,7 +17,7 @@ pub const SHARD_SIZE: usize = 4096;
 /// Dataset provenance and inventory.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Manifest {
-    /// RMG seed used to generate the dataset
+    /// RNG seed used to generate the dataset
     pub seed: u64,
     /// Per-class collection quotas
     pub quotas: Quotas,
@@ -71,8 +71,8 @@ pub fn write_dataset(
     for sample in samples {
         match sample.value {
             1.0 => *counts.get_mut("win").expect("win key inserted above") += 1,
-            -1.0 => *counts.get_mut("block").expect("win key inserted above") += 1,
-            0.0 => *counts.get_mut("quiet").expect("win key inserted above") += 1,
+            -1.0 => *counts.get_mut("block").expect("block key inserted above") += 1,
+            0.0 => *counts.get_mut("quiet").expect("quiet key inserted above") += 1,
             _ => {}
         }
 
