@@ -87,10 +87,13 @@ pub fn read_dataset(dir: &Path) -> io::Result<Vec<Sample>> {
 fn read_shard(reader: &mut impl Read, samples: &mut Vec<Sample>) -> io::Result<()> {
     let mut len_buf = [0u8; LENGTH_PREFIX_BYTES];
     loop {
-        match reader.read_exact(&mut len_buf) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e),
+        // Distinguish a clean end from a torn prefix: the first read
+        // returns 0 only when no bytes remain; 1–3 leftover bytes mean
+        // a truncated record, and the follow-up read_exact propagates
+        // the UnexpectedEof instead of accepting it as end-of-shard.
+        match reader.read(&mut len_buf)? {
+            0 => break,
+            n => reader.read_exact(&mut len_buf[n..])?,
         }
         let len = u32::from_le_bytes(len_buf) as usize;
         if len > MAX_RECORD_LEN {
@@ -178,7 +181,7 @@ fn policy_argmax(policy: &[(Move, f32)]) -> Move {
         .iter()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .map(|(m, _)| *m)
-        .expect("Policy mass check guarantees at leas one entry.")
+        .expect("Policy mass check guarantees at least one entry.")
 }
 
 /// Map the exact value target to its implied tactical class.
@@ -274,7 +277,7 @@ mod tests {
         let non_tactical = board
             .empty_moves()
             .find(|m| !wins.contains(*m))
-            .expect("win positioin has at least one non-tactical legal move");
+            .expect("win position has at least one non-tactical legal move");
 
         let mut corrupted = win;
         corrupted.policy = vec![(non_tactical, 1.0)];
@@ -379,6 +382,22 @@ mod tests {
             check_soundness(&corrupted),
             Err(SoundnessError::InconsistentValue)
         );
+    }
+
+    #[test]
+    fn torn_length_prefix_is_an_error_not_a_clean_eof() {
+        let out_dir = unique_temp_dir("train-dataset-torn");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        // Two bytes of a four-byte length prefix: a truncated record,
+        // not the end of the shard.
+        fs::write(out_dir.join("shard-000.bin"), [7u8, 0]).unwrap();
+
+        let err = read_dataset(&out_dir).expect_err("torn prefix must be rejected");
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
