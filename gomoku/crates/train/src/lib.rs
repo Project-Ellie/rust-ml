@@ -14,6 +14,7 @@
 //!   generator design for milestone 3.
 
 pub mod collect;
+pub mod dataset;
 pub mod label;
 pub mod playout;
 pub mod sample;
