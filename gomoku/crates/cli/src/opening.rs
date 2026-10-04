@@ -189,12 +189,13 @@ impl OpeningState {
     /// Place the color required by the current phase on `mv`.
     ///
     /// Automatically advances to the next phase when the required count
-    /// is reached.
+    /// is reached. Returns the color that was placed, so callers can
+    /// report the placed stone rather than the next one due.
     ///
     /// # Errors
     /// * `"cell is already occupied"` if the target is taken.
     /// * `"no more stones to place in this phase"` if not in a placement phase.
-    pub fn place(&mut self, mv: Move) -> Result<(), String> {
+    pub fn place(&mut self, mv: Move) -> Result<Color, String> {
         let color = self
             .current_color()
             .ok_or_else(|| "no more stones to place in this phase".to_string())?;
@@ -205,7 +206,7 @@ impl OpeningState {
 
         self.placements.push((mv, color));
         self.try_advance();
-        Ok(())
+        Ok(color)
     }
 
     /// Confirm a full placement phase and move to the choice prompt.

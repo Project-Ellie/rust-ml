@@ -18,7 +18,7 @@ use crate::render::{
     overlay_verdict, render_lines, render_lines_with_overlay, render_opening_lines,
     render_opening_styled, render_styled, render_styled_with_overlay, status_line,
 };
-use engine::{Move, Status};
+use engine::{Color, Move, Status};
 
 const HELP_NORMAL: &str =
     "enter <row> <col> to play · 'u' undo · 't' TSS demo (toggle) · 'new' restart · 'q' quit";
@@ -144,8 +144,6 @@ fn start_message(state: &AppState) -> String {
 }
 
 fn dispatch_opening(opening: &mut OpeningState, cmd: Command) -> Option<OpeningResult> {
-    use engine::Color;
-
     Some(match cmd {
         Command::Play(mv) => {
             if !opening.can_place() {
@@ -155,7 +153,7 @@ fn dispatch_opening(opening: &mut OpeningState, cmd: Command) -> Option<OpeningR
                 ));
             }
             match opening.place(mv) {
-                Ok(()) => OpeningResult::Message(opening_progress_message(opening, mv)),
+                Ok(placed) => OpeningResult::Message(opening_progress_message(opening, mv, placed)),
                 Err(e) => OpeningResult::Message(e),
             }
         }
@@ -393,20 +391,20 @@ fn run_tss(
 
 // ------------------------------------------------------------------ messages
 
-fn opening_progress_message(opening: &OpeningState, mv: Move) -> String {
+fn opening_progress_message(opening: &OpeningState, mv: Move, placed: Color) -> String {
     let party = opening.active_party().label();
     match opening.phase() {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 if opening.can_place() => {
-            let color = opening.current_color().unwrap();
-            let remaining = opening.remaining(color);
+            // `current_color` is the NEXT stone due; the placed color
+            // comes from the caller, captured before the state moved on.
+            let next = opening.current_color().unwrap();
+            let remaining = opening.remaining(next);
             format!(
-                "{party} placed {color:?} at ({}, {}) — {remaining} more {color:?} to place",
+                "{party} placed {placed:?} at ({}, {}) — {remaining} more {next:?} to place",
                 mv.row(),
                 mv.col()
             )
         }
-        OpeningPhase::FirstChoice => opening_prompt_message(opening),
-        OpeningPhase::FinalChoice => opening_prompt_message(opening),
         _ => opening_prompt_message(opening),
     }
 }
@@ -709,6 +707,27 @@ pub fn run_ui_puzzle(puzzles: Vec<Puzzle>, index: usize) -> io::Result<()> {
 mod tests {
     use super::*;
     use engine::{Color, Move};
+
+    #[test]
+    fn opening_progress_message_names_the_placed_color_not_the_next() {
+        // Regression: the message used to read current_color() AFTER the
+        // placement, reporting the next stone due instead of the one just
+        // placed — every color transition produced a wrong prompt.
+        let mut opening = OpeningState::new();
+
+        let m1 = Move::new(7, 7).unwrap();
+        let placed = opening.place(m1).unwrap();
+        let msg = opening_progress_message(&opening, m1, placed);
+        assert!(msg.contains("placed Black"), "{msg}");
+        assert!(msg.contains("1 more Black to place"), "{msg}");
+
+        // The color transition: second Black placed, White is next due.
+        let m2 = Move::new(6, 6).unwrap();
+        let placed = opening.place(m2).unwrap();
+        let msg = opening_progress_message(&opening, m2, placed);
+        assert!(msg.contains("placed Black"), "{msg}");
+        assert!(msg.contains("1 more White to place"), "{msg}");
+    }
 
     #[test]
     fn undo_with_empty_history_is_refused_not_panicked() {
