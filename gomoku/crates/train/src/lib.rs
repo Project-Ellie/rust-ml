@@ -19,5 +19,6 @@ pub mod label;
 pub mod playout;
 pub mod sample;
 pub mod shard;
+pub mod split;
 
 pub use sample::Sample;
