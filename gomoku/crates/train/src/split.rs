@@ -5,21 +5,23 @@
 //! order (which is driven by per-class quotas) from leaking correlated
 //! positions into both sides of the partition.
 
-pub const HOLDOUT_PERCENTAGE: u64 = 10;
-
 use crate::label::{TacticalClass, classify};
 use crate::sample::Sample;
 
+pub const HOLDOUT_PERCENTAGE: u64 = 10;
+
 /// Deterministic partition: sample belongs to held-out iff
-/// `zobrist(board) % 10 == 0` (~10%). Position-in-file never decides,
-/// so quota ordering cannot skew the split.
+/// `zobrist(board) % 100 < HOLDOUT_PERCENTAGE` (~10%). Position-in-file
+/// never decides, so quota ordering cannot skew the split. The threshold
+/// form nests: raising the percentage only grows the holdout set, it
+/// never swaps members between splits.
 ///
 /// If the sample cannot be rebuilt into a legal board, it is treated as
 /// held-out. Invalid samples should not appear in a sound dataset;
 /// keeping them out of the training split is the conservative default.
 pub fn is_holdout(sample: &Sample) -> bool {
     match sample.board() {
-        Ok(board) => board.zobrist() % 100 >= HOLDOUT_PERCENTAGE,
+        Ok(board) => board.zobrist() % 100 < HOLDOUT_PERCENTAGE,
         Err(_) => true,
     }
 }
@@ -124,14 +126,33 @@ mod tests {
         let samples = tiny_dataset();
 
         for sample in &samples {
-            let a = is_holdout(&sample);
-            let b = is_holdout(&sample);
+            let a = is_holdout(sample);
+            let b = is_holdout(sample);
             assert_eq!(a, b, "is_holdout is deterministic for every sample");
         }
 
         let holdout_count = samples.iter().filter(|s| is_holdout(s)).count();
         let train_count = samples.iter().filter(|s| !is_holdout(s)).count();
         assert_eq!(holdout_count + train_count, samples.len());
+    }
+
+    #[test]
+    fn holdout_fraction_is_within_ten_percent_bounds() {
+        // ~500 samples keeps the test fast while giving a tight bound.
+        let quotas = Quotas {
+            win: 50,
+            block: 50,
+            quiet: 400,
+        };
+        let samples = collect(quotas, &mut StdRng::seed_from_u64(42));
+        let holdout = samples.iter().filter(|s| is_holdout(s)).count();
+        let fraction = holdout as f64 / samples.len() as f64;
+
+        assert!(
+            (0.05..=0.15).contains(&fraction),
+            "holdout fraction {fraction} outside 5–15% for {} samples",
+            samples.len()
+        );
     }
 
     #[test]
