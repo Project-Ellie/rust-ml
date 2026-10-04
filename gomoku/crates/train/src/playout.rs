@@ -18,7 +18,9 @@ pub const MAX_PLIES_PER_GAME: usize = 3;
 /// Focus mode would place the stone preferrably near the center, generating lines earlier.
 #[derive(Clone, Copy, Debug)]
 pub enum RandomMode {
+    /// randomly spread moves across the empty position
     NoFocus,
+    /// prefer positions near the center. Creates more realistically looking samples
     Focus,
 }
 

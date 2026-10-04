@@ -2,10 +2,14 @@
 
 use engine::{Board, Move, MoveSet, forced_blocks, immediate_wins};
 
+/// The three fundamental technicsl classes: Win, Block, Quiet
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TacticalClass {
+    /// This position holds a potential win-in-1
     Win,
+    /// This position holds a potential lose-if-not-blocked
     Block,
+    /// This position doesn't hold any of the above
     Quiet,
 }
 

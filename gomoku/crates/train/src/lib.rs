@@ -13,6 +13,7 @@
 //! * `docs/specs/2026-09-27-datagen-tutorial-design.md` — synthetic data
 //!   generator design for milestone 3.
 
+#![deny(missing_docs)]
 pub mod collect;
 pub mod dataset;
 pub mod label;

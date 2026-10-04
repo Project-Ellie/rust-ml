@@ -8,6 +8,7 @@
 use crate::label::{TacticalClass, classify};
 use crate::sample::Sample;
 
+/// How many samples to be held out for validation
 pub const HOLDOUT_PERCENTAGE: u64 = 10;
 
 /// Deterministic partition: sample belongs to held-out iff
@@ -74,7 +75,10 @@ pub fn stats(samples: &[Sample]) -> Stats {
         }
 
         let stones = sample.black.len() + sample.white.len();
-        if stones > ply_histogram.len() {
+        // >=, not >: indexing slot `stones` requires len >= stones + 1,
+        // so a stone count exactly equal to the current length must
+        // still trigger the resize.
+        if stones >= ply_histogram.len() {
             ply_histogram.resize(stones + 1, 0);
         }
         ply_histogram[stones] += 1;
@@ -170,6 +174,24 @@ mod tests {
         assert_eq!(s.per_class[1], ("block", quotas.block));
         assert_eq!(s.per_class[2], ("quiet", quotas.quiet));
         assert_eq!(s.holdout + s.train, s.total);
+    }
+
+    #[test]
+    fn ply_histogram_resizes_when_stone_count_equals_current_length() {
+        // Regression for the 25k-sample panic: the resize guard used to
+        // be `stones > len`, skipping the resize when a stone count
+        // equaled the histogram length and then indexing one past the
+        // end. Two samples with consecutive stone counts hit that
+        // boundary deterministically.
+        let m1 = engine::Move::new(7, 7).unwrap();
+        let m2 = engine::Move::new(7, 8).unwrap();
+
+        let one_stone = Sample::from_position(&[m1], 1, Vec::new(), 0.0);
+        let two_stones = Sample::from_position(&[m1, m2], 2, Vec::new(), 0.0);
+
+        let s = stats(&[one_stone, two_stones]);
+        assert_eq!(s.ply_histogram[1], 1);
+        assert_eq!(s.ply_histogram[2], 1);
     }
 
     #[test]
