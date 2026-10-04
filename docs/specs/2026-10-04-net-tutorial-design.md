@@ -39,9 +39,10 @@ architecture-doc facts.
   (90 % mass on the tactical set, 10 % uniform over the rest);
   value ∈ {+1 win, −1 block, 0 quiet} for the side to move.
 - **Backend** (docs/12, convolutions tutorial): backend-generic code;
-  default CPU backend for tests (`NdArray` or `Flex` per convolutions
-  precedent — verify what `patterns` used and match), `gpu` feature
-  opt-in; GPU training only after CPU/GPU parity.
+  default CPU backend is **Flex** (pure-Rust, recommended by the Burn
+  project for new CPU work; NdArray is legacy — amended 2026-10-04
+  after QA adjudication), `gpu` feature opt-in (Wgpu); GPU training
+  only after CPU/GPU parity.
 - **Data source** (datagen tutorial): `train::read_dataset`,
   `train::split::is_holdout` (Zobrist-hash split, ~10 %),
   `check_soundness` available for defensive validation.
