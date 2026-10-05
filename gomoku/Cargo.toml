@@ -3,7 +3,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/engine", "crates/cli", "crates/mcts", "crates/train"]
+members = ["crates/engine", "crates/cli", "crates/mcts", "crates/train", "crates/patterns"]
 
 [workspace.package]
 version = "0.1.0"
