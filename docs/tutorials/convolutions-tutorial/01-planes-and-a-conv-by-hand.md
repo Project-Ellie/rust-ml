@@ -51,10 +51,11 @@ engine and a naive oracle. But before any of that, the crate needs a way
 to feed a board into a conv layer and a way to understand what the conv
 layer actually does. This chapter supplies both.
 
-The crate skeleton and the Burn idiom spike are already in place (see
-[`00-convolutions-primer.md`](00-convolutions-primer.md) §6 for the
-crate layout). The files you write in this chapter are `src/planes.rs`
-and `src/naive.rs`.
+The crate setup is up to the reader: create the `patterns` crate by
+following the examples of the previous tutorials (workspace member,
+`engine` path dependency, workspace-inherited package fields). The
+files you write in this chapter are `src/planes.rs` and
+`src/naive.rs`.
 
 ## Intention
 
@@ -135,7 +136,7 @@ the framework by faith.
 ```text
 gomoku/crates/patterns/
 └── src/
-    ├── lib.rs   (already exists; declare the new modules)
+    ├── lib.rs   (declare the new modules)
     ├── planes.rs
     └── naive.rs
 ```
@@ -218,7 +219,9 @@ Implementation notes:
 
 ### Module declarations in `src/lib.rs`
 
-The crate root already exists from the Task 0 spike. Add:
+Declare both modules as public — later chapters and other crates
+consume this API, and `pub` keeps the dead-code lint quiet while only
+tests use the items:
 
 ```rust
 pub mod naive;
