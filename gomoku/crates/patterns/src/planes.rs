@@ -63,7 +63,7 @@ mod tests {
         plane.iter().flatten().filter(|&&x| x == v).count()
     }
     #[test]
-    fn empty_board_has_zero_stones_and_blocked_boarder_only() {
+    fn empty_board_has_zero_stones_and_blocked_border_only() {
         let b = Board::new();
         let p = planes(&b, Color::Black);
 
@@ -100,6 +100,23 @@ mod tests {
         // Black channel sees the white stone as blocked, not as a stone.
         assert_eq!(black.blocked[6 + PAD][6 + PAD], 1.0);
         assert_eq!(black.blocked[7 + PAD][7 + PAD], 0.0);
+    }
+
+    #[test]
+    fn corner_and_edge_stones_are_mapped_correctly() {
+        let mut b = Board::new();
+        b.play(Move::new(0, 0).unwrap()).unwrap();
+        b.play(Move::new(0, 14).unwrap()).unwrap();
+        b.play(Move::new(14, 0).unwrap()).unwrap();
+        b.play(Move::new(14, 14).unwrap()).unwrap();
+        b.play(Move::new(7, 14).unwrap()).unwrap();
+
+        let p = planes(&b, Color::Black);
+        assert_eq!(p.stones[PAD][PAD], 1.0);
+        assert_eq!(p.stones[14 + PAD][PAD], 1.0);
+        assert_eq!(p.stones[7 + PAD][14 + PAD], 1.0);
+        assert_eq!(p.stones[PAD][14 + PAD], 0.0, "white stone is not black");
+        assert_eq!(p.blocked[PAD][14 + PAD], 1.0, "white stone is blocked");
     }
 
     #[test]
