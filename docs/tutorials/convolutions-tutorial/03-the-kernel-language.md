@@ -58,14 +58,21 @@ positions 1, 3, 4; positions 0, 2, 5 must be empty."
 `PatternFamily` is a closed set of six variants. This table is their
 definition; later chapters repeat it where each family is built.
 
-| Variant | Window(s) | Width | Placing at `c` … | Built in |
-|---------|-----------|-------|-------------------|----------|
-| `FiveCompleter` | `c` anywhere in a 5-window whose other four cells are own stones, e.g. `XXcXX` | 5 | … completes five **now** | ch. 3 |
-| `OpenFourMaker` | `c` inside a 4-segment of own stones with both ends empty, e.g. `_XcXX_` | 6 | … creates an open four | ch. 4 |
-| `BrokenFourMaker` | `c` inside a 5-window: three own stones + one required-empty gap, e.g. `XcX_X` | 5 | … creates a broken four | ch. 4 |
-| `ThreeXxx` | `_XXX_` | 5 | … completes a straight open three | ch. 5 |
-| `ThreeXxX` | `_X_XX_` | 6 | … completes a broken open three | ch. 5 |
-| `ThreeXxXRev` | `_XX_X_` | 6 | … completes the mirror broken open three | ch. 5 |
+Every window is drawn **after** the placement being evaluated: `c`
+marks the empty cell whose score the map computes, and the `X` at
+`c`'s position is the stone that playing there would add. The kernel
+therefore puts no weight on `c` itself — it verifies the *other*
+stones and the required-empty cells. A family with several listed
+shapes has one base shape per `c` position.
+
+| Variant | Window(s), drawn after placing at `c` | Width | Placing at `c` … | Built in |
+|---------|---------------------------------------|-------|-------------------|----------|
+| `FiveCompleter` | `cXXXX`, `XcXXX`, `XXcXX`, `XXXcX`, `XXXXc` | 5 | … completes five **now** | ch. 3 |
+| `OpenFourMaker` | `_cXXX_`, `_XcXX_`, `_XXcX_`, `_XXXc_` | 6 | … creates an open four | ch. 4 |
+| `BrokenFourMaker` | 20 shapes: `c` and one required-empty gap anywhere among the other cells of a 5-window of own stones, e.g. `XcX_X` | 5 | … creates a broken four | ch. 4 |
+| `ThreeXxx` | `_cXX_`, `_XcX_`, `_XXc_` (after placement: `_XXX_`) | 5 | … completes a straight open three | ch. 5 |
+| `ThreeXxX` | `_c_XX_`, `_X_cX_`, `_X_Xc_` (after placement: `_X_XX_`) | 6 | … completes a broken open three | ch. 5 |
+| `ThreeXxXRev` | `_cX_X_`, `_Xc_X_`, `_XX_c_` (after placement: `_XX_X_`) | 6 | … completes the mirror broken open three | ch. 5 |
 
 ### Why `ThreeXxX` spells `_X_XX_`
 
