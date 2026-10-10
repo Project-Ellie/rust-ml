@@ -1,5 +1,7 @@
 /target
 /gomoku/target
+# Burn autotune cache, created when cargo runs from inside the crate dir
+/gomoku/crates/patterns/target
 /artifacts
 .idea/
 

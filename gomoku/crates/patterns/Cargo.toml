@@ -7,3 +7,10 @@ license.workspace = true
 
 [dependencies]
 engine = { path = "../engine" }
+burn = { version = "0.21.0", features = ["ndarray"] }
+
+[dev-dependencies]
+rand = "0.10.3"
+
+[features]
+gpu = ["burn/wgpu"]
