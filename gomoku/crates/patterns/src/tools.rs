@@ -5,8 +5,7 @@ use burn::Tensor;
 use burn::module::Param;
 use burn::nn::PaddingConfig2d;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
-use burn::prelude::Backend;
-use burn::tensor::TensorData;
+use burn::tensor::{Device, TensorData};
 
 /// Assembles C→O channel `Conv2d` detector layers from one flat kernel per
 /// (output, input) channel pair, hiding the manual `Param` construction and
@@ -48,21 +47,21 @@ impl DetectorBuilder {
     ///
     /// # Panics
     /// Panics if a channel kernel does not have exactly `kh * kw` entries.
-    pub fn build<B: Backend, const O: usize, const C: usize, const MN: usize>(
+    pub fn build<const O: usize, const C: usize, const MN: usize>(
         &self,
         weights: [[[f32; MN]; C]; O],
         bias: [f32; O],
-        device: &B::Device,
-    ) -> Conv2d<B> {
+        device: &Device,
+    ) -> Conv2d {
         let [kh, kw] = self.kernel_size;
         assert_eq!(MN, kh * kw, "kernel size must be {kh}x{kw}");
 
-        let template: Conv2d<B> = Conv2dConfig::new([C, O], self.kernel_size)
+        let template: Conv2d = Conv2dConfig::new([C, O], self.kernel_size)
             .with_padding(self.padding.clone())
             .with_bias(true)
             .init(device);
 
-        let weight: Tensor<B, 4> = Tensor::from_data(
+        let weight: Tensor<4> = Tensor::from_data(
             TensorData::new(weights.concat().concat(), [O, C, kh, kw]),
             device,
         );
@@ -100,7 +99,7 @@ pub fn channel_as_image(values: &[f32]) -> String {
 /// Render the two channels of a tensor with two channels
 /// This is tailor-made for tensors representing valid boards.
 /// Means there are only 1s and 0s and no position has ones in both channels
-pub fn board_tensor_as_image<B: Backend>(tensor: Tensor<B, 4>) -> String {
+pub fn board_tensor_as_image(tensor: Tensor<4>) -> String {
     let image_vec = &mut [[" . "; 15]; 15];
     // 2 channels, each with 15 rows, each with 15 cols
     for (i, v) in tensor.to_data().iter::<f32>().enumerate() {
@@ -120,7 +119,7 @@ pub fn board_tensor_as_image<B: Backend>(tensor: Tensor<B, 4>) -> String {
 }
 
 /// Read a human-readable string representation of a gomoku position into a tensor
-pub fn image_as_tensor<B: Backend>(image: &str, device: &B::Device) -> Tensor<B, 4> {
+pub fn image_as_tensor(image: &str, device: &Device) -> Tensor<4> {
     let field = &mut [[[0u8; 15]; 15]; 2];
     let rows = image.split("\n").filter(|r| !r.trim().is_empty());
     for (i, r) in rows.enumerate() {
@@ -166,10 +165,9 @@ mod tests {
 
     #[test]
     fn vertical_five_detection_on_wgpu() {
-        use burn::backend::Wgpu;
         use burn::tensor::activation;
 
-        let device = Default::default();
+        let device = Device::wgpu(Default::default());
 
         let builder =
             DetectorBuilder::new([5, 5]).with_padding(PaddingConfig2d::Explicit(2, 2, 2, 2));
@@ -177,17 +175,17 @@ mod tests {
         // the flattening 5x5->25 is for illustrative purposes.
         let vertical: [f32; 25] = [[0.0, 0.0, 1.0, 0.0, 0.0]; 5].concat().try_into().unwrap();
         let zeros: [f32; 25] = [[0.0; 5]; 5].concat().try_into().unwrap();
-        let layer: Conv2d<Wgpu> = builder.build(
+        let layer: Conv2d = builder.build(
             [[vertical, zeros], [zeros, vertical]],
             [-4.0, -4.0],
             &device,
         );
 
-        let input: Tensor<Wgpu, 4> = image_as_tensor(BOARD, &device);
-        let out: Tensor<Wgpu, 4> = activation::relu(layer.forward(input));
+        let input: Tensor<4> = image_as_tensor(BOARD, &device);
+        let out: Tensor<4> = activation::relu(layer.forward(input));
         assert_eq!(out.dims(), [1, 2, 15, 15]);
 
-        let detected: Vec<f32> = out.to_data().to_vec().unwrap();
+        let detected: Vec<f32> = out.to_data().try_to_vec().unwrap();
         let mut expected: Vec<f32> = vec![0.0f32; 2 * 15 * 15];
         expected[8 * 15 + 7] = 1.0;
         expected[225 + 10 * 15 + 4] = 1.0;

@@ -11,7 +11,7 @@ edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
-burn = { version = "=0.21.0", default-features = false }
+burn = { version = "=0.22.0", default-features = false }
 crossterm = "0.29"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
