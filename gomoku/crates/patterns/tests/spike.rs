@@ -301,22 +301,22 @@ fn explicit_padding_zero_pads(device: &Device) {
 }
 
 #[test]
-fn smoke_ndarray() {
+fn smoke_flex() {
     smoke(&Device::flex());
 }
 
 #[test]
-fn single_channel_exact_ndarray() {
+fn single_channel_exact_flex() {
     single_channel_exact(&Device::flex(), 42);
 }
 
 #[test]
-fn multi_channel_exact_ndarray() {
+fn multi_channel_exact_flex() {
     multi_channel_exact(&Device::flex(), 42);
 }
 
 #[test]
-fn explicit_padding_zero_pads_ndarray() {
+fn explicit_padding_zero_pads_flex() {
     explicit_padding_zero_pads(&Device::flex());
 }
 

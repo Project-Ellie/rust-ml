@@ -9,7 +9,7 @@ Everything below is the short version plus the rules.
 
 This repo resurrects the TensorFlow
 [DeepGomoku](https://github.com/Project-Ellie/DeepGomoku) as an
-AlphaZero-style Gomoku agent in Rust with Burn 0.21.0. The root package
+AlphaZero-style Gomoku agent in Rust with Burn (currently 0.22). The root package
 is a finished MNIST curriculum (`docs/` chapters 1–8, `examples/`); the
 `gomoku/` workspace is the real project (chapters 9–15). Freestyle
 Gomoku 15×15, overlines win, Swap2 opening, "alpha-epsilon" approach
@@ -18,9 +18,15 @@ engine design: `docs/13-engine-design.md`.
 
 ## Hard rules
 
-1. **Burn is pinned to `=0.21.0`.** Never use `main`-branch or
-   0.22-pre APIs (they remove the backend type parameter). Docs link
-   the `v0.21.0` tag — check the pinned source, not blog posts.
+1. **Burn tracks the latest release.** This codebase develops as the
+   technology develops; breaking-change migrations are expected and
+   embraced. The gomoku workspace pins the current version exactly
+   (`=0.22.0` in `gomoku/Cargo.toml`) so upgrades stay deliberate, not
+   accidental — bump the pin when a new release lands and migrate the
+   code. Docs link the current release tag — check the pinned source,
+   not blog posts. Exception: the root MNIST curriculum (chapters 1–8,
+   `src/`, `examples/`) still targets Burn 0.21; migrating it is its own
+   deliberate project, not a side effect.
 2. **`engine` is a dependency island** — no Burn, no I/O, no `rand`.
    `cargo check -p engine` must pass with Burn nowhere in sight.
 3. **The engine tutorial is the owner's learn-by-doing material.**
