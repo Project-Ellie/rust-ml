@@ -29,6 +29,76 @@ chapters 4 and 5, so the table's vocabulary is fixed while it grows.
 | **SPIKE idiom** | The Burn 0.22 manual-weight-assignment pattern: build a `Conv2d` from `Conv2dConfig`, then replace its public `weight` and `bias` fields with `Param::from_tensor(...)` tensors. |
 | **Threat map** | A feature map with game meaning: each empty cell is scored by what happens if the side places a stone there. |
 
+## Notation: pattern strings and family names
+
+Before the chapter body uses them, this section pins down two small
+languages: pattern strings like `_X_XX_`, and enum variant names like
+`ThreeXxX`. Both are defined here, once, and used everywhere after.
+
+### The pattern-string alphabet
+
+A pattern string is a picture of one straight line of the board — a
+row, column, or diagonal — read left-to-right:
+
+| Symbol | Meaning |
+|--------|---------|
+| `X` | An own stone (a stone of the side the detector serves). |
+| `O` | An opponent stone. |
+| `_` | A genuinely empty cell: no stone of either colour, and not the border. |
+| `c` | The candidate cell: the empty cell whose score the map computes. |
+
+A string like `_X_XX_` is a **window**: the characters at its edges
+are part of the pattern, not background. The leading and trailing `_`
+are required-empty conditions — the detector must *verify* them, not
+assume them. `_X_XX_` therefore reads: "six cells; own stones at
+positions 1, 3, 4; positions 0, 2, 5 must be empty."
+
+### The family-name table
+
+`PatternFamily` is a closed set of six variants. This table is their
+definition; later chapters repeat it where each family is built.
+
+| Variant | Window(s) | Width | Placing at `c` … | Built in |
+|---------|-----------|-------|-------------------|----------|
+| `FiveCompleter` | `c` anywhere in a 5-window whose other four cells are own stones, e.g. `XXcXX` | 5 | … completes five **now** | ch. 3 |
+| `OpenFourMaker` | `c` inside a 4-segment of own stones with both ends empty, e.g. `_XcXX_` | 6 | … creates an open four | ch. 4 |
+| `BrokenFourMaker` | `c` inside a 5-window: three own stones + one required-empty gap, e.g. `XcX_X` | 5 | … creates a broken four | ch. 4 |
+| `ThreeXxx` | `_XXX_` | 5 | … completes a straight open three | ch. 5 |
+| `ThreeXxX` | `_X_XX_` | 6 | … completes a broken open three | ch. 5 |
+| `ThreeXxXRev` | `_XX_X_` | 6 | … completes the mirror broken open three | ch. 5 |
+
+### Why `ThreeXxX` spells `_X_XX_`
+
+The variant names are CamelCase **labels**, not little programs — the
+table above is their definition. But there is a mnemonic, and it is
+worth stating once so the names stop looking random.
+
+Read the three cells immediately after the window's left end. Write:
+
+* `X` (uppercase) for a stone that **starts a run** — the cell before
+  it is empty, and
+* `x` (lowercase) for anything else — an empty cell, or a stone
+  continuing a run.
+
+Exactly like CamelCase, an uppercase letter marks the beginning of a
+word; here a "word" is a run of adjacent stones.
+
+| Window | Cells 1–3 | Runs | Spelling |
+|--------|-----------|------|----------|
+| `_XXX_` | `X X X` | one run of three | `Xxx` → `ThreeXxx` |
+| `_X_XX_` | `X _ X` | two runs (single + pair) | `XxX` → `ThreeXxX` |
+| `_XX_X_` | `X X _` | one run of two, then a gap | would *also* spell `Xxx` — taken! |
+
+`_XX_X_` collides with `_XXX_` under this scheme, so it borrows the
+name of its mirror image (`_X_XX_` read right-to-left) plus `Rev`:
+`ThreeXxXRev`. On an undirected line the two broken-three windows are
+the same shape read in opposite directions; they are separate
+families only because each generates different kernel positions for
+`c`.
+
+If the mnemonic does not stick, ignore it — the names are defined by
+the table, not by grammar.
+
 ## Context
 
 Chapter 1 built the padded input planes and a hand-written
@@ -133,6 +203,181 @@ footprint is `11×11` with radius `5`, and the padded planes from
 chapter 1 are `25×25`. If any generated offset is outside radius `5`,
 `set_weight` panics during construction — the assert is the guard that
 catches a too-small kernel early.
+
+## Worked example: from pattern table to win map
+
+This section traces **one** kernel — the vertical FiveCompleter with
+`c` in the middle of its window — from a line of stones to a lit cell
+on the win map. Every grid below is produced by the code quoted next
+to it. When you implement the chapter, this is the mental movie to
+replay for every family; only the shapes change, never the mechanics.
+
+### Step 1 — the shape on the line
+
+```
+line offset p:   -3  -2  -1   0  +1  +2  +3
+                  .   X   X   c   X   X   .
+```
+
+`c` is empty; the other four cells of the 5-window hold own stones.
+Playing at `c` completes five. In `five_completer_base_shapes()` this
+is `k = 2`: the window is `[-2, -1, 0, +1, +2]`, and the four nonzero
+positions become stone offsets.
+
+### Step 2 — the PatternEntry
+
+```rust
+PatternEntry {
+    family: PatternFamily::FiveCompleter,
+    direction: Direction::Horizontal,     // base shapes are horizontal
+    stone_offsets: vec![(0, -2), (0, -1), (0, 1), (0, 2)],
+    empty_offsets: vec![],                // no required-empty cells
+    anti_margin_offsets: vec![],
+    completing_offsets: vec![(0, 0)],     // playing at c completes five
+}
+```
+
+Offsets are `(dy, dx)` relative to `c`, which sits at the origin.
+
+### Step 3 — rotation to vertical
+
+`rotate(&base, Direction::Vertical)` uses the step vector `(1, 0)` and
+maps each horizontal offset `(0, p)` to `(1·p, 0·p)`:
+
+```
+stone_offsets: [(-2, 0), (-1, 0), (1, 0), (2, 0)]
+
+dy = -2      X
+dy = -1      X
+dy =  0      c      ← the kernel centre
+dy = +1      X
+dy = +2      X
+```
+
+### Step 4 — writing the kernel
+
+The kernel is an 11×11 grid **per input channel**, centred on `c`.
+The offset-to-kernel-cell translation is the whole trick:
+
+```
+kernel cell (ky, kx) = (RADIUS + dy, RADIUS + dx) = (5 + dy, 5 + dx)
+```
+
+`layer1_conv()` writes `+1` at each stone offset in input channel 0
+(the own-stones plane) and leaves everything else `0`. Zoomed to the
+5×3 region around the centre, input channel 0 looks like this:
+
+```
+               kx=4   kx=5   kx=6
+ky=3   dy=-2     0     +1      0
+ky=4   dy=-1     0     +1      0
+ky=5   dy= 0     0      0      0     ← c itself: no weight, anything may be here
+ky=6   dy=+1     0     +1      0
+ky=7   dy=+2     0     +1      0
+```
+
+Every other cell of the 11×11 is `0`, and input channel 1 (the blocked
+plane) is entirely `0` because FiveCompleter has no required-empty
+cells. The bias is `1 − n_stones = 1 − 4 = −3`. The code that writes
+all of this:
+
+```rust
+for &(dy, dx) in &entry.stone_offsets {
+    set_weight(&mut weight, out_ch, 0, dy, dx, 1.0);
+}
+bias[out_ch] = 1.0 - entry.stone_offsets.len() as f32;   // 1 − 4 = −3
+```
+
+The kernel is a sparse picture of the pattern: four `+1` cells saying
+"these must be own stones", zeros everywhere else saying "don't care".
+
+### Step 5 — the sliding dot product
+
+Now the board. Take one column of the own-stones input plane
+(`1` = own stone, `0` = empty, opponent, or border):
+
+```
+board row:     6   7   8   9  10  11  12
+own stones:    0   1   1   0   1   1   0
+```
+
+The conv anchors the kernel's centre at every board cell at once —
+that is the "parallel" in parallel local pattern detection, and the
+25×25 padding with `Valid` padding is what lets an 11×11 kernel centre
+itself on edge cells too. With the centre at **row 9**, the five
+kernel cells cover rows 7–11:
+
+```
+row            7    8    9   10   11
+input          1    1    0    1    1
+kernel        +1   +1    0   +1   +1
+product        1    1    0    1    1
+                                 sum = 4
+pre-activation = sum + bias = 4 − 3 = +1
+ReLU(+1) = 1    →  the channel lights up at row 9
+```
+
+One row down (centre at row 10): the `+1` cells now sit at rows
+8, 9, 11, 12, whose inputs are `1, 0, 1, 0` — the sum is `2`, the
+pre-activation is `2 − 3 = −1`, and ReLU emits `0`. The channel
+lights up **only** where `c` completes five.
+
+Why other situations stay dark:
+
+| Situation | sum | pre-act | ReLU |
+|-----------|-----|---------|------|
+| One of the four required stones missing | 3 | 0 | 0 |
+| Opponent stone at a required cell | 3 | 0 | 0 — that cell reads `0` in the own-stones plane, so the `+1` simply does not fire |
+| Four own stones, but not at the four required offsets | ≤ 3 | ≤ 0 | 0 — stones elsewhere multiply `0` weights |
+| Perfect match | 4 | +1 | 1 |
+
+This is the margin from the mental mapping, made concrete: a perfect
+match scores exactly `+1`, one violation scores `0`, and ReLU
+separates them. The bias sets how many conditions may fail (zero);
+the weights check the conditions.
+
+### Step 6 — twenty channels become the win map
+
+The family has 5 base shapes × 4 directions = 20 layer-1 channels;
+each lights up where *its* window completes five. Layer 2 OR-combines
+them with a 1×1 convolution: weight `1.0` from every FiveCompleter
+channel into output channel 0. At each cell the 1×1 conv sums twenty
+0/1 values and ReLU keeps any positive sum:
+
+```
+layer 1 at cell (9, 5):   ch 0..6 = 0,  ch 7 = 1,  ch 8..19 = 0
+                          (ch 0–4 horizontal, ch 5–9 vertical — the
+                          table order is the channel order — so our
+                          vertical k = 2 variant is channel 5 + 2 = 7)
+layer 2 win map:          ReLU(0 + … + 1 + … + 0) = 1
+```
+
+```rust
+if matches!(entry.family, PatternFamily::FiveCompleter) {
+    set_weight_1x1(&mut weight, 0, in_ch, 1.0);
+}
+```
+
+The final picture — this is what the chapter's tests compare against
+`engine::immediate_wins`:
+
+```
+     0 1 2 3 4 5 6 7 8 9
+  6  . . . . . . . . . .
+  7  . . . . . X . . . .
+  8  . . . . . X . . . .
+  9  . . . . . W . . . .     ← win map = 1 here, and nowhere else
+ 10  . . . . . X . . . .
+ 11  . . . . . X . . . .
+ 12  . . . . . . . . . .
+```
+
+Every other family in the table is the same movie with more
+conditions: `OpenFourMaker` adds required-empty cells (`−1` in **both**
+input channels, so a stone of either colour violates them), and the
+three families add anti-four margins (`−1` in channel 0 only, so an
+own stone there is forbidden but an opponent stone is fine). The
+grids get busier; the arithmetic never changes.
 
 ## Low-level design
 
