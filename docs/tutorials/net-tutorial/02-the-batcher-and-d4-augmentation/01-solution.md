@@ -40,7 +40,8 @@ pub mod train;
 //! * scatters the sparse policy target into a dense 225-vector (I3).
 
 use burn::data::dataloader::batcher::Batcher;
-use burn::tensor::{Tensor, backend::Backend};
+use burn::tensor::Device;
+use burn::tensor::Tensor;
 use engine::{Board, EXT, Move, Transform};
 use std::sync::atomic::{AtomicU64, Ordering};
 use train::Sample;
@@ -49,13 +50,13 @@ use crate::planes::{self, InputPlanes};
 
 /// A batch of network inputs and targets.
 #[derive(Debug, Clone)]
-pub struct NetBatch<B: Backend> {
+pub struct NetBatch {
     /// Input planes of shape `[B, 4, EXT, EXT]`.
-    pub input: Tensor<B, 4>,
+    pub input: Tensor<4>,
     /// Dense policy target of shape `[B, 225]`.
-    pub policy_target: Tensor<B, 2>,
+    pub policy_target: Tensor<2>,
     /// Value target of shape `[B, 1]`.
-    pub value_target: Tensor<B, 2>,
+    pub value_target: Tensor<2>,
 }
 
 /// Batcher configuration.
@@ -93,8 +94,8 @@ impl NetBatcher {
     }
 }
 
-impl<B: Backend> Batcher<B, Sample, NetBatch<B>> for NetBatcher {
-    fn batch(&self, items: Vec<Sample>, device: &B::Device) -> NetBatch<B> {
+impl Batcher<Sample, NetBatch> for NetBatcher {
+    fn batch(&self, items: Vec<Sample>, device: &Device) -> NetBatch {
         let counter = self
             .counter
             .fetch_add(items.len() as u64, Ordering::Relaxed);
@@ -118,15 +119,15 @@ impl<B: Backend> Batcher<B, Sample, NetBatch<B>> for NetBatcher {
             value_targets.push(sample.value);
         }
 
-        let input = stack_planes::<B>(&input_planes, device);
+        let input = stack_planes(&input_planes, device);
         let batch = policy_targets.len();
         let policy_data: Vec<f32> = policy_targets.into_iter().flatten().collect();
-        let policy_target = Tensor::<B, 2>::from_data(
-            burn::tensor::TensorData::new(policy_data, [batch, 225]).convert::<B::FloatElem>(),
+        let policy_target = Tensor::<2>::from_data(
+            burn::tensor::TensorData::new(policy_data, [batch, 225]).convert::<f32>(),
             device,
         );
-        let value_target = Tensor::<B, 2>::from_data(
-            burn::tensor::TensorData::new(value_targets, [batch, 1]).convert::<B::FloatElem>(),
+        let value_target = Tensor::<2>::from_data(
+            burn::tensor::TensorData::new(value_targets, [batch, 1]).convert::<f32>(),
             device,
         );
 
@@ -173,7 +174,7 @@ fn scatter_policy(policy: &[(Move, f32)]) -> [f32; 225] {
     dense
 }
 
-fn stack_planes<B: Backend>(planes: &[InputPlanes], device: &B::Device) -> Tensor<B, 4> {
+fn stack_planes(planes: &[InputPlanes], device: &Device) -> Tensor<4> {
     let batch = planes.len();
     let mut data = vec![0.0f32; batch * 4 * EXT * EXT];
     for (b, p) in planes.iter().enumerate() {
@@ -190,8 +191,8 @@ fn stack_planes<B: Backend>(planes: &[InputPlanes], device: &B::Device) -> Tenso
             }
         }
     }
-    Tensor::<B, 4>::from_data(
-        burn::tensor::TensorData::new(data, [batch, 4, EXT, EXT]).convert::<B::FloatElem>(),
+    Tensor::<4>::from_data(
+        burn::tensor::TensorData::new(data, [batch, 4, EXT, EXT]).convert::<f32>(),
         device,
     )
 }
@@ -199,10 +200,8 @@ fn stack_planes<B: Backend>(planes: &[InputPlanes], device: &B::Device) -> Tenso
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
+    use burn::tensor::Device;
     use engine::Color;
-
-    type B = Flex;
 
     fn mv(r: u8, c: u8) -> Move {
         Move::new(r, c).unwrap()
@@ -221,9 +220,9 @@ mod tests {
     #[test]
     fn batch_shapes_are_correct() {
         let batcher = NetBatcher::holdout();
-        let device = Default::default();
+        let device = Device::flex();
         let sample = sample_with_policy(vec![(mv(0, 0), 1.0)], 0.5);
-        let batch: NetBatch<B> = batcher.batch(vec![sample], &device);
+        let batch: NetBatch = batcher.batch(vec![sample], &device);
 
         assert_eq!(batch.input.dims(), [1, 4, EXT, EXT]);
         assert_eq!(batch.policy_target.dims(), [1, 225]);
@@ -233,12 +232,12 @@ mod tests {
     #[test]
     fn policy_mass_is_preserved() {
         let batcher = NetBatcher::holdout();
-        let device = Default::default();
+        let device = Device::flex();
         let policy = vec![(mv(0, 0), 0.3), (mv(1, 1), 0.7)];
         let sample = sample_with_policy(policy, 0.0);
-        let batch: NetBatch<B> = batcher.batch(vec![sample], &device);
+        let batch: NetBatch = batcher.batch(vec![sample], &device);
 
-        let dense: Vec<f32> = batch.policy_target.into_data().to_vec::<f32>().unwrap();
+        let dense: Vec<f32> = batch.policy_target.into_data().try_to_vec::<f32>().unwrap();
         let sum: f32 = dense.iter().sum();
         assert!(
             (sum - 1.0).abs() < 1e-5,
@@ -249,23 +248,23 @@ mod tests {
     #[test]
     fn value_target_matches_input() {
         let batcher = NetBatcher::holdout();
-        let device = Default::default();
+        let device = Device::flex();
         let sample = sample_with_policy(vec![(mv(0, 0), 1.0)], -0.75);
-        let batch: NetBatch<B> = batcher.batch(vec![sample], &device);
+        let batch: NetBatch = batcher.batch(vec![sample], &device);
 
-        let values: Vec<f32> = batch.value_target.into_data().to_vec::<f32>().unwrap();
+        let values: Vec<f32> = batch.value_target.into_data().try_to_vec::<f32>().unwrap();
         assert_eq!(values, vec![-0.75]);
     }
 
     #[test]
     fn augmentation_preserves_policy_mass() {
         let batcher = NetBatcher::new(42, true);
-        let device = Default::default();
+        let device = Device::flex();
         let policy = vec![(mv(0, 0), 0.4), (mv(14, 14), 0.6)];
         let sample = sample_with_policy(policy, 1.0);
-        let batch: NetBatch<B> = batcher.batch(vec![sample], &device);
+        let batch: NetBatch = batcher.batch(vec![sample], &device);
 
-        let dense: Vec<f32> = batch.policy_target.into_data().to_vec::<f32>().unwrap();
+        let dense: Vec<f32> = batch.policy_target.into_data().try_to_vec::<f32>().unwrap();
         let sum: f32 = dense.iter().sum();
         assert!((sum - 1.0).abs() < 1e-5);
     }
@@ -273,11 +272,11 @@ mod tests {
     #[test]
     fn augmentation_keeps_stones_on_board() {
         let batcher = NetBatcher::new(42, true);
-        let device = Default::default();
+        let device = Device::flex();
         let sample = sample_with_policy(vec![(mv(0, 0), 1.0)], 0.0);
-        let batch: NetBatch<B> = batcher.batch(vec![sample], &device);
+        let batch: NetBatch = batcher.batch(vec![sample], &device);
 
-        let input: Vec<f32> = batch.input.into_data().to_vec::<f32>().unwrap();
+        let input: Vec<f32> = batch.input.into_data().try_to_vec::<f32>().unwrap();
         // Sum of plane 0 (me) should be 1: one stone.
         let _me_sum: f32 = input.iter().step_by(4 * EXT * EXT).sum();
         // Wait, plane 0 is at offset 0 of each sample; easier: reshape mentally.
@@ -294,21 +293,21 @@ mod tests {
     fn holdout_is_canonical() {
         let holdout = NetBatcher::holdout();
         let train = NetBatcher::new(42, true);
-        let device = Default::default();
+        let device = Device::flex();
 
         let policy = vec![(mv(0, 0), 1.0)];
         let sample = sample_with_policy(policy.clone(), 0.0);
 
-        let canonical: NetBatch<B> = holdout.batch(vec![sample.clone()], &device);
+        let canonical: NetBatch = holdout.batch(vec![sample.clone()], &device);
         // Reset counter so train batcher consumes the same counter value.
-        let maybe_aug: NetBatch<B> = train.batch(vec![sample], &device);
+        let maybe_aug: NetBatch = train.batch(vec![sample], &device);
 
         // With seed 42 and counter 0, the transform is Transform::ALL[42 % 8].
         // If that happens to be identity, this assertion would spuriously pass.
         // To avoid flakiness, only check that mass is preserved; identity is
         // tested implicitly by other cases.
-        let c: Vec<f32> = canonical.policy_target.into_data().to_vec::<f32>().unwrap();
-        let m: Vec<f32> = maybe_aug.policy_target.into_data().to_vec::<f32>().unwrap();
+        let c: Vec<f32> = canonical.policy_target.into_data().try_to_vec::<f32>().unwrap();
+        let m: Vec<f32> = maybe_aug.policy_target.into_data().try_to_vec::<f32>().unwrap();
         assert!((c.iter().sum::<f32>() - m.iter().sum::<f32>()).abs() < 1e-5);
     }
 
@@ -316,18 +315,18 @@ mod tests {
     fn same_seed_same_transforms() {
         let batcher_a = NetBatcher::new(7, true);
         let batcher_b = NetBatcher::new(7, true);
-        let device = Default::default();
+        let device = Device::flex();
 
         let sample = sample_with_policy(vec![(mv(0, 0), 1.0)], 0.0);
-        let batch_a: NetBatch<B> = batcher_a.batch(vec![sample.clone()], &device);
-        let batch_b: NetBatch<B> = batcher_b.batch(vec![sample], &device);
+        let batch_a: NetBatch = batcher_a.batch(vec![sample.clone()], &device);
+        let batch_b: NetBatch = batcher_b.batch(vec![sample], &device);
 
-        let a_input: Vec<f32> = batch_a.input.into_data().to_vec::<f32>().unwrap();
-        let b_input: Vec<f32> = batch_b.input.into_data().to_vec::<f32>().unwrap();
+        let a_input: Vec<f32> = batch_a.input.into_data().try_to_vec::<f32>().unwrap();
+        let b_input: Vec<f32> = batch_b.input.into_data().try_to_vec::<f32>().unwrap();
         assert_eq!(a_input, b_input);
 
-        let a_policy: Vec<f32> = batch_a.policy_target.into_data().to_vec::<f32>().unwrap();
-        let b_policy: Vec<f32> = batch_b.policy_target.into_data().to_vec::<f32>().unwrap();
+        let a_policy: Vec<f32> = batch_a.policy_target.into_data().try_to_vec::<f32>().unwrap();
+        let b_policy: Vec<f32> = batch_b.policy_target.into_data().try_to_vec::<f32>().unwrap();
         assert_eq!(a_policy, b_policy);
     }
 }

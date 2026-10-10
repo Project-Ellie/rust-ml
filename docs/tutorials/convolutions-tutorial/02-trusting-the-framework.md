@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This chapter moves from hand-written loops to Burn 0.21's tensor and
+This chapter moves from hand-written loops to Burn 0.22's tensor and
 convolution machinery. You will learn how Burn stores a 4-D tensor in
 NCHW order, how a `Conv2d` layer is configured and how its parameters
 are assigned by hand, and what "backend-generic" code looks like in
@@ -15,15 +15,15 @@ learning instrument, not a fragile coincidence. You will also see why
 the tutorial materializes padding in the input planes rather than using
 Burn's `Explicit` padding, which only zero-pads. By the end you will
 have a backend-generic integration test, `tests/spike.rs`, that passes
-on `NdArray` by default and on `Wgpu` when the crate's `gpu` feature is
-enabled.
+on the `Flex` CPU backend by default and on `Wgpu` when the crate's
+`gpu` feature is enabled.
 
 ## Glossary
 
 | Term | Definition |
 |------|------------|
-| **Backend** | In Burn, a Rust trait (`Backend`) abstracting over execution targets such as `NdArray` (CPU) and `Wgpu` (GPU). |
-| **Backend-generic** | Code written with a type parameter `B: Backend` so the same logic runs on any Burn backend. |
+| **Device** | A type-erased handle to a Burn execution target. `Device::flex()` selects the pure-Rust CPU backend and `Device::wgpu(Default::default())` selects the GPU. |
+| **Backend-portable** | Code that accepts a `Device` and runs unchanged on CPU (`Flex`) or GPU (`Wgpu`). |
 | **Batch dimension** | The leading `N` in an NCHW tensor: the number of independent inputs processed together. |
 | **Channel** | One plane of a tensor. The input has two channels; a conv layer can have many input and output channels. |
 | **Cross-correlation** | The sliding weighted-sum operation that deep-learning frameworks call "convolution"; the kernel is not flipped. |
@@ -60,21 +60,21 @@ is trusted.
 ## Intention
 
 1. Create `gomoku/crates/patterns/tests/spike.rs` and write
-   backend-generic test helpers.
+   backend-portable test helpers.
 2. Verify that `patterns::naive::cross_correlate` matches Burn's
    `Conv2d::forward` exactly on:
-   * a hand-computed smoke test (`smoke_ndarray`);
-   * random single-channel inputs/weights (`single_channel_exact_ndarray`);
-   * random multi-channel inputs/weights (`multi_channel_exact_ndarray`);
+   * a hand-computed smoke test (`smoke_flex`);
+   * random single-channel inputs/weights (`single_channel_exact_flex`);
+   * random multi-channel inputs/weights (`multi_channel_exact_flex`);
    * an explicit-padding case that proves `Explicit` only zero-pads
-     (`explicit_padding_zero_pads_ndarray`).
-3. Learn the Burn 0.21 weight-assignment idiom: build a `Conv2d` from
+     (`explicit_padding_zero_pads_flex`).
+3. Learn the Burn 0.22 weight-assignment idiom: build a `Conv2d` from
    `Conv2dConfig`, then replace its public `weight` and `bias` fields
-   with `Param::from_tensor(...)` because Burn 0.21 has no weight
+   with `Param::from_tensor(...)` because Burn 0.22 has no weight
    setter.
-4. Observe backend genericity: the same helper code uses `B: Backend`
-   and runs on `NdArray` by default and on `Wgpu` when `--features gpu`
-   is supplied.
+4. Observe backend portability: the same helper code accepts a
+   `Device` and runs on `Flex` by default and on `Wgpu` when
+   `--features gpu` is supplied.
 
 Observable done-state: `cargo test -p patterns` passes from `gomoku/`,
 `cargo test -p patterns --features gpu` passes on a machine with a
@@ -105,10 +105,10 @@ it fails, the shapes, strides, or padding interpretation are wrong.
 Burn stores a 4-D conv tensor as `[batch, channels, height, width]`
 (NCHW). The weight tensor for a `Conv2d` is
 `[channels_out, channels_in / groups, kernel_size_1, kernel_size_2]`
-(`burn-nn-0.21.0/src/modules/conv/conv2d.rs:54`). The bias is a 1-D
+(`burn-nn-0.22.0/src/modules/conv/conv2d.rs:54`). The bias is a 1-D
 tensor of length `channels_out`. The output is
 `[batch, channels_out, height_out, width_out]`
-(`burn-nn-0.21.0/src/modules/conv/conv2d.rs:146`).
+(`burn-nn-0.22.0/src/modules/conv/conv2d.rs:146`).
 
 This layout matters when you flatten a hand-written kernel into a
 `TensorData::new(...)` call. For a single-channel input, the kernel
@@ -122,12 +122,12 @@ and add one bias.
 
 ### Why assign weights by re-assembling the `Conv2d` struct?
 
-Burn 0.21 exposes the `Conv2d` fields as public:
+Burn 0.22 exposes the `Conv2d` fields as public:
 
 ```rust
-pub struct Conv2d<B: Backend> {
-    pub weight: Param<Tensor<B, 4>>,
-    pub bias: Option<Param<Tensor<B, 1>>>,
+pub struct Conv2d {
+    pub weight: Param<Tensor<4>>,
+    pub bias: Option<Param<Tensor<1>>>,
     pub stride: [usize; 2],
     pub kernel_size: [usize; 2],
     pub dilation: [usize; 2],
@@ -136,18 +136,18 @@ pub struct Conv2d<B: Backend> {
 }
 ```
 
-(`burn-nn-0.21.0/src/modules/conv/conv2d.rs:53`). There is no
+(`burn-nn-0.22.0/src/modules/conv/conv2d.rs:53`). There is no
 `set_weight` method. The idiom is therefore:
 
 1. Build a `Conv2d` once from `Conv2dConfig` so all the metadata
    fields (`stride`, `kernel_size`, `dilation`, `groups`, `padding`)
-   are correct (`burn-nn-0.21.0/src/modules/conv/conv2d.rs:72`).
+   are correct (`burn-nn-0.22.0/src/modules/conv/conv2d.rs:72`).
 2. Construct the desired `weight` and `bias` tensors from
    `TensorData::new(...)`
-   (`burn-tensor-0.21.0/src/tensor/api/base.rs:1942`;
-   `burn-backend-0.21.0/src/data/tensor.rs:59`).
+   (`burn-tensor-0.22.0/src/tensor/api/base.rs:1942`;
+   `burn-backend-0.22.0/src/data/tensor.rs:59`).
 3. Wrap each tensor in `Param::from_tensor(...)`
-   (`burn-core-0.21.0/src/module/param/tensor.rs:69`).
+   (`burn-core-0.22.0/src/module/param/tensor.rs:69`).
 4. Return a new `Conv2d` with the hand-written parameters and the
    metadata copied from the configured module.
 
@@ -155,26 +155,26 @@ pub struct Conv2d<B: Backend> {
 hand-written threat network this is harmless: the parameters are simply
 never optimized.
 
-### Why backend-generic from line one?
+### Why backend-portable from line one?
 
-The test file is written as `fn helper<B: Backend>(device: &B::Device)`
-and the test functions instantiate it with `smoke::<NdArray>(&device)`.
-This is not premature abstraction; it is the lesson. The net tutorial
-will train on GPU, and the same network code must run on both CPU and
-GPU. Putting the type parameter `B: Backend` at the boundary of every
-helper makes the dual-backend verification a one-line change in each
-test. The default backend is `NdArray`; the optional `gpu` feature
-enables `burn/wgpu` and the tests use `burn::backend::Wgpu` behind
+The test file is written as `fn helper(device: &Device)` and the test
+functions instantiate it with `smoke(&Device::flex())`. This is not
+premature abstraction; it is the lesson. The net tutorial will train on
+GPU, and the same network code must run on both CPU and GPU. Accepting a
+type-erased `Device` at the boundary of every helper makes the
+dual-backend verification a one-line change in each test. The default
+backend is `Flex`; the optional `gpu` feature enables `burn/wgpu` and
+the tests use `Device::wgpu(Default::default())` behind
 `#[cfg(feature = "gpu")]`.
 
 ### Why materialize padding instead of using `PaddingConfig2d::Explicit`?
 
 `Conv2dConfig` defaults to `PaddingConfig2d::Valid`
-(`burn-nn-0.21.0/src/modules/conv/conv2d.rs:36`), which means no
+(`burn-nn-0.22.0/src/modules/conv/conv2d.rs:36`), which means no
 padding. `PaddingConfig2d::Explicit(top, left, bottom, right)` pads the
 input with zeros before the convolution
-(`burn-nn-0.21.0/src/padding.rs:61` and
-`burn-tensor-0.21.0/src/tensor/module.rs:134`). That is useful for
+(`burn-nn-0.22.0/src/padding.rs:61` and
+`burn-tensor-0.22.0/src/tensor/module.rs:134`). That is useful for
 many networks, but it cannot express the tutorial's requirement that
 the border be *blocked* (channel 1 one-padded) while the stones channel
 is zero-padded. The framework only knows one padding value: zero. So
@@ -213,47 +213,45 @@ gomoku/crates/patterns/
 ### `tests/spike.rs`
 
 The file is an integration test, so it imports `patterns::naive` as an
-external caller would. It is organized as backend-generic helpers plus
+external caller would. It is organized as backend-portable helpers plus
 concrete test functions.
 
 ```rust
-use burn::backend::NdArray;
 use burn::module::Param;
 use burn::nn::PaddingConfig2d;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, TensorData};
+use burn::tensor::{Device, Tensor, TensorData};
 use patterns::naive;
 use rand::SeedableRng;
 use rand::distr::{Distribution, Uniform};
 use rand::rngs::StdRng;
 ```
 
-Helper functions (all backend-generic):
+Helper functions (all backend-portable):
 
-* `fn smoke<B: Backend>(device: &B::Device)` — build a 1→1 channel,
-  2×2 conv, assign weight `[[1,0],[0,1]]` and bias `0`, run it on a
-  4×4 input, and assert the output equals `naive::cross_correlate`.
-* `fn single_channel_exact<B: Backend>(device: &B::Device, seed: u64)` —
-  20 random shapes, random 2–4 size kernels, values in `−3..=3`, exact
-  comparison against the naive reference.
+* `fn smoke(device: &Device)` — build a 1→1 channel, 2×2 conv, assign
+  weight `[[1,0],[0,1]]` and bias `0`, run it on a 4×4 input, and assert
+  the output equals `naive::cross_correlate`.
+* `fn single_channel_exact(device: &Device, seed: u64)` — 20 random
+  shapes, random 2–4 size kernels, values in `−3..=3`, exact comparison
+  against the naive reference.
 * `fn naive_multi_channel(input, kernels, bias) -> Vec<Vec<Vec<f32>>>` —
   lift the single-channel `cross_correlate` to multi-channel-in,
   multi-channel-out by summing per-input-channel results plus one bias
   per output channel.
-* `fn multi_channel_exact<B: Backend>(device: &B::Device, seed: u64)` —
-  20 random shapes with `in_ch = 2` and `out_ch = 3`, exact comparison.
-* `fn explicit_padding_zero_pads<B: Backend>(device: &B::Device)` —
-  build the same conv with `Valid` and with
-  `Explicit(1, 1, 1, 1)`, compare the explicit-padded output to a
-  materialized zero-padded input run through the valid conv.
+* `fn multi_channel_exact(device: &Device, seed: u64)` — 20 random shapes
+  with `in_ch = 2` and `out_ch = 3`, exact comparison.
+* `fn explicit_padding_zero_pads(device: &Device)` — build the same conv
+  with `Valid` and with `Explicit(1, 1, 1, 1)`, compare the
+  explicit-padded output to a materialized zero-padded input run through
+  the valid conv.
 
-Concrete `NdArray` tests:
+Concrete `Flex` tests:
 
-* `smoke_ndarray`
-* `single_channel_exact_ndarray`
-* `multi_channel_exact_ndarray`
-* `explicit_padding_zero_pads_ndarray`
+* `smoke_flex`
+* `single_channel_exact_flex`
+* `multi_channel_exact_flex`
+* `explicit_padding_zero_pads_flex`
 
 GPU tests, behind `#[cfg(feature = "gpu")]`:
 
@@ -267,7 +265,7 @@ GPU tests, behind `#[cfg(feature = "gpu")]`:
 
 Implementation notes:
 
-* Use `TensorData::new(values, shape)` and `Tensor::<B, D>::from_data`
+* Use `TensorData::new(values, shape)` and `Tensor::<D>::from_data`
   to construct tensors from `Vec<f32>`.
 * Use `Param::from_tensor(tensor)` to place the tensors into the
   `Conv2d` struct.
@@ -318,12 +316,12 @@ with a working adapter.
 
 The reference `tests/spike.rs` suite contains exactly these tests:
 
-On `NdArray` (always built):
+On `Flex` (always built):
 
-1. `smoke_ndarray`
-2. `single_channel_exact_ndarray`
-3. `multi_channel_exact_ndarray`
-4. `explicit_padding_zero_pads_ndarray`
+1. `smoke_flex`
+2. `single_channel_exact_flex`
+3. `multi_channel_exact_flex`
+4. `explicit_padding_zero_pads_flex`
 
 On `Wgpu` (behind `#[cfg(feature = "gpu")]`):
 
@@ -341,7 +339,7 @@ Follow the red-green-refactor rhythm:
 2. **Green:** Implement `smoke`, `single_channel_exact`,
    `naive_multi_channel`, `multi_channel_exact`, and
    `explicit_padding_zero_pads`. Run `cargo test -p patterns`. The four
-   `NdArray` tests should pass.
+   `Flex` tests should pass.
 3. **GPU check:** If your environment supports it, run
    `cargo test -p patterns --features gpu`. The five GPU tests should
    pass. If the adapter is unavailable, skip this step; the default
@@ -371,13 +369,13 @@ Next: [Chapter 03 — The kernel language](03-the-kernel-language.md)
   — §4.4 (backend story, batching, and the opt-in GPU feature).
 * [`docs/plans/2026-09-27-convolutions-tutorial.md`](../../plans/2026-09-27-convolutions-tutorial.md)
   — Task T4, which this chapter implements.
-* Burn 0.21.0 pinned source — `burn-nn-0.21.0/src/modules/conv/conv2d.rs`
+* Burn 0.22.0 pinned source — `burn-nn-0.22.0/src/modules/conv/conv2d.rs`
   (struct layout, default `Valid` padding, input/output layouts), cited
   by line number in the body.
-* Burn 0.21.0 pinned source — `burn-nn-0.21.0/src/padding.rs:61` and
-  `burn-tensor-0.21.0/src/tensor/module.rs:134` — `Explicit` padding
+* Burn 0.22.0 pinned source — `burn-nn-0.22.0/src/padding.rs:61` and
+  `burn-tensor-0.22.0/src/tensor/module.rs:134` — `Explicit` padding
   zero-pads the input before convolution.
-* Burn 0.21.0 pinned source — `burn-core-0.21.0/src/module/param/tensor.rs:69`
+* Burn 0.22.0 pinned source — `burn-core-0.22.0/src/module/param/tensor.rs:69`
   for `Param::from_tensor`, and
-  `burn-tensor-0.21.0/src/tensor/api/base.rs:1942` for
+  `burn-tensor-0.22.0/src/tensor/api/base.rs:1942` for
   `Tensor::from_data`.

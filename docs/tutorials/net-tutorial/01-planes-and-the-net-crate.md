@@ -34,7 +34,7 @@ history planes and packages everything into a tensor-friendly layout.
 
 1. Create `gomoku/crates/net/` and add it to the workspace members in
    `gomoku/Cargo.toml`.
-2. Write `gomoku/crates/net/Cargo.toml` with Burn pinned to `=0.21.0`,
+2. Write `gomoku/crates/net/Cargo.toml` with Burn pinned to `=0.22.0`,
    depending on `engine`, `train`, `rand`, `serde`, `serde_json`, and
    `thiserror`. Match the feature pattern used by the `patterns` crate
    (`flex` default, `gpu` opt-in).
@@ -104,7 +104,7 @@ that wants to reason about individual planes as 2-D boards.
 
 The actual `Tensor` construction is deliberately left to chapter 2: the
 batcher will stack a batch of `InputPlanes` into a single
-`Tensor<B, 4>`.
+`Tensor<4>`.
 
 ## Low-level design
 
@@ -159,7 +159,7 @@ engine = { path = "../engine", features = ["testutil"] }
 
 Key points:
 
-- `burn = { workspace = true }` picks up the pinned `=0.21.0` from the
+- `burn = { workspace = true }` picks up the pinned `=0.22.0` from the
   workspace root.
 - The `flex` feature enables Burn's default CPU backend and the
   `dataset`/`train` features needed later. The `gpu` feature swaps in

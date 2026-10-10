@@ -51,7 +51,7 @@ This is the cleanest architectural decision in the whole crate, and it is worth 
 
 The `engine` crate knows absolute colors (Black and White stones on the board), Swap2's non-alternating opening, and the exact rules of Gomoku. It also knows how to `encode()` a board into a relative `Planes` struct: two 17×17 `u8` planes representing "me" and "you" from the side to move's point of view, with a border ring of opponent stones. That encoding is Burn-free and engine-clean.
 
-The `net` crate, when it arrives, will know Burn tensors and the model's input layout. It will convert `Planes` into a `Tensor<B, 4>` of shape `[batch, channels, 17, 17]`. The `mcts` crate sits in the middle. It must not know Burn (milestone 2 rule) and it must not reimplement encoding (engine's job). So the data that crosses the `Evaluator` seam is the intermediate representation: already-encoded planes plus the legal moves. Primer §6.5 shows this pipeline:
+The `net` crate, when it arrives, will know Burn tensors and the model's input layout. It will convert `Planes` into a `Tensor<4>` of shape `[batch, channels, 17, 17]`. The `mcts` crate sits in the middle. It must not know Burn (milestone 2 rule) and it must not reimplement encoding (engine's job). So the data that crosses the `Evaluator` seam is the intermediate representation: already-encoded planes plus the legal moves. Primer §6.5 shows this pipeline:
 
 ```text
 Board (engine, absolute colors)
@@ -60,7 +60,7 @@ Board (engine, absolute colors)
 Planes [C, 17, 17] u8  (relative me/you view, border ring = opponent)
   │  net crate converts
   ▼
-Tensor<B, 4>
+Tensor<4>
   │  forward
   ▼
 (policy logits [batch, 225], value [batch, 1])

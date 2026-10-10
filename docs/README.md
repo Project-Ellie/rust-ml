@@ -17,17 +17,26 @@ agent in Rust.
 
 ## Version policy
 
-All code in this repository uses **Burn 0.21.0**, the latest stable release
-(published 2026-05-07). Burn releases a breaking minor version about every
-three months. The `0.22.0-pre` series already changes the core tensor API
-(it removes the backend type parameter from `Tensor`). Do not mix code from
-the `main` branch of the Burn repository into this curriculum. All links in
-this wiki point to the `v0.21.0` tag.
+This repository contains two Burn tracks:
 
-The backend is **Flex**, Burn's pure-Rust CPU backend. The Burn project
-recommends Flex over the older NdArray backend for new projects. Every
-program here is generic over the backend, so you can switch to a GPU backend
-later by changing one type alias.
+- **The root MNIST curriculum** (chapters 1–8, `src/` and `examples/`) stays
+  on **Burn 0.21.0**. It is complete and stable; migrating it is a separate,
+  deliberate project.
+- **The gomoku workspace** (`gomoku/`) tracks the latest Burn release with an
+  exact pin in `gomoku/Cargo.toml`. It is currently pinned to **Burn 0.22.0**.
+  Burn 0.22 removes the backend type parameter from `Tensor` and `Module`;
+  backend selection is via `burn::tensor::Device` (`Device::flex()` for CPU,
+  `Device::wgpu(Default::default())` for GPU).
+
+Do not mix code from the `main` branch of the Burn repository into either
+pin. Links in gomoku-related docs point to the `v0.22.0` tag; links in the
+MNIST chapters point to `v0.21.0`.
+
+The gomoku workspace uses **Flex**, Burn's pure-Rust CPU backend, as its
+default and parity-test backend. The Burn project recommends Flex over the
+older NdArray backend for new projects. In Burn 0.22 the model code has no
+backend type parameter; you switch between CPU and GPU by changing the
+`Device` passed to the model and tensors, not by changing a type alias.
 
 ## Chapters
 

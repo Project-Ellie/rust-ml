@@ -21,8 +21,8 @@ loop is deterministic.
 | **Manual training loop** | Application-owned code that iterates batches, calls `loss.backward()`, and applies `optimizer.step()`, rather than using Burn's `SupervisedTraining` helper. |
 | **AdamW** | Adam optimizer with decoupled weight decay. The weight-decay term is added directly to the gradient, not folded into the adaptive moment estimate. |
 | **Warmup-plus-cosine schedule** | Learning rate starts near zero, linearly ramps to a peak over `lr_warmup_steps`, then cosine-decays to a minimum over `lr_cosine_steps`. |
-| **ComposedLrScheduler** | Burn 0.21 scheduler that multiplies (or sums) the outputs of child schedulers. Here it multiplies a warmup ramp by a cosine decay. |
-| **`AutodiffBackend`** | The Burn backend trait that records operations for automatic differentiation; required for `backward()`. |
+| **ComposedLrScheduler** | Burn 0.22 scheduler that multiplies (or sums) the outputs of child schedulers. Here it multiplies a warmup ramp by a cosine decay. |
+| **Autodiff device** | A `Device` decorated with `.autodiff()` so tensors created on it record operations for automatic differentiation; required for `backward()`. |
 | **`GradientsParams`** | Burn type that wraps raw gradients and maps them to a module's parameters for `optimizer.step()`. |
 | **Holdout evaluation** | Running the model on a separate dataset at fixed intervals to report loss and metrics without updating weights. |
 
@@ -53,9 +53,9 @@ these configurable so tests can use tiny values.
    `lr_cosine_steps`, `weight_decay`. Add a `tiny()` constructor for
    tests.
 3. Define `StepMetrics` and `EvalMetrics` records for logging.
-4. Implement `train<B: AutodiffBackend>(model, config, train_samples,
+4. Implement `train(model, config, train_samples,
    holdout_samples, device)`:
-   * seed the backend with `B::seed(device, config.seed)`;
+   * seed the backend with `device.seed(config.seed)`;
    * build an AdamW optimizer from `AdamWConfig`;
    * build a warmup-plus-cosine scheduler using
      `ComposedLrSchedulerConfig`;
@@ -94,7 +94,7 @@ Observable done-state: `cargo test -p net` passes, `cargo clippy
 
 ### Why the loop is manual
 
-Burn 0.21 provides `SupervisedTraining`, a high-level API that bundles
+Burn 0.22 provides `SupervisedTraining`, a high-level API that bundles
 data loader, learner, and metrics. For a fixed MNIST-style dataset it is
 convenient. For the AlphaZero loop it is the wrong shape because:
 
@@ -112,21 +112,21 @@ step, log.
 > **Excursion — stale API names in old tutorials**
 >
 > Pre-0.21 tutorials and blog posts often use `LearnerBuilder`, the
-> `Infer` trait, or `InitRecord`. Those names are gone in Burn 0.21.
+> `Infer` trait, or `InitRecord`. Those names are gone in Burn 0.22.
 > The current names are `SupervisedTraining` (plus `Learner`),
 > `InferenceStep`, and `Config::init` / `load_record`. If you search
-> the web for Burn training examples, check the version first; this
-> project is pinned to 0.21, and 0.22-pre already removes the backend
-> type parameter from `Tensor` and `Module`. This is the same trap
-> listed in [`docs/11-pitfalls.md`](../../11-pitfalls.md).
+> the web for Burn training examples, check the version first; the
+> gomoku workspace is pinned to 0.22.0 (Burn 0.22 removes the backend
+> type parameter from `Tensor` and `Module`), while the root MNIST
+> curriculum stays on 0.21.0. This is the same trap listed in
+> [`docs/11-pitfalls.md`](../../11-pitfalls.md).
 
 > **Excursion — the `1e-10` warmup workaround**
 >
 > A natural warmup scheduler would start at `0.0` and ramp linearly to
-> the peak learning rate. Burn 0.21's `LinearLrSchedulerConfig` rejects
+> the peak learning rate. Burn 0.22's `LinearLrSchedulerConfig` rejects
 > `initial_lr <= 0.0` with the error "Initial learning rate must be
-> greater than 0 and at most 1" (verified against the pinned source in
-> `burn-optim-0.21.0/src/lr_scheduler/linear.rs`).
+> greater than 0 and at most 1" (verified against the pinned Burn source).
 >
 > The workaround used in the reference implementation is to start the
 > warmup at `1e-10` and end at `1.0`, then multiply it by a cosine
@@ -169,11 +169,11 @@ step, log.
 
 > **Excursion — reproducibility and cloned models**
 >
-> Chapter 3 noted that `B::seed` does not make two independent
+> Chapter 3 noted that the device seed does not make two independent
 > `Model::init` calls bit-identical. The reproducibility test in this
 > chapter therefore initializes one model and `clone()`s it for the
 > second run. Both runs start from identical weights, use the same
-> seeded data loader, and call `B::seed` with the same seed, so every
+> seeded data loader, and seed the device with the same seed, so every
 > gradient and every optimizer step must match. The test asserts that
 > the per-step loss vectors are equal.
 >
@@ -216,7 +216,7 @@ use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::optim::lr_scheduler::linear::LinearLrSchedulerConfig;
 use burn::optim::{AdamW, GradientsParams, Optimizer};
 use burn::prelude::ElementConversion;
-use burn::tensor::backend::AutodiffBackend;
+use burn::tensor::Device;
 use train::Sample;
 
 use crate::batcher::{NetBatch, NetBatcher};
@@ -267,18 +267,18 @@ pub struct EvalMetrics {
 `train` function skeleton:
 
 ```rust
-pub fn train<B: AutodiffBackend>(
-    mut model: Model<B>,
+pub fn train(
+    mut model: Model,
     config: &TrainConfig,
     train_samples: Vec<Sample>,
     holdout_samples: Vec<Sample>,
-    device: &B::Device,
-) -> (Model<B>, Vec<StepMetrics>, Vec<EvalMetrics>) {
-    B::seed(device, config.seed);
+    device: &Device,
+) -> (Model, Vec<StepMetrics>, Vec<EvalMetrics>) {
+    device.seed(config.seed);
 
     let mut optimizer = AdamWConfig::new()
         .with_weight_decay(config.weight_decay)
-        .init::<B, Model<B>>();
+        .init();
     let mut scheduler = build_scheduler(config);
 
     let train_dataset = InMemDataset::new(train_samples);
@@ -351,13 +351,13 @@ fn build_scheduler(
 `training_step`:
 
 ```rust
-fn training_step<B: AutodiffBackend>(
-    model: &mut Model<B>,
-    batch: &NetBatch<B>,
-    optimizer: &mut OptimizerAdaptor<AdamW, Model<B>, B>,
+fn training_step(
+    model: &mut Model,
+    batch: &NetBatch,
+    optimizer: &mut OptimizerAdaptor<AdamW, Model>,
     lr: f64,
-    _device: &B::Device,
-) -> burn::tensor::Tensor<B, 1> {
+    _device: &Device,
+) -> burn::tensor::Tensor<1> {
     let output = model.forward(batch.input.clone());
     let loss = loss::compute_loss(LossInput {
         policy_logits: output.policy,
@@ -376,10 +376,10 @@ fn training_step<B: AutodiffBackend>(
 `evaluate` accumulates size-weighted totals:
 
 ```rust
-fn evaluate<B: AutodiffBackend>(
-    model: &Model<B>,
-    loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<B, NetBatch<B>>>,
-    _device: &B::Device,
+fn evaluate(
+    model: &Model,
+    loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<NetBatch>>,
+    _device: &Device,
 ) -> EvalMetrics {
     let mut total_loss = 0.0f32;
     let mut total_policy_correct = 0u64;
@@ -421,22 +421,19 @@ Guard against division by zero if `holdout_samples` is empty.
 
 ### Tests
 
-Use `burn::backend::{Autodiff, Flex}` and `burn::backend::flex::FlexDevice`:
+Use `burn::tensor::Device`:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::flex::FlexDevice;
-    use burn::backend::{Autodiff, Flex};
     use burn::data::dataloader::batcher::Batcher;
+    use burn::tensor::Device;
     use engine::Move;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use train::Sample;
     use train::collect::{Quotas, collect};
-
-    type B = Autodiff<Flex>;
 }
 ```
 
@@ -517,5 +514,5 @@ Next: Chapter 06 — Checkpointing + run journal.
 * [`docs/tutorials/datagen-tutorial/`](../datagen-tutorial/) — the
   `Sample` record and `collect` function used in the reproducibility
   test.
-* Burn 0.21.0 source, `burn-optim-0.21.0/src/lr_scheduler/linear.rs` —
-  verifies that `LinearLrSchedulerConfig` rejects `initial_lr <= 0.0`.
+* Burn 0.22.0 source — verifies that `LinearLrSchedulerConfig` rejects
+  `initial_lr <= 0.0`.

@@ -28,10 +28,14 @@ evaluator, and generates the milestone-3 synthetic training set.
 
 ## Version policy (do not violate)
 
-- **Burn 0.21.0, pinned** (`=0.21.0` in the gomoku workspace). The
-  0.22-prerelease removes the backend type parameter from `Tensor` —
-  never mix `main`-branch Burn code into this repo. All docs link the
-  `v0.21.0` tag.
+- **Burn 0.22.0, pinned** (`=0.22.0` in `gomoku/Cargo.toml`). The gomoku
+  workspace tracks the latest Burn release with an exact pin; upgrades are
+  deliberate. Burn 0.22 removes the backend type parameter from `Tensor`
+  and `Module` — backend selection is via `burn::tensor::Device`
+  (`Device::flex()` for CPU, `Device::wgpu(Default::default())` for GPU).
+  The root MNIST curriculum (`src/`, `examples/`, chapters 1–8) stays on
+  **Burn 0.21.0** until its own migration. Never mix `main`-branch Burn
+  code into either pin. Gomoku docs link the `v0.22.0` tag.
 - Backends: **Flex** (pure-Rust CPU, verified, deterministic) is the
   parity-test twin; **Wgpu/Metal** is the GPU path but **training on it
   is gated on a backend parity test** (Burn issues #5162 NaN gradients,
@@ -225,9 +229,11 @@ engine` meets the milestone-1 bar.
 tutorial tracks are written and verified end-to-end (reference
 implementations built TDD-first in disposable worktrees, reviewed,
 acceptance-measured, then deleted per convention; the solution files
-are the durable record). The crates land on `main` as the owner works
-the chapters learn-by-doing — neither `train` nor `patterns` exists
-in the workspace yet:
+are the durable record). The `train` and `patterns` crates exist in the
+workspace; the `net` crate is next. Living docs for the gomoku workspace
+have been updated to **Burn 0.22.0** on branch `burn-0.22-upgrade`.
+
+Current milestone-3 status:
 
 - [datagen-tutorial](tutorials/datagen-tutorial/README.md) (primer + 8
   chapters + opt-in solutions): the `train` crate — `Sample` record,
@@ -237,9 +243,9 @@ in the workspace yet:
   `datagen` binary. Verified acceptance: 50k samples in 45 s (debug),
   13 shards / 41 MB, 9.84% holdout, byte-identical regeneration.
 - [convolutions-tutorial](tutorials/convolutions-tutorial/README.md)
-  (side quest; primer + 8 chapters + solutions): the `patterns` crate
-  — a hand-written 152-channel conv net (Burn 0.21, backend-generic,
-  `NdArray` default + opt-in `gpu` feature) producing threat maps
+  (side quest; primer + chapters 1–2 verified, 3–8 in progress): the
+  `patterns` crate — a hand-written 152-channel conv net (Burn 0.22,
+  `Flex` default + opt-in `gpu` feature) producing threat maps
   (wins, double threats, double-three forks) plus the `patterndemo`
   heatmap binary. Verified acceptance: three differential gates at
   1000 boards × 2 colors vs `engine::{immediate_wins, double_threats}`

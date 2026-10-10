@@ -3,7 +3,7 @@
 ## Abstract
 
 This chapter turns labelled `train::Sample`s into Burn tensors. By the
-end you will have a `NetBatcher` that implements Burn 0.21's `Batcher`
+end you will have a `NetBatcher` that implements Burn 0.22's `Batcher`
 trait, scatters sparse policy targets into a dense 225-vector, and
 applies a random D4 transform to each training sample — all while
 leaving the holdout split in canonical orientation.
@@ -12,8 +12,8 @@ leaving the holdout split in canonical orientation.
 
 | Term | Definition |
 |------|------------|
-| **`Batcher`** | Burn 0.21 trait: `Vec<Item>` + device → `Batch`. |
-| **`NetBatch<B>`** | A batch of `(input, policy_target, value_target)` tensors. |
+| **`Batcher`** | Burn 0.22 trait: `Vec<Item>` + device → `Batch`. |
+| **`NetBatch`** | A batch of `(input, policy_target, value_target)` tensors. |
 | **`TensorData::new(data, shape)`** | Burn helper that builds a tensor from host data. |
 | **Scatter (policy)** | Expanding sparse `(move, mass)` pairs into a dense 225-vector. |
 | **D4 / dihedral group** | The 8 symmetries of a square: 4 rotations + 4 reflections. |
@@ -36,10 +36,10 @@ policy target, and `[B, 1]` value target.
 
 1. Register `pub mod batcher;` in `src/lib.rs`.
 2. Create `src/batcher.rs`:
-   * `NetBatch<B: Backend>` with `input`, `policy_target`, `value_target`.
+   * `NetBatch` with `input`, `policy_target`, `value_target`.
    * `NetBatcher` with `seed`, `augment` flag, and an internal counter.
-   * `impl<B: Backend> Batcher<B, Sample, NetBatch<B>> for NetBatcher`
-     with `fn batch(&self, items: Vec<Sample>, device: &B::Device) -> NetBatch<B>`.
+   * `impl Batcher<Sample, NetBatch> for NetBatcher`
+     with `fn batch(&self, items: Vec<Sample>, device: &Device) -> NetBatch`.
 3. Implement `scatter_policy`: `(Move, f32)` pairs → `[f32; 225]` in
    row-major order.
 4. Implement D4 augmentation:
@@ -71,17 +71,16 @@ optimization logic and makes unit testing harder. A standalone batcher
 is the conventional Burn home for this concern.
 
 This is **invention I2**, presented as a choice: we choose to implement
-Burn's `Batcher` trait with the exact generics Burn 0.21 expects.
+Burn's `Batcher` trait with the exact generics Burn 0.22 expects.
 
-> **Excursion — generic signatures in Burn 0.21**
+> **Excursion — generic signatures in Burn 0.22**
 >
-> In Burn 0.21 the trait is `Batcher<B: Backend, I, O>`. The
-> implementation binds `I = Sample` and `O = NetBatch<B>`, so a single
-> batcher type works for any backend. Inference code can use `B = NdArray`
-> or `B = Wgpu`, while training uses `B = Autodiff<NdArray>` or
-> `B = Autodiff<Wgpu>`. Always verify the trait signature against the
-> pinned source; blog posts and `main`-branch docs are wrong for this
-> version.
+> In Burn 0.22 the `Batcher` trait is not generic over a backend type.
+> The implementation binds `Item = Sample` and `Output = NetBatch`, and the
+> same batcher works for any `Device` (Flex CPU, Wgpu GPU, etc.). For
+> training, pass an autodiff device (`device.autodiff()`) so that tensors
+> record gradients. Always verify the trait signature against the pinned
+> source; blog posts and `main`-branch docs are wrong for this version.
 
 ### Why scatter policy targets?
 
@@ -163,7 +162,8 @@ pub mod train;
 //! * scatters the sparse policy target into a dense 225-vector (I3).
 
 use burn::data::dataloader::batcher::Batcher;
-use burn::tensor::{Tensor, backend::Backend};
+use burn::tensor::Tensor;
+use burn::tensor::Device;
 use engine::{Board, EXT, Move, Transform};
 use std::sync::atomic::{AtomicU64, Ordering};
 use train::Sample;
@@ -172,13 +172,13 @@ use crate::planes::{self, InputPlanes};
 
 /// A batch of network inputs and targets.
 #[derive(Debug, Clone)]
-pub struct NetBatch<B: Backend> {
+pub struct NetBatch {
     /// Input planes of shape `[B, 4, EXT, EXT]`.
-    pub input: Tensor<B, 4>,
+    pub input: Tensor<4>,
     /// Dense policy target of shape `[B, 225]`.
-    pub policy_target: Tensor<B, 2>,
+    pub policy_target: Tensor<2>,
     /// Value target of shape `[B, 1]`.
-    pub value_target: Tensor<B, 2>,
+    pub value_target: Tensor<2>,
 }
 
 /// Batcher configuration.
@@ -204,8 +204,8 @@ impl NetBatcher {
     pub fn reset_counter(&self);
 }
 
-impl<B: Backend> Batcher<B, Sample, NetBatch<B>> for NetBatcher {
-    fn batch(&self, items: Vec<Sample>, device: &B::Device) -> NetBatch<B>;
+impl Batcher<Sample, NetBatch> for NetBatcher {
+    fn batch(&self, items: Vec<Sample>, device: &Device) -> NetBatch;
 }
 ```
 
@@ -215,7 +215,7 @@ Implementation notes:
   items. For each item it selects a transform (if augmenting),
   transforms board and policy, assembles `InputPlanes`, and collects
   planes, dense policy vectors, and value scalars.
-- After the loop it stacks planes into a `Tensor<B, 4>` of shape
+- After the loop it stacks planes into a `Tensor<4>` of shape
   `[batch, 4, EXT, EXT]`, builds the policy target from flattened
   225-vectors, and builds the value target from collected scalars.
 - `transform_sample` rebuilds the board by replaying transformed moves
@@ -231,11 +231,11 @@ Implementation notes:
 Helper inside `batcher.rs`:
 
 ```rust
-fn stack_planes<B: Backend>(planes: &[InputPlanes], device: &B::Device) -> Tensor<B, 4>;
+fn stack_planes(planes: &[InputPlanes], device: &Device) -> Tensor<4>;
 ```
 
 It builds a `Vec<f32>` in NCHW order and calls
-`Tensor::<B, 4>::from_data(TensorData::new(data, [batch, 4, EXT, EXT]).convert::<B::FloatElem>(), device)`.
+`Tensor::<4>::from_data(TensorData::new(data, [batch, 4, EXT, EXT]).convert::<f32>(), device)`.
 
 ### Tests
 
@@ -255,7 +255,7 @@ Inside `#[cfg(test)] mod tests` in `batcher.rs`:
 7. `same_seed_same_transforms` — two batchers with the same seed produce
    identical input and policy tensors.
 
-Use `burn::backend::Flex` (or the backend the `patterns` crate used) as
+Use `Device::flex()` (or the device the `patterns` crate used) as
 the concrete test backend.
 
 ## Solution (opt-in)

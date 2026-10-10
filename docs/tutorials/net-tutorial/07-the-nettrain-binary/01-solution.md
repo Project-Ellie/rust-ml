@@ -22,8 +22,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process;
 
-use burn::backend::flex::FlexDevice;
-use burn::backend::{Autodiff, Flex};
+use burn::tensor::Device;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -68,8 +67,7 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<(), String> {
-    type B = Autodiff<Flex>;
-    let device = FlexDevice;
+    let device = Device::flex();
 
     eprintln!(
         "nettrain: seed={}, steps={}, batch_size={}, eval_interval={}",
@@ -86,7 +84,7 @@ fn run(args: Args) -> Result<(), String> {
         holdout_samples.len()
     );
 
-    let model: Model<B> = args.config.init(&device);
+    let model: Model = args.config.init(&device);
     let (model, step_metrics, eval_metrics) = train(
         model,
         &args.train_config,
@@ -103,7 +101,7 @@ fn run(args: Args) -> Result<(), String> {
         eval_metrics.last().copied(),
     );
 
-    save_checkpoint::<B>(&model, &journal, &args.out_dir)
+    save_checkpoint(&model, &journal, &args.out_dir)
         .map_err(|e| format!("failed to save checkpoint: {e}"))?;
 
     print_report(&step_metrics, &eval_metrics, &args.out_dir);
@@ -342,7 +340,6 @@ mod tests {
     }
 }
 ```
-
 
 ## `tests/nettrain_smoke.rs`
 

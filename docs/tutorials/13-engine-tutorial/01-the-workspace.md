@@ -17,7 +17,7 @@ members = ["crates/engine"]
 edition = "2024"
 
 [workspace.dependencies]
-burn = { version = "=0.21.0", default-features = false }
+burn = { version = "=0.22.0", default-features = false }
 thiserror = "2"
 # ... plus serde, proptest, criterion, crossterm — see the committed file
 ```

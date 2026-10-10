@@ -3,7 +3,7 @@
 A side-quest tutorial in the rust-ml Gomoku project, sitting between
 the [datagen tutorial](../datagen-tutorial/README.md) and the
 upcoming net tutorial. You build `gomoku/crates/patterns`: a small
-convolutional network in Burn 0.21 whose weights are **written by
+convolutional network in Burn 0.22 whose weights are **written by
 hand, not trained**. It reads a board and produces threat maps —
 wins, double threats, and the double-three fork — every one proven
 equal to an independent oracle on a thousand random boards, on CPU

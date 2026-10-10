@@ -270,17 +270,17 @@ quoted solution shows the final struct.
 ### `analyze` and `analyze_both`
 
 ```rust
-pub fn analyze<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn analyze(
+    net: &ThreatNet,
     b: &Board,
     s: Color,
-    device: &B::Device,
+    device: &Device,
 ) -> ThreatMaps;
 
-pub fn analyze_both<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn analyze_both(
+    net: &ThreatNet,
     b: &Board,
-    device: &B::Device,
+    device: &Device,
 ) -> [ThreatMaps; 2];
 ```
 

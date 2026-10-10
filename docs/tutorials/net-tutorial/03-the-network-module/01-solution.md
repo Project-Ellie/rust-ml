@@ -44,9 +44,9 @@ pub mod train;
 use burn::nn::conv::Conv2d;
 use burn::nn::norm::BatchNorm;
 use burn::nn::{Linear, LinearConfig, PaddingConfig2d, Relu};
+use burn::tensor::Device;
 use burn::tensor::Tensor;
 use burn::tensor::activation::tanh;
-use burn::tensor::backend::Backend;
 use burn::{config::Config, module::Module};
 
 use engine::EXT;
@@ -64,7 +64,7 @@ pub struct ModelConfig {
 
 impl ModelConfig {
     /// Initialize the model on `device`.
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
+    pub fn init(&self, device: &Device) -> Model {
         Model::new(self.channels, self.num_blocks, device)
     }
 
@@ -87,43 +87,43 @@ impl ModelConfig {
 
 /// Policy/value network.
 #[derive(Module, Debug)]
-pub struct Model<B: Backend> {
+pub struct Model {
     /// Initial convolution.
-    pub stem_conv: Conv2d<B>,
+    pub stem_conv: Conv2d,
     /// Initial batch norm.
-    pub stem_bn: BatchNorm<B>,
+    pub stem_bn: BatchNorm,
     /// Residual trunk.
-    pub blocks: Vec<ResBlock<B>>,
+    pub blocks: Vec<ResBlock>,
     /// Policy head convolution.
-    pub policy_conv: Conv2d<B>,
+    pub policy_conv: Conv2d,
     /// Policy head batch norm.
-    pub policy_bn: BatchNorm<B>,
+    pub policy_bn: BatchNorm,
     /// Policy head linear layer.
-    pub policy_linear: Linear<B>,
+    pub policy_linear: Linear,
     /// Value head convolution.
-    pub value_conv: Conv2d<B>,
+    pub value_conv: Conv2d,
     /// Value head batch norm.
-    pub value_bn: BatchNorm<B>,
+    pub value_bn: BatchNorm,
     /// Value head hidden layer.
-    pub value_hidden: Linear<B>,
+    pub value_hidden: Linear,
     /// Value head output layer.
-    pub value_out: Linear<B>,
+    pub value_out: Linear,
     /// ReLU activation (shared, stateless).
     pub activation: Relu,
 }
 
 /// Forward outputs.
 #[derive(Debug, Clone)]
-pub struct ModelOutput<B: Backend> {
+pub struct ModelOutput {
     /// Policy logits of shape `[B, 225]`.
-    pub policy: Tensor<B, 2>,
+    pub policy: Tensor<2>,
     /// Value in [-1, 1] of shape `[B, 1]`.
-    pub value: Tensor<B, 2>,
+    pub value: Tensor<2>,
 }
 
-impl<B: Backend> Model<B> {
+impl Model {
     /// Build a model with the given trunk width and depth.
-    pub fn new(channels: usize, num_blocks: usize, device: &B::Device) -> Self {
+    pub fn new(channels: usize, num_blocks: usize, device: &Device) -> Self {
         let stem_conv = burn::nn::conv::Conv2dConfig::new([4, channels], [3, 3])
             .with_padding(PaddingConfig2d::Same)
             .with_bias(false)
@@ -165,7 +165,7 @@ impl<B: Backend> Model<B> {
     }
 
     /// Forward pass: input shape `[B, 4, EXT, EXT]`.
-    pub fn forward(&self, input: Tensor<B, 4>) -> ModelOutput<B> {
+    pub fn forward(&self, input: Tensor<4>) -> ModelOutput {
         let x = self.stem_conv.forward(input);
         let x = self.stem_bn.forward(x);
         let mut x = self.activation.forward(x);
@@ -197,16 +197,16 @@ impl<B: Backend> Model<B> {
 
 /// A single residual block.
 #[derive(Module, Debug)]
-pub struct ResBlock<B: Backend> {
-    conv1: Conv2d<B>,
-    bn1: BatchNorm<B>,
-    conv2: Conv2d<B>,
-    bn2: BatchNorm<B>,
+pub struct ResBlock {
+    conv1: Conv2d,
+    bn1: BatchNorm,
+    conv2: Conv2d,
+    bn2: BatchNorm,
     activation: Relu,
 }
 
-impl<B: Backend> ResBlock<B> {
-    fn new(channels: usize, device: &B::Device) -> Self {
+impl ResBlock {
+    fn new(channels: usize, device: &Device) -> Self {
         let conv1 = burn::nn::conv::Conv2dConfig::new([channels, channels], [3, 3])
             .with_padding(PaddingConfig2d::Same)
             .with_bias(false)
@@ -227,7 +227,7 @@ impl<B: Backend> ResBlock<B> {
         }
     }
 
-    fn forward(&self, x: Tensor<B, 4>) -> Tensor<B, 4> {
+    fn forward(&self, x: Tensor<4>) -> Tensor<4> {
         let residual = x.clone();
         let x = self.conv1.forward(x);
         let x = self.bn1.forward(x);
@@ -244,15 +244,13 @@ use burn::nn::norm::BatchNormConfig;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
-
-    type B = Flex;
+    use burn::tensor::Device;
 
     #[test]
     fn default_model_output_shapes() {
-        let device = Default::default();
-        let model: Model<B> = ModelConfig::new().init(&device);
-        let input = Tensor::<B, 4>::zeros([2, 4, EXT, EXT], &device);
+        let device = Device::flex();
+        let model: Model = ModelConfig::new().init(&device);
+        let input = Tensor::<4>::zeros([2, 4, EXT, EXT], &device);
         let out = model.forward(input);
         assert_eq!(out.policy.dims(), [2, 225]);
         assert_eq!(out.value.dims(), [2, 1]);
@@ -260,9 +258,9 @@ mod tests {
 
     #[test]
     fn tiny_model_output_shapes() {
-        let device = Default::default();
-        let model: Model<B> = ModelConfig::tiny().init(&device);
-        let input = Tensor::<B, 4>::zeros([1, 4, EXT, EXT], &device);
+        let device = Device::flex();
+        let model: Model = ModelConfig::tiny().init(&device);
+        let input = Tensor::<4>::zeros([1, 4, EXT, EXT], &device);
         let out = model.forward(input);
         assert_eq!(out.policy.dims(), [1, 225]);
         assert_eq!(out.value.dims(), [1, 1]);
@@ -270,23 +268,23 @@ mod tests {
 
     #[test]
     fn forward_is_deterministic_on_same_input() {
-        let device = Default::default();
-        let model: Model<B> = ModelConfig::tiny().init(&device);
-        let input = Tensor::<B, 4>::zeros([2, 4, EXT, EXT], &device);
+        let device = Device::flex();
+        let model: Model = ModelConfig::tiny().init(&device);
+        let input = Tensor::<4>::zeros([2, 4, EXT, EXT], &device);
         let out_a = model.forward(input.clone());
         let out_b = model.forward(input);
-        let policy_a: Vec<f32> = out_a.policy.into_data().to_vec::<f32>().unwrap();
-        let policy_b: Vec<f32> = out_b.policy.into_data().to_vec::<f32>().unwrap();
+        let policy_a: Vec<f32> = out_a.policy.into_data().try_to_vec::<f32>().unwrap();
+        let policy_b: Vec<f32> = out_b.policy.into_data().try_to_vec::<f32>().unwrap();
         assert_eq!(policy_a, policy_b);
     }
 
     #[test]
     fn value_is_in_range() {
-        let device = Default::default();
-        let model: Model<B> = ModelConfig::tiny().init(&device);
-        let input = Tensor::<B, 4>::zeros([4, 4, EXT, EXT], &device);
+        let device = Device::flex();
+        let model: Model = ModelConfig::tiny().init(&device);
+        let input = Tensor::<4>::zeros([4, 4, EXT, EXT], &device);
         let out = model.forward(input);
-        let values: Vec<f32> = out.value.into_data().to_vec::<f32>().unwrap();
+        let values: Vec<f32> = out.value.into_data().try_to_vec::<f32>().unwrap();
         for &v in &values {
             assert!((-1.0..=1.0).contains(&v), "tanh output {v} out of [-1, 1]");
         }

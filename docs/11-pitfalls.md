@@ -1,8 +1,9 @@
 # Chapter 11 — Pitfalls
 
-Known traps with Burn 0.21. The first four were hit while building this very
-repository. The rest come from Burn's issue tracker and community reports
-(links included).
+Known traps with Burn. The gomoku workspace is on **Burn 0.22.0**; the root
+MNIST curriculum stays on **Burn 0.21.0**. The first four were hit while
+building this repository. The rest come from Burn's issue tracker and
+community reports (links included).
 
 ## Hit during the making of this course
 
@@ -10,13 +11,15 @@ repository. The rest come from Burn's issue tracker and community reports
    bit-identical: outputs differ by ~1e-4. For exact round-trips (resume
    training, deterministic tests) use `DefaultRecorder` or
    `NamedMpkFileRecorder<FullPrecisionSettings>`.
-   [Source](https://github.com/tracel-ai/burn/blob/v0.21.0/crates/burn-core/src/record/recorder.rs)
+   [Source](https://github.com/tracel-ai/burn/blob/v0.22.0/crates/burn-core/src/record/recorder.rs)
 2. **`argmax` keeps the reduced dimension.** `[batch, 10].argmax(1)` is
    `[batch, 1]`. Comparing against `[batch]` targets fails with a confusing
    type error. Squeeze: `.argmax(1).squeeze_dim::<1>(1)`.
-3. **Int element type differs per backend.** Flex uses `i32`, NdArray uses
-   `i64`. Generic code must use `.elem::<B::IntElem>()`; concrete code must
-   annotate the right type on `into_scalar()`.
+3. **Int element type differs by backend (and by Burn version).** In Burn
+   0.22, Flex and Wgpu both use `i32`. The deprecated NdArray backend used
+   `i64`. In the gomoku workspace, annotate the expected type on
+   `into_scalar()` (e.g., `into_scalar::<i32>()`). In the 0.21 MNIST code,
+   generic code must use `.elem::<B::IntElem>()`.
 4. **Stale API names in old tutorials.** `LearnerBuilder`, the `Infer`
    trait, and `InitRecord` are gone in 0.21. The current names are
    `SupervisedTraining` + `Learner`, `InferenceStep`, and
@@ -25,19 +28,22 @@ repository. The rest come from Burn's issue tracker and community reports
 
 ## From the Burn issue tracker
 
-5. **Do not follow `main`.** The 0.22 prerelease removes the backend type
-   parameter from `Tensor` and `Module`. Course code pinned to 0.21 will not
-   compile there. [Issue
+5. **Do not follow `main`.** Burn's `main` branch is the next prerelease and
+   may change APIs that the pinned releases rely on. The gomoku workspace
+   pins `=0.22.0`; the root MNIST package pins `=0.21.0`. Code from `main`
+   will not compile against either pin. [Issue
    #4879](https://github.com/tracel-ai/burn/issues/4879)
-6. **Binary records are not forward-compatible.** 0.21 changed
-   `TensorData`'s shape type; older binary records need conversion. Test
-   loading your artifacts after every Burn upgrade. [0.21 release
-   notes](https://github.com/tracel-ai/burn/releases/tag/v0.21.0)
+6. **Binary records are not forward-compatible.** Burn minor releases often
+   break binary record compatibility (for example, 0.21 changed
+   `TensorData`'s shape type; 0.22 may introduce further changes). Older
+   binary records need conversion. Test loading your artifacts after every
+   Burn upgrade. [Burn 0.22 release
+   notes](https://github.com/tracel-ai/burn/releases/tag/v0.22.0)
 7. **A bare `Tensor` field in a module is a constant.** Learnable raw
    weights must be `Param<Tensor<...>>`, or they are neither trained nor
    saved. Non-module fields need `#[module(skip)]`.
 8. **Batcher dtype/shape discipline.** Targets for `CrossEntropyLoss` are
-   `Tensor<B, 1, Int>` class indices on the correct device. Most beginner
+   `Tensor<1, Int>` class indices on the correct device. Most beginner
    data-pipeline bugs live in the batcher.
    [Issue #1825](https://github.com/tracel-ai/burn/issues/1825)
 9. **Custom metrics must weight by batch size.** Epoch aggregation is

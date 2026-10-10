@@ -26,7 +26,7 @@ chapters 4 and 5, so the table's vocabulary is fixed while it grows.
 | **Five-completer** | A pattern where `c` is the last stone of a five-in-a-row window; the win-map detector. |
 | **Win map** | A 15×15 map that is positive exactly where placing a stone completes five immediately. |
 | **Margin** | The difference between the pre-activation on a perfect match and the pre-activation after one violation. |
-| **SPIKE idiom** | The Burn 0.21 manual-weight-assignment pattern: build a `Conv2d` from `Conv2dConfig`, then replace its public `weight` and `bias` fields with `Param::from_tensor(...)` tensors. |
+| **SPIKE idiom** | The Burn 0.22 manual-weight-assignment pattern: build a `Conv2d` from `Conv2dConfig`, then replace its public `weight` and `bias` fields with `Param::from_tensor(...)` tensors. |
 | **Threat map** | A feature map with game meaning: each empty cell is scored by what happens if the side places a stone there. |
 
 ## Context
@@ -235,7 +235,7 @@ buffer.
 ### Layer 1
 
 ```rust
-pub fn layer1_conv<B: Backend>(device: &B::Device) -> Conv2d<B>;
+pub fn layer1_conv(device: &Device) -> Conv2d;
 ```
 
 * Create a `Conv2d` from `Conv2dConfig::new([2, LAYER1_OUT], [KERNEL, KERNEL])`
@@ -335,8 +335,8 @@ Next: [Chapter 04 — The four level](04-the-four-level.md)
   language).
 * [`docs/plans/2026-09-27-convolutions-tutorial.md`](../../plans/2026-09-27-convolutions-tutorial.md)
   — Task T5, which this chapter implements.
-* Burn 0.21.0 pinned source — `burn-nn-0.21.0/src/modules/conv/conv2d.rs`
+* Burn 0.22.0 pinned source — `burn-nn-0.22.0/src/modules/conv/conv2d.rs`
   (struct layout, `Conv2dConfig::init`, NCHW weight shape), cited in
   chapter 2.
-* Burn 0.21.0 pinned source — `burn-core-0.21.0/src/module/param/tensor.rs:69`
+* Burn 0.22.0 pinned source — `burn-core-0.22.0/src/module/param/tensor.rs:69`
   for `Param::from_tensor`, cited in chapter 2.

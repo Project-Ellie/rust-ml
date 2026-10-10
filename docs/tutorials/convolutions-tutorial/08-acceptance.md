@@ -66,10 +66,10 @@ will shift them. The shapes must match.
 
 | Check | Result |
 |-------|--------|
-| Default suite (debug) | **66 s**, all tests pass (35 lib + 3 bin + 7 differential + 20 oracle + 4 spike + 15 three-maps) |
+| Default suite (debug) | **66 s**, all tests pass (35 lib + 3 bin + 7 differential + 20 oracle + 4 CPU spike + 15 three-maps) |
 | Full proof, 3 × 1000 boards × 2 colors (**release**) | **8.9 s** — all three gates pass |
 | Full proof (debug, measured at delivery) | ~620 s — this is why the proof is a release-mode ritual |
-| GPU default suite (`--features gpu`) | all pass, incl. 4 `gpu_port` exact-equality tests |
+| GPU default suite (`--features gpu`) | all pass, incl. 5 GPU spike + 4 `gpu_port` exact-equality tests |
 | Demo CPU vs GPU | byte-identical modulo the `Backend:` line |
 | Engine isolation | `cargo check -p engine` green — no Burn in sight |
 

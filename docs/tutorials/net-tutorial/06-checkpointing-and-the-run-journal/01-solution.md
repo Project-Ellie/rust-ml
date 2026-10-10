@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use burn::prelude::Module;
 use burn::record::{DefaultRecorder, Recorder};
-use burn::tensor::backend::Backend;
+use burn::tensor::Device;
 use serde::{Deserialize, Serialize};
 
 use crate::network::{Model, ModelConfig};
@@ -76,7 +76,7 @@ impl RunJournal {
 }
 
 /// Save a model record to `dir/model.mpk` using full precision.
-pub fn save_model<B: Backend>(model: &Model<B>, dir: &Path) -> Result<PathBuf, CheckpointError> {
+pub fn save_model(model: &Model, dir: &Path) -> Result<PathBuf, CheckpointError> {
     let path = dir.join("model.mpk");
     model
         .clone()
@@ -85,14 +85,14 @@ pub fn save_model<B: Backend>(model: &Model<B>, dir: &Path) -> Result<PathBuf, C
 }
 
 /// Load a model record from `dir/model.mpk`.
-pub fn load_model<B: Backend>(
+pub fn load_model(
     dir: &Path,
     config: &ModelConfig,
-    device: &B::Device,
-) -> Result<Model<B>, CheckpointError> {
+    device: &Device,
+) -> Result<Model, CheckpointError> {
     let path = dir.join("model.mpk");
     let record = DefaultRecorder::new().load(path, device)?;
-    Ok(config.init::<B>(device).load_record(record))
+    Ok(config.init(device).load_record(record))
 }
 
 /// Save a run journal to `dir/run.json`.
@@ -111,13 +111,13 @@ pub fn load_journal(dir: &Path) -> Result<RunJournal, CheckpointError> {
 }
 
 /// Save both model and journal into `dir`.
-pub fn save_checkpoint<B: Backend>(
-    model: &Model<B>,
+pub fn save_checkpoint(
+    model: &Model,
     journal: &RunJournal,
     dir: &Path,
 ) -> Result<(PathBuf, PathBuf), CheckpointError> {
     std::fs::create_dir_all(dir)?;
-    let model_path = save_model::<B>(model, dir)?;
+    let model_path = save_model(model, dir)?;
     let journal_path = save_journal(journal, dir)?;
     Ok((model_path, journal_path))
 }
@@ -125,10 +125,7 @@ pub fn save_checkpoint<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
-    use burn::backend::flex::FlexDevice;
-
-    type B = Flex;
+    use burn::tensor::Device;
 
     fn temp_dir() -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -141,22 +138,22 @@ mod tests {
 
     #[test]
     fn save_load_roundtrip_is_bit_identical() {
-        let device = FlexDevice;
+        let device = Device::flex();
         let dir = temp_dir();
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
         let config = ModelConfig::tiny();
-        let model: Model<B> = config.init(&device);
-        let input = burn::tensor::Tensor::<B, 4>::zeros([1, 4, engine::EXT, engine::EXT], &device);
+        let model: Model = config.init(&device);
+        let input = burn::tensor::Tensor::<4>::zeros([1, 4, engine::EXT, engine::EXT], &device);
         let output_before = model.forward(input.clone());
 
         save_model(&model, &dir).unwrap();
-        let loaded: Model<B> = load_model(&dir, &config, &device).unwrap();
+        let loaded: Model = load_model(&dir, &config, &device).unwrap();
         let output_after = loaded.forward(input);
 
-        let before: Vec<f32> = output_before.policy.into_data().to_vec::<f32>().unwrap();
-        let after: Vec<f32> = output_after.policy.into_data().to_vec::<f32>().unwrap();
+        let before: Vec<f32> = output_before.policy.into_data().try_to_vec::<f32>().unwrap();
+        let after: Vec<f32> = output_after.policy.into_data().try_to_vec::<f32>().unwrap();
         assert_eq!(
             before, after,
             "loaded model must produce bit-identical outputs"
@@ -197,12 +194,12 @@ mod tests {
 
     #[test]
     fn checkpoint_saves_both_model_and_journal() {
-        let device = FlexDevice;
+        let device = Device::flex();
         let dir = temp_dir();
         let _ = std::fs::remove_dir_all(&dir);
 
         let config = ModelConfig::tiny();
-        let model: Model<B> = config.init(&device);
+        let model: Model = config.init(&device);
         let journal = RunJournal::new(7, config, TrainConfig::tiny(), None, None);
 
         save_checkpoint(&model, &journal, &dir).unwrap();

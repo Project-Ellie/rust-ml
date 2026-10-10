@@ -1,8 +1,6 @@
-# Chapter 07 — opt-in solution: `potential.rs`, `render.rs`, `patterndemo.rs`, `tests/gpu_port.rs`
-
-Open this only if you have been stuck for more than twenty minutes, or after you have finished the chapter and want to compare your work against the verified reference. The implementations below are the complete files from the reference crate, quoted verbatim.
-
-Each file is fenced with four backticks so that any triple-backtick examples inside the source (for instance the usage block in the demo binary) do not break the markdown fence.
+> **Opt-in solution — read only after you have been stuck for more than twenty minutes, or after you have finished the chapter and want to compare your work against the verified reference. The implementations below are the complete files from the reference crate, quoted verbatim.**
+>
+> Each file is fenced with four backticks so that any triple-backtick examples inside the source (for instance the usage block in the demo binary) do not break the markdown fence.
 
 ## `src/potential.rs`
 
@@ -37,7 +35,7 @@ Threat potential and policy-shaped sparse vector.
 //! the order is deterministic and matches the natural board scan.
 
 use crate::net::{ThreatMaps, ThreatNet, analyze};
-use burn::tensor::backend::Backend;
+use burn::tensor::Device;
 use engine::{Board, Color, Move};
 
 /// Score assigned to an immediate winning move.
@@ -60,11 +58,11 @@ pub const THREE_SCORE: f32 = 0.3;
 ///
 /// The scores are chosen so that higher tactical value always dominates
 /// lower value: a cell is never represented by more than one score.
-pub fn policy<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn policy(
+    net: &ThreatNet,
     b: &Board,
     s: Color,
-    device: &B::Device,
+    device: &Device,
 ) -> Vec<(Move, f32)> {
     let maps = analyze(net, b, s, device);
     policy_from_maps(b, &maps)
@@ -118,7 +116,7 @@ pub(crate) fn score_cell(maps: &ThreatMaps, r: usize, c: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::NdArray;
+    use burn::tensor::Device;
     use engine::{Color, Move, reference::board_from_ascii};
 
     #[test]
@@ -144,8 +142,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let p = policy(&net, &b, Color::Black, &device);
 
         assert!(
@@ -175,8 +173,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let p = policy(&net, &b, Color::Black, &device);
 
         assert!(
@@ -210,8 +208,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let p = policy(&net, &b, Color::Black, &device);
 
         assert!(
@@ -230,7 +228,7 @@ mod tests {
             "
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
-            . . X . . . . . . . . . . . .
+            . . . X . . . . . . . . . . .
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
             . . . . . . . . . O . . . . .
@@ -245,8 +243,8 @@ mod tests {
             . . . . . . . . . . . . . . .
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let p = policy(&net, &b, Color::Black, &device);
         assert!(p.is_empty());
     }
@@ -271,8 +269,8 @@ mod tests {
             b.play(Move::new(r, c).unwrap()).unwrap();
         }
 
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let p = policy(&net, &b, Color::Black, &device);
         assert!(
             p.is_empty(),
@@ -586,6 +584,7 @@ fn legend(map: MapName) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burn::tensor::Device;
     use engine::{Color, Move};
 
     #[test]
@@ -625,7 +624,6 @@ mod tests {
     #[test]
     fn classic_fork_is_exactly_one_double_threat_at_centre() {
         use crate::net::{ThreatNet, analyze};
-        use burn::backend::NdArray;
 
         let b = showcase_board(ShowcaseName::ClassicFork);
         assert_eq!(b.stone_at(Move::new(4, 7).unwrap()), Some(Color::Black));
@@ -635,8 +633,8 @@ mod tests {
         assert_eq!(b.stone_at(Move::new(7, 5).unwrap()), Some(Color::Black));
         assert_eq!(b.stone_at(Move::new(7, 6).unwrap()), Some(Color::Black));
 
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
 
         let mut double_threat_cells = Vec::new();
@@ -653,7 +651,6 @@ mod tests {
     #[test]
     fn double_three_fork_has_fork_at_centre() {
         use crate::net::{ThreatNet, analyze};
-        use burn::backend::NdArray;
 
         let b = showcase_board(ShowcaseName::DoubleThreeFork);
         assert_eq!(b.stone_at(Move::new(7, 7).unwrap()), None);
@@ -662,8 +659,8 @@ mod tests {
         assert_eq!(b.stone_at(Move::new(7, 8).unwrap()), Some(Color::Black));
         assert_eq!(b.stone_at(Move::new(8, 7).unwrap()), Some(Color::Black));
 
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert!(maps.is_double_three(7, 7));
     }
@@ -697,10 +694,10 @@ mod tests {
             &board,
             ShowcaseName::Quiet,
             MapName::DoubleThrees,
-            "NdArray",
+            "flex",
         );
         assert!(out.contains("Map: double-three forks"));
-        assert!(out.contains("Backend: NdArray"));
+        assert!(out.contains("Backend: flex"));
         assert!(out.contains("●"));
     }
 }
@@ -723,7 +720,7 @@ Terminal demo binary.
 //!
 //! The binary renders one of the built-in showcase boards with a selected
 //! threat map overlaid as an ANSI-coloured heatmap. With the `gpu` feature
-//! enabled, `--gpu` runs the analysis on the `Wgpu` backend.
+//! enabled, `--gpu` runs the analysis on the `wgpu` backend.
 
 use std::env;
 use std::process;
@@ -731,9 +728,7 @@ use std::process;
 use patterns::net::{ThreatNet, analyze};
 use patterns::render::{MapName, ShowcaseName, render_heatmap, showcase_board, showcase_side};
 
-use burn::backend::NdArray;
-#[cfg(feature = "gpu")]
-use burn::backend::Wgpu;
+use burn::tensor::Device;
 
 /// Command-line configuration for the demo.
 #[derive(Debug, Clone, PartialEq)]
@@ -763,7 +758,7 @@ fn main() {
                  Options:\n\
                  --map <NAME>        Threat map to render (default: double_threes)\n\
                  --showcase <NAME>   Built-in position (default: double-three-fork)\n\
-                 --gpu               Run on the Wgpu backend (requires `gpu` feature)\n\
+                 --gpu               Run on the wgpu backend (requires `gpu` feature)\n\
                  --help              Print this help message\n\
                  \n\
                  Valid maps: wins, double_threats, double_threes,\n\
@@ -798,8 +793,8 @@ fn run_gpu(
     side: engine::Color,
     board: &engine::Board,
 ) -> Result<(), String> {
-    let device = Default::default();
-    let net = ThreatNet::<Wgpu>::new(&device);
+    let device = Device::wgpu(Default::default());
+    let net = ThreatNet::new(&device);
     let maps = analyze(&net, board, side, &device);
     print!("{}", render_heatmap(&maps, board, showcase, map, "Wgpu"));
     Ok(())
@@ -821,10 +816,10 @@ fn run_cpu(
     side: engine::Color,
     board: &engine::Board,
 ) -> Result<(), String> {
-    let device = Default::default();
-    let net = ThreatNet::<NdArray>::new(&device);
+    let device = Device::flex();
+    let net = ThreatNet::new(&device);
     let maps = analyze(&net, board, side, &device);
-    print!("{}", render_heatmap(&maps, board, showcase, map, "NdArray"));
+    print!("{}", render_heatmap(&maps, board, showcase, map, "flex"));
     Ok(())
 }
 
@@ -883,7 +878,7 @@ fn print_help() {
     println!("                      threes_h | threes_v | threes_dd | threes_du | policy");
     println!("  --showcase <NAME>   Built-in position (default: double-three-fork)");
     println!("                      double-three-fork | classic-fork | corner-fork | quiet");
-    println!("  --gpu               Run on the Wgpu backend (requires `gpu` feature)");
+    println!("  --gpu               Run on the wgpu backend (requires `gpu` feature)");
     println!("  --help              Print this help message");
 }
 
@@ -936,7 +931,7 @@ CPU-vs-GPU portability test.
 //!
 //! This test is only compiled when the `gpu` feature is enabled. It runs
 //! the full `analyze` pipeline and the `policy()` combiner on both the
-//! `NdArray` and `Wgpu` backends for a small set of fixed showcase boards
+//! flex and wgpu devices for a small set of fixed showcase boards
 //! and asserts exact equality.
 //!
 //! Exact equality is valid because every kernel weight and every input
@@ -945,7 +940,7 @@ CPU-vs-GPU portability test.
 
 #![cfg(feature = "gpu")]
 
-use burn::backend::{NdArray, Wgpu};
+use burn::tensor::Device;
 use patterns::net::ThreatNet;
 use patterns::potential::policy;
 use patterns::render::{ShowcaseName, showcase_board, showcase_side};
@@ -954,11 +949,11 @@ fn assert_maps_equal_cpu_gpu(showcase: ShowcaseName) {
     let board = showcase_board(showcase);
     let side = showcase_side(showcase);
 
-    let cpu_device = Default::default();
-    let gpu_device = Default::default();
+    let cpu_device = Device::flex();
+    let gpu_device = Device::wgpu(Default::default());
 
-    let cpu_net = ThreatNet::<NdArray>::new(&cpu_device);
-    let gpu_net = ThreatNet::<Wgpu>::new(&gpu_device);
+    let cpu_net = ThreatNet::new(&cpu_device);
+    let gpu_net = ThreatNet::new(&gpu_device);
 
     let cpu_maps = patterns::net::analyze(&cpu_net, &board, side, &cpu_device);
     let gpu_maps = patterns::net::analyze(&gpu_net, &board, side, &gpu_device);
@@ -999,4 +994,3 @@ fn quiet_position_cpu_gpu_equal() {
     assert_maps_equal_cpu_gpu(ShowcaseName::Quiet);
 }
 ````
-

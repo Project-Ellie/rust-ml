@@ -304,7 +304,7 @@ have finished the chapter and want to compare.
   workspace crate layout, the locked 128×10 architecture, and the
   determinism policy.
 * [`docs/11-pitfalls.md`](../../11-pitfalls.md) — the
-  `CompactRecorder` trap and other Burn 0.21 pitfalls relevant to
+  `CompactRecorder` trap and other Burn 0.22 pitfalls relevant to
   acceptance runs.
 * [`docs/tutorials/datagen-tutorial/08-acceptance.md`](../datagen-tutorial/08-acceptance.md)
   — the datagen acceptance ritual and default quotas that feed the

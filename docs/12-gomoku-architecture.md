@@ -217,9 +217,9 @@ release candidate, not an abandoned crate.
 | Choice | Version | Why this one | What we rejected, and why |
 |---|---|---|---|
 | Rust | 1.94, edition 2024 | Edition 2024 is stable since 1.85 (Feb 2025); let-chains and improved lifetime capture are genuinely useful in engine code | edition 2021 — no reason to stay behind |
-| Burn | **0.21.0, pinned** | Latest stable (2026-05-07). Our MNIST code and the whole tutorial are verified against it | 0.22-pre — removes the backend type parameter from `Tensor`/`Module`; half the ecosystem examples would be wrong |
-| GPU backend | `burn::backend::Wgpu` (Metal underneath) | The only Burn path to the M5 Max GPU. Verified in source: `Metal` and `Vulkan` are plain `Wgpu` aliases; CubeCL 0.10 + wgpu 29 underneath; IntElem i32 — same as Flex, so no dtype friction between CPU and GPU code | `cpu` (CubeCL CPU) — immature for training; LibTorch/Candle — deprecated in Burn |
-| CPU backend | `burn::backend::Flex` | Parity-test twin and fallback. Pure Rust, deterministic, already proven by our MNIST baseline | NdArray — legacy, the Burn project points new work to Flex |
+| Burn | **0.22.0, pinned** (`=0.22.0` in `gomoku/Cargo.toml`) | Latest stable (2026-05-07). The gomoku workspace is verified against it; the root MNIST curriculum deliberately stays on 0.21.0 | `main`/next prerelease — we upgrade deliberately when a new release lands, not by mixing `main`-branch code into the pin |
+| GPU backend | `Device::wgpu(Default::default())` (Metal underneath) | The only Burn path to the M5 Max GPU. `Metal` and `Vulkan` are `Wgpu` aliases; CubeCL + wgpu underneath; integer elements are `i32`, same as Flex, so no dtype friction between CPU and GPU code | `cpu` (CubeCL CPU) — immature for training; LibTorch/Candle — deprecated in Burn |
+| CPU backend | `Device::flex()` from `burn::tensor::Device` | Parity-test twin and fallback. Pure Rust, deterministic | NdArray — deprecated in Burn 0.22; Flex is the supported pure-Rust CPU backend |
 | Concurrency | `std::thread` + `crossbeam-channel` 0.5 | CPU-bound actors + bounded MPMC channels. `crossbeam-channel` gives us `select!`, which the evaluator's batch-collection loop needs for its timeout | **tokio — rejected, reasoning below**; rayon — fork-join parallelism is the wrong shape for long-running actors (kept in the toolbox for engine batch operations) |
 | Serialization | `bincode` 2 + `serde` | Stable 2.x, trivial with `#[derive(Serialize, Deserialize)]`, compact; used by Burn itself | rkyv — zero-copy is attractive for the replay buffer, but its `Archive` derive infects every struct with archive types; the buffer is not our bottleneck, simplicity wins |
 | CLI | `clap` 4 derive | Standard | — |
@@ -244,7 +244,7 @@ synchronous code. Async would be résumé-driven design here.
 **The Metal risk, stated plainly.** Burn-on-Metal works — our tutorial's
 inference would run on it today — but the issue tracker contains a
 deterministic report of all-NaN gradients during Wgpu/Metal *training* on
-Apple silicon (issue #5162, Burn 0.21.0, M4 Pro) and an autotune-related
+Apple silicon (issue #5162, Burn 0.22.0, M4 Pro) and an autotune-related
 wrong-kernel report for 1×1 convolutions (issue #5626). Both patterns —
 backward passes and 1×1 convs — are load-bearing in our network
 (1×1 convs are both heads). Therefore: **GPU training is gated on a
@@ -264,7 +264,7 @@ sight.
 
 ```text
 gomoku/
-├── Cargo.toml            # workspace, pinned burn = "=0.21.0"
+├── Cargo.toml            # workspace, pinned burn = "=0.22.0"
 ├── crates/
 │   ├── engine/           # rules, board, moves, win detection, symmetries,
 │   │                     # tactics, Swap2 opening, board→planes encoding
@@ -655,7 +655,7 @@ to a strong one*, and distrust any plan more precise than that.
 ### Input planes
 
 Per position, the engine's encoder emits `u8` plane arrays of shape
-`[C, 17, 17]` (Burn-free; `net` converts them to `Tensor<B, 4>` of
+`[C, 17, 17]` (Burn-free; `net` converts them to `Tensor<4>` of
 shape `[batch, C, 17, 17]`). The planes are 17×17, not 15×15: the
 border ring is always set in the "you" plane, so same-padding
 convolutions read the board edge as a wall of opponent stones — exactly
@@ -731,7 +731,8 @@ Every layer here is one we used in the MNIST tutorial (`Conv2d`,
 directly, AlphaZero-style). The residual add is `x + block(x)` on
 tensors. The module is a `#[derive(Module)]` struct with a
 `#[derive(Config)]` — chapters 3 and 6 of the tutorial, verbatim
-patterns, one type parameter away from CPU or GPU.
+patterns. In Burn 0.22 the model has no backend type parameter; CPU vs
+GPU is decided by the `Device` passed to `Config::init`.
 
 One deliberate omission: **no global pooling** (KataGo's value/policy
 heads pool mean + scaled-mean + max per channel, 1.60× ablation factor
@@ -910,7 +911,7 @@ Papers (links verified 2026-09-14):
   under freestyle rules); community VCF exercise collections in
   piskvork-era formats, provenance and licensing unclear.
 - Apple M5 Max: apple.com/newsroom/2026/08 (Mac Studio announcement) + apple.com/mac-studio/specs
-- Burn issues: #5162 (Metal NaN gradients), #5626 (autotune 1×1 conv), burn v0.21.0 tag + Cargo.lock (wgpu 29 via CubeCL 0.10)
+- Burn issues: #5162 (Metal NaN gradients), #5626 (autotune 1×1 conv), burn v0.22.0 tag + Cargo.lock (wgpu 29 via CubeCL 0.10)
 
 **The honesty ledger** — values the folklore gets wrong, stated plainly:
 

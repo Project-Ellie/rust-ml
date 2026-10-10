@@ -169,14 +169,19 @@ playouts, stopped before terminal). Deterministic seeds throughout.
 
 ## 6. The backend story
 
-The crate is backend-generic (`B: Backend`) from the first line. The
-default is `NdArray` (pure Rust, CPU): the gates must pass identically
-on every machine, and the dependency tree stays light. An opt-in
-`gpu` feature (`burn/wgpu`) runs the *same* network with the *same*
-weights on GPU; `tests/gpu_port.rs` asserts exact CPU-vs-GPU equality.
+Burn 0.22 removed the `B: Backend` type parameter from user-facing
+tensors and modules. The crate selects its execution target through a
+type-erased `burn::tensor::Device`: `Device::flex()` for the pure-Rust
+CPU backend and `Device::wgpu(Default::default())` for the GPU. The
+default is `Flex` (pure Rust, CPU): the gates pass identically on every
+machine, and the dependency tree stays light. An opt-in `gpu` feature
+(`burn/wgpu`) runs the *same* network with the *same* weights on GPU;
+`tests/gpu_port.rs` asserts exact CPU-vs-GPU equality.
 Exactness is by construction: every input and weight is a small
 integer, so f32 sums are exact on any backend — no epsilons anywhere
-in this tutorial. The GPU section is not about speed (the workload is
+in this tutorial. The workspace pins Burn to the latest release
+exactly in `gomoku/Cargo.toml`; upgrades are deliberate, not
+accidental. The GPU section is not about speed (the workload is
 microscopic); it is about making Burn's backend abstraction concrete
 before the net tutorial trains on GPU.
 

@@ -45,7 +45,7 @@ use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::optim::lr_scheduler::linear::LinearLrSchedulerConfig;
 use burn::optim::{AdamW, GradientsParams, Optimizer};
 use burn::prelude::ElementConversion;
-use burn::tensor::backend::AutodiffBackend;
+use burn::tensor::Device;
 use train::Sample;
 
 use crate::batcher::{NetBatch, NetBatcher};
@@ -120,18 +120,18 @@ pub struct EvalMetrics {
 ///
 /// Returns the trained model, the per-step training metrics, and any
 /// holdout evaluation metrics.
-pub fn train<B: AutodiffBackend>(
-    mut model: Model<B>,
+pub fn train(
+    mut model: Model,
     config: &TrainConfig,
     train_samples: Vec<Sample>,
     holdout_samples: Vec<Sample>,
-    device: &B::Device,
-) -> (Model<B>, Vec<StepMetrics>, Vec<EvalMetrics>) {
-    B::seed(device, config.seed);
+    device: &Device,
+) -> (Model, Vec<StepMetrics>, Vec<EvalMetrics>) {
+    device.seed(config.seed);
 
     let mut optimizer = AdamWConfig::new()
         .with_weight_decay(config.weight_decay)
-        .init::<B, Model<B>>();
+        .init();
     let mut scheduler = build_scheduler(config);
 
     let train_dataset = InMemDataset::new(train_samples);
@@ -200,13 +200,13 @@ fn build_scheduler(
         .expect("composed scheduler valid")
 }
 
-fn training_step<B: AutodiffBackend>(
-    model: &mut Model<B>,
-    batch: &NetBatch<B>,
-    optimizer: &mut OptimizerAdaptor<AdamW, Model<B>, B>,
+fn training_step(
+    model: &mut Model,
+    batch: &NetBatch,
+    optimizer: &mut OptimizerAdaptor<AdamW, Model>,
     lr: f64,
-    _device: &B::Device,
-) -> burn::tensor::Tensor<B, 1> {
+    _device: &Device,
+) -> burn::tensor::Tensor<1> {
     let output = model.forward(batch.input.clone());
     let loss = loss::compute_loss(LossInput {
         policy_logits: output.policy,
@@ -221,10 +221,10 @@ fn training_step<B: AutodiffBackend>(
     loss.detach()
 }
 
-fn evaluate<B: AutodiffBackend>(
-    model: &Model<B>,
-    loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<B, NetBatch<B>>>,
-    _device: &B::Device,
+fn evaluate(
+    model: &Model,
+    loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<NetBatch>>,
+    _device: &Device,
 ) -> EvalMetrics {
     let mut total_loss = 0.0f32;
     let mut total_policy_correct = 0u64;
@@ -276,16 +276,13 @@ fn evaluate<B: AutodiffBackend>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::flex::FlexDevice;
-    use burn::backend::{Autodiff, Flex};
+    use burn::tensor::Device;
     use burn::data::dataloader::batcher::Batcher;
     use engine::Move;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use train::Sample;
     use train::collect::{Quotas, collect};
-
-    type B = Autodiff<Flex>;
 
     fn mv(r: u8, c: u8) -> Move {
         Move::new(r, c).unwrap()
@@ -307,17 +304,17 @@ mod tests {
 
     #[test]
     fn single_batch_overfit_loss_decreases() {
-        let device = FlexDevice;
-        let model: Model<B> = crate::network::ModelConfig::tiny().init(&device);
+        let device = Device::flex();
+        let model: Model = crate::network::ModelConfig::tiny().init(&device);
 
         // One fixed batch with a strong, learnable signal.
         let sample = sample_with_policy(vec![(mv(0, 0), 1.0)], 1.0);
         let batcher = NetBatcher::holdout();
-        let batch: NetBatch<B> = batcher.batch(vec![sample.clone(); 16], &device);
+        let batch: NetBatch = batcher.batch(vec![sample.clone(); 16], &device);
 
         let mut optimizer = AdamWConfig::new()
             .with_weight_decay(1e-4)
-            .init::<B, Model<B>>();
+            .init();
         let mut model = model;
 
         let initial_loss = {
@@ -353,7 +350,7 @@ mod tests {
 
     #[test]
     fn seeded_training_is_reproducible() {
-        let device = FlexDevice;
+        let device = Device::flex();
         let samples = tiny_dataset(
             42,
             Quotas {
@@ -379,7 +376,7 @@ mod tests {
 
         // Warm up the backend so any lazy compilation / kernel selection
         // happens before the reproducibility comparison.
-        let warm_model: Model<B> = crate::network::ModelConfig::tiny().init(&device);
+        let warm_model: Model = crate::network::ModelConfig::tiny().init(&device);
         let _ = train(
             warm_model,
             &config,
@@ -390,7 +387,7 @@ mod tests {
 
         // Start from the same model state for both runs. This isolates
         // training-loop determinism from model-init backend quirks.
-        let base_model: Model<B> = crate::network::ModelConfig::tiny().init(&device);
+        let base_model: Model = crate::network::ModelConfig::tiny().init(&device);
         let model_a = base_model.clone();
         let model_b = base_model;
 

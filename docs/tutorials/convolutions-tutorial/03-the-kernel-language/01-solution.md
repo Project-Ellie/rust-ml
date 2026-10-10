@@ -37,8 +37,7 @@
 use burn::module::Param;
 use burn::nn::PaddingConfig2d;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, TensorData};
+use burn::tensor::{Device, Tensor, TensorData};
 
 /// Side length of the uniform square kernel footprint.
 pub const KERNEL: usize = 11;
@@ -231,17 +230,17 @@ pub fn pattern_table() -> Vec<PatternEntry> {
 /// The returned conv uses valid padding and a ReLU activation (the
 /// caller supplies the activation by calling `forward` in the normal
 /// Burn way).
-pub fn layer1_conv<B: Backend>(device: &B::Device) -> Conv2d<B> {
+pub fn layer1_conv(device: &Device) -> Conv2d {
     let table = pattern_table();
 
-    let conv: Conv2d<B> = Conv2dConfig::new([2, LAYER1_OUT], [KERNEL, KERNEL])
+    let conv: Conv2d = Conv2dConfig::new([2, LAYER1_OUT], [KERNEL, KERNEL])
         .with_padding(PaddingConfig2d::Valid)
         .with_bias(true)
         .init(device);
 
-    // Burn 0.21 has no weight setter, so init-from-config gives us the
+    // Burn 0.22 has no weight setter, so init-from-config gives us the
     // metadata; `weight`/`bias` are then replaced via `Param::from_tensor`.
-    // See SPIKE.md.
+    // See gomoku/crates/patterns/tests/spike.rs.
     let mut weight = vec![0.0f32; LAYER1_OUT * 2 * KERNEL * KERNEL];
     let mut bias = vec![0.0f32; LAYER1_OUT];
 
@@ -261,11 +260,11 @@ pub fn layer1_conv<B: Backend>(device: &B::Device) -> Conv2d<B> {
         }
     }
 
-    let weight_tensor = Tensor::<B, 4>::from_data(
+    let weight_tensor = Tensor::<4>::from_data(
         TensorData::new(weight, [LAYER1_OUT, 2, KERNEL, KERNEL]),
         device,
     );
-    let bias_tensor = Tensor::<B, 1>::from_data(TensorData::new(bias, [LAYER1_OUT]), device);
+    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER1_OUT]), device);
 
     Conv2d {
         weight: Param::from_tensor(weight_tensor),
@@ -287,17 +286,17 @@ pub fn layer1_conv<B: Backend>(device: &B::Device) -> Conv2d<B> {
 /// * `1..=4` — five-completing cells created in each direction
 ///   (`Horizontal`, `Vertical`, `DiagDown`, `DiagUp`).
 /// * `5..=8` — open-three makers in each direction.
-pub fn layer2_conv<B: Backend>(device: &B::Device) -> Conv2d<B> {
+pub fn layer2_conv(device: &Device) -> Conv2d {
     let table = pattern_table();
 
-    let conv: Conv2d<B> = Conv2dConfig::new([LAYER1_OUT, LAYER2_OUT], [1, 1])
+    let conv: Conv2d = Conv2dConfig::new([LAYER1_OUT, LAYER2_OUT], [1, 1])
         .with_padding(PaddingConfig2d::Valid)
         .with_bias(true)
         .init(device);
 
-    // Burn 0.21 has no weight setter, so init-from-config gives us the
+    // Burn 0.22 has no weight setter, so init-from-config gives us the
     // metadata; `weight`/`bias` are then replaced via `Param::from_tensor`.
-    // See SPIKE.md.
+    // See gomoku/crates/patterns/tests/spike.rs.
     let mut weight = vec![0.0f32; LAYER2_OUT * LAYER1_OUT];
     let bias = vec![0.0f32; LAYER2_OUT];
 
@@ -326,11 +325,11 @@ pub fn layer2_conv<B: Backend>(device: &B::Device) -> Conv2d<B> {
         }
     }
 
-    let weight_tensor = Tensor::<B, 4>::from_data(
+    let weight_tensor = Tensor::<4>::from_data(
         TensorData::new(weight, [LAYER2_OUT, LAYER1_OUT, 1, 1]),
         device,
     );
-    let bias_tensor = Tensor::<B, 1>::from_data(TensorData::new(bias, [LAYER2_OUT]), device);
+    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER2_OUT]), device);
 
     Conv2d {
         weight: Param::from_tensor(weight_tensor),

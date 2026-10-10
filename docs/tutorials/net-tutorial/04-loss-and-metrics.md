@@ -4,7 +4,7 @@
 
 This chapter adds the loss functions and training metrics to the `net`
 crate. The policy loss is a hand-rolled soft-target cross entropy,
-because Burn 0.21's built-in cross entropy expects hard class indices
+because Burn 0.22's built-in cross entropy expects hard class indices
 and the policy target `π` is a probability distribution. The value loss
 is mean squared error. The two are summed into the combined loss used
 for backpropagation. Two metrics — policy top-1 agreement and value-sign
@@ -25,7 +25,7 @@ have `loss.rs` with five hand-verified tests.
 
 ## Context
 
-Chapter 3 built the network module: a `Model<B>` that maps a `[B, 4, 17,
+Chapter 3 built the network module: a `Model` that maps a `[B, 4, 17,
 17]` input to policy logits `[B, 225]` and a value `[B, 1]`. This
 chapter closes the supervised-learning loop by defining what "better"
 means. The loss function is the scalar that backpropagation minimizes;
@@ -38,30 +38,30 @@ policy cross-entropy against the visit-count distribution `π` plus value
 mean squared error, combined by simple summation. The catch is that
 `π` is a soft target: it distributes mass over many moves (for example,
 90 % over a tactical set and 10 % uniform over the rest, as produced by
-the datagen tutorial). Burn 0.21's `CrossEntropyLoss::forward` takes
-`targets: Tensor<B, 1, Int>` — hard class indices — so the policy loss
+the datagen tutorial). Burn 0.22's `CrossEntropyLoss::forward` takes
+`targets: Tensor<1, Int>` — hard class indices — so the policy loss
 must be written by hand. That is invention I4.
 
 ## Intention
 
 1. Create `gomoku/crates/net/src/loss.rs` and register
    `pub mod loss;` in `gomoku/crates/net/src/lib.rs`.
-2. Define `LossInput<B: Backend>` to bundle policy logits, policy
+2. Define `LossInput` to bundle policy logits, policy
 target, value prediction, and value target.
-3. Define `LossOutput<B: Backend>` to hold the three scalar loss values
+3. Define `LossOutput` to hold the three scalar loss values
    (`total`, `policy`, `value`) pulled back to the host.
-4. Implement `compute_loss<B: Backend>(input: LossInput<B>) ->
-   Tensor<B, 1>` as `policy_loss + value_loss`.
+4. Implement `compute_loss(input: LossInput) ->
+   Tensor<1>` as `policy_loss + value_loss`.
 5. Implement `policy_loss` by hand:
    * `log_probs = log_softmax(logits, 1)`;
    * `-(target * log_probs).sum_dim(1).mean()`.
 6. Implement `value_loss` as MSE:
    * `(pred - target).powf_scalar(2.0).mean()`.
-7. Implement `compute_metrics<B: Backend>(...)`:
+7. Implement `compute_metrics(...)`:
    * policy top-1 accuracy using `argmax(1).squeeze_dim::<1>(1)` and
      element-wise equality;
    * value-sign accuracy using `greater_elem(0.0).int()` and equality.
-8. Add a helper `loss_scalar<B: Backend>(loss: &Tensor<B, 1>) -> f32`
+8. Add a helper `loss_scalar(loss: &Tensor<1>) -> f32`
    for logging.
 9. Write five tests on hand-computed values:
    * one-sample soft-target CE against the known `log_softmax` numbers;
@@ -79,11 +79,11 @@ Observable done-state: `cargo test -p net` passes, `cargo clippy
 
 ### Why the policy loss cannot use `CrossEntropyLoss`
 
-Burn 0.21 provides `burn::nn::loss::CrossEntropyLoss`. Its `forward`
+Burn 0.22 provides `burn::nn::loss::CrossEntropyLoss`. Its `forward`
 signature is:
 
 ```rust
-pub fn forward(&self, logits: Tensor<B, 2>, targets: Tensor<B, 1, Int>) -> Tensor<B, 1>
+pub fn forward(&self, logits: Tensor<2>, targets: Tensor<1, Int>) -> Tensor<1>
 ```
 
 The target is a one-dimensional integer tensor of class indices. The
@@ -108,7 +108,7 @@ it is the correct formula for the problem. The expression
 > let correct = pred_argmax.equal(target_argmax);
 > ```
 >
-> This fails to compile in Burn 0.21 because `argmax(1)` on a `[B,
+> This fails to compile in Burn 0.22 because `argmax(1)` on a `[B,
 > 225]` tensor returns `[B, 1]`, not `[B]`. The two `[B, 1]` tensors can
 > be compared, but the result is also `[B, 1]`, and reducing it requires
 > an extra `squeeze`. The documented fix from
@@ -167,36 +167,35 @@ hand-rolled soft-target cross entropy and cite invention I4.
 use burn::prelude::ElementConversion;
 use burn::tensor::Tensor;
 use burn::tensor::activation::log_softmax;
-use burn::tensor::backend::Backend;
 ```
 
-`LossInput<B: Backend>`:
+`LossInput`:
 
 ```rust
 #[derive(Debug, Clone)]
-pub struct LossInput<B: Backend> {
-    pub policy_logits: Tensor<B, 2>,
-    pub policy_target: Tensor<B, 2>,
-    pub value_pred: Tensor<B, 2>,
-    pub value_target: Tensor<B, 2>,
+pub struct LossInput {
+    pub policy_logits: Tensor<2>,
+    pub policy_target: Tensor<2>,
+    pub value_pred: Tensor<2>,
+    pub value_target: Tensor<2>,
 }
 ```
 
-`LossOutput<B: Backend>`:
+`LossOutput`:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LossOutput<B: Backend> {
-    pub total: B::FloatElem,
-    pub policy: B::FloatElem,
-    pub value: B::FloatElem,
+pub struct LossOutput {
+    pub total: f32,
+    pub policy: f32,
+    pub value: f32,
 }
 ```
 
 `compute_loss`:
 
 ```rust
-pub fn compute_loss<B: Backend>(input: LossInput<B>) -> Tensor<B, 1> {
+pub fn compute_loss(input: LossInput) -> Tensor<1> {
     let policy = policy_loss(input.policy_logits, input.policy_target);
     let value = value_loss(input.value_pred, input.value_target);
     policy + value
@@ -206,7 +205,7 @@ pub fn compute_loss<B: Backend>(input: LossInput<B>) -> Tensor<B, 1> {
 `policy_loss`:
 
 ```rust
-fn policy_loss<B: Backend>(logits: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor<B, 1> {
+fn policy_loss(logits: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     let log_probs = log_softmax(logits, 1);
     -(target * log_probs).sum_dim(1).mean()
 }
@@ -215,7 +214,7 @@ fn policy_loss<B: Backend>(logits: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor
 `value_loss`:
 
 ```rust
-fn value_loss<B: Backend>(pred: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor<B, 1> {
+fn value_loss(pred: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     let diff = pred - target;
     diff.powf_scalar(2.0).mean()
 }
@@ -224,11 +223,11 @@ fn value_loss<B: Backend>(pred: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor<B,
 `compute_metrics`:
 
 ```rust
-pub fn compute_metrics<B: Backend>(
-    policy_logits: &Tensor<B, 2>,
-    policy_target: &Tensor<B, 2>,
-    value_pred: &Tensor<B, 2>,
-    value_target: &Tensor<B, 2>,
+pub fn compute_metrics(
+    policy_logits: &Tensor<2>,
+    policy_target: &Tensor<2>,
+    value_pred: &Tensor<2>,
+    value_target: &Tensor<2>,
 ) -> Metrics {
     let batch = policy_logits.dims()[0];
 
@@ -252,7 +251,7 @@ pub fn compute_metrics<B: Backend>(
 `loss_scalar`:
 
 ```rust
-pub fn loss_scalar<B: Backend>(loss: &Tensor<B, 1>) -> f32 {
+pub fn loss_scalar(loss: &Tensor<1>) -> f32 {
     loss.clone().into_scalar().elem()
 }
 ```
@@ -268,16 +267,13 @@ pub struct Metrics {
 
 ### Tests
 
-Use `burn::backend::Flex` and `burn::backend::flex::FlexDevice`:
+Use `burn::tensor::Device`:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
-    use burn::backend::flex::FlexDevice;
-
-    type B = Flex;
+    use burn::tensor::Device;
 }
 ```
 
@@ -337,6 +333,6 @@ Next: Chapter 05 — The manual training loop.
   dimension-keeping trap and the batch-size-weighted metric trap.
 * [`docs/tutorials/datagen-tutorial/03-tactics-labels.md`](../datagen-tutorial/03-tactics-labels.md) —
   how the policy target `π` and value target `z` are produced.
-* Burn 0.21.0 source, `burn-nn-0.21.0/src/loss/cross_entropy.rs` —
+* Burn 0.22.0 source, `burn-nn-0.22.0/src/loss/cross_entropy.rs` —
   verifies that `CrossEntropyLoss::forward` takes hard `Int` targets,
   which is why the policy loss is hand-rolled.

@@ -116,7 +116,7 @@ another. They are independent in almost every way:
 |---------|--------|
 | 9×9 conv kernels | Plain `for` loops over board windows |
 | Declarative pattern table | Three hard-coded boolean windows |
-| Backend-generic tensors | Direct `Board` / `MoveSet` engine types |
+| Type-erased `Device` tensors | Direct `Board` / `MoveSet` engine types |
 | Layer-2 1×1 combiner | Per-direction `MoveSet` union |
 
 When two such different pieces of code agree on thousands of random

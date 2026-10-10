@@ -22,12 +22,12 @@ reference crate, quoted verbatim (extract-and-diff verified).
 //! maps*: scores for every empty cell according to what happens if the side
 //! plays there.
 //!
-//! The crate is backend-generic (`B: Backend`) from the first line. The
-//! default backend is `NdArray`; an opt-in `gpu` feature enables the `Wgpu`
-//! backend for the same code.
+//! The crate has no backend type parameter. The default device is
+//! `Device::flex()`; an opt-in `gpu` feature enables the `wgpu` device for
+//! the same code.
 //!
-//! See `SPIKE.md` for the verified Burn 0.21 idioms used to build the
-//! network.
+//! See `gomoku/crates/patterns/tests/spike.rs` for the verified Burn 0.22
+//! idioms used to build the network.
 
 #![deny(missing_docs)]
 

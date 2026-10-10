@@ -65,12 +65,11 @@ commit message).
 - **No `net → mcts` edge.** The workspace layout deliberately has no
   such dependency; the network learns from `train` labels, not from
   search visit counts.
-- **Burn is pinned to `=0.21.0`.** Verify every API against the pinned
-  source (`~/.cargo/registry/src/*/burn-*-0.21.0/`) or the verified
-  `burn-ml-coach` reference (`burn-api-0.21.md`); never blogs, never
+- **Burn is pinned to `=0.22.0`.** Verify every API against the pinned
+  source (`~/.cargo/registry/src/*/burn-*-0.22.0/`) or the verified
+  `burn-ml-coach` reference (`burn-api-0.22.md`); never blogs, never
   0.22/main-branch docs.
-- **Training code is generic over `AutodiffBackend`; inference over
-  `Backend`; the binary picks concrete backends.**
+- **Training uses an autodiff device (`device.autodiff()`); inference uses a plain device (`Device::flex()` or `Device::wgpu(...)`); the binary picks the device.**
 - **Commit after every step**, with the message the chapter names.
   Small commits are the tutorial's undo button.
 - Stuck >20 minutes → coaching conversation (or the solution folder),
@@ -82,7 +81,7 @@ commit message).
 | # | Chapter | What lands | Primer § |
 |---|---------|-----------|----------|
 | 00 | [Primer: phase-0 supervised training](00-net-primer.md) | design authority: Burn/app split, network anatomy, signal ladder, manual loop, determinism policy, deferred work | — |
-| 01 | [The `net` crate + planes](01-planes-and-the-net-crate.md) | workspace wiring, burn `=0.21.0`, 4-plane assembly from `Board`+history (I1), tensor-ready plane layout, tests: shapes, semantics, last-move one-hots, empty-history edge | §2 |
+| 01 | [The `net` crate + planes](01-planes-and-the-net-crate.md) | workspace wiring, burn `=0.22.0`, 4-plane assembly from `Board`+history (I1), tensor-ready plane layout, tests: shapes, semantics, last-move one-hots, empty-history edge | §2 |
 | 02 | [The batcher + D4 augmentation](02-the-batcher-and-d4-augmentation.md) | `NetBatcher` (I2), scatter π → 225 (I3), D4 at batch time, train-split-only (I8), tests: batch shapes, mass preservation, canonical holdout, seed determinism | §2, §3 |
 | 03 | The network module | `Module` derive, conv stem 4→128, residual block ×10, policy head →225 logits, value head →tanh scalar; tests: output shapes, seeded init determinism, tiny-config variant (I7) | §2 |
 | 04 | Loss + metrics | hand-rolled soft-target CE (I4) + value MSE + combined loss; metrics: policy-argmax agreement, value-sign accuracy | §3 |
@@ -102,10 +101,11 @@ store-games replay buffer.
 
 ## Status
 
-- 2026-10-04 — tutorial written, reference implementation verified
-  (32 tests, clippy/fmt clean; reduced-scale smoke: 1500 samples, mid
-  config 32ch×4blocks, 200 steps, ~83s release, train loss
-  6.239→6.001). No chapters started yet.
+- 2026-10-04 — tutorial written and aligned to **Burn 0.22.0**
+  (reference code updated for `Tensor<D>`, non-generic `Module`, and
+  `Device`-based backend selection). No chapters started yet; the
+  reduced-scale smoke numbers below are from the 0.21-era reference
+  and will be re-verified against 0.22 when the crate is built.
 
 Keep this section current as chapters land.
 
@@ -127,6 +127,6 @@ Keep this section current as chapters land.
 - [docs/tutorials/datagen-tutorial/](../datagen-tutorial/) — format
   precedent + data source (`Sample`, `read_dataset`, `is_holdout`).
 - [docs/tutorials/convolutions-tutorial/](../convolutions-tutorial/) —
-  Burn 0.21 usage precedent.
+  Burn 0.22 usage precedent.
 - [00-net-primer.md](00-net-primer.md) — the design authority for this
   tutorial.

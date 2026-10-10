@@ -83,7 +83,7 @@ lists the source in the references at the end.
   (§6.2); implemented by the test mock, the in-process network
   wrapper, or the self-play batching client.
 - **Burn** — the Rust deep-learning framework this project uses
-  (pinned to 0.21.0). Only the `net` crate depends on it; `engine`
+  (pinned to 0.22.0). Only the `net` crate depends on it; `engine`
   and `mcts` deliberately do not.
 - **Swap2** — the balanced opening protocol: one player places the
   first stones, the other player then chooses which color to play
@@ -514,7 +514,7 @@ Board (engine, stride-16 bitboards, absolute colors)
 Planes [C,17,17] u8  (me/you relative view, border ring = opponent)
   │  net crate converts             — the ONLY Burn-aware seam
   ▼
-Tensor<B,4> [batch,C,17,17]
+Tensor<4> [batch,C,17,17]
   │  forward
   ▼
 (policy logits [batch,225], value [batch,1])

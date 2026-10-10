@@ -57,7 +57,7 @@ pattern already established in the datagen tutorial.
    * Missing value for a flag → `Err("--flag requires a value")`.
 4. `main()` prints usage to `stderr` and exits `2` on parse failure.
 5. `run(args)` performs the training:
-   * Pick `Autodiff<Flex>` and `FlexDevice`.
+   * Pick `Device::flex().autodiff()` for training.
    * Load or generate the dataset.
    * Split into train and holdout with `train::split::is_holdout`.
    * Initialize the model from the config.
@@ -100,6 +100,7 @@ The more important reason is testability. `parse_args` takes a generic
 That lets unit tests feed it vectors of strings and assert on the
 result without spawning processes. It also lets the integration test
 use `std::process::Command` while the unit tests stay fast and
+use burn::tensor::Device;
 hermetic.
 
 ### Why `tiny` is the default config
@@ -179,7 +180,7 @@ gomoku/crates/net/
 
 Implementation notes:
 
-* `use burn::backend::flex::FlexDevice; use burn::backend::{Autodiff, Flex};`
+* `use burn::tensor::Device;`
 * `use net::checkpoint::{RunJournal, save_checkpoint};`
 * `use net::network::{Model, ModelConfig};`
 * `use net::train::{EvalMetrics, StepMetrics, TrainConfig, train};`
@@ -190,13 +191,13 @@ Implementation notes:
   message, print usage, and `process::exit(2)`. On `run` error, print
   the message and `process::exit(1)`.
 * `run(args)`:
-  1. `type B = Autodiff<Flex>; let device = FlexDevice;`
+  1. `let device = Device::flex().autodiff();`
   2. Print config summary to `stderr`.
   3. `let (train_samples, holdout_samples) = load_or_generate_data(&args)?;`
-  4. `let model: Model<B> = args.config.init(&device);`
+  4. `let model: Model = args.config.init(&device);`
   5. `let (model, step_metrics, eval_metrics) = train(...);`
   6. Build `RunJournal` from the last step/eval metrics.
-  7. `save_checkpoint::<B>(&model, &journal, &args.out_dir)`.
+  7. `save_checkpoint(&model, &journal, &args.out_dir)`.
   8. `print_report(...)`.
 * `load_or_generate_data` reads `train::dataset::read_dataset` if
   `data_dir` is set, otherwise calls `collect` with tiny quotas and

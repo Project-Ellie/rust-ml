@@ -39,48 +39,47 @@ pub mod train;
 use burn::prelude::ElementConversion;
 use burn::tensor::Tensor;
 use burn::tensor::activation::log_softmax;
-use burn::tensor::backend::Backend;
 
 /// Network output and target batch bundled for loss computation.
 #[derive(Debug, Clone)]
-pub struct LossInput<B: Backend> {
+pub struct LossInput {
     /// Policy logits of shape `[B, 225]`.
-    pub policy_logits: Tensor<B, 2>,
+    pub policy_logits: Tensor<2>,
     /// Dense policy target of shape `[B, 225]`.
-    pub policy_target: Tensor<B, 2>,
+    pub policy_target: Tensor<2>,
     /// Value prediction of shape `[B, 1]`.
-    pub value_pred: Tensor<B, 2>,
+    pub value_pred: Tensor<2>,
     /// Value target of shape `[B, 1]`.
-    pub value_target: Tensor<B, 2>,
+    pub value_target: Tensor<2>,
 }
 
 /// Loss values for logging.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LossOutput<B: Backend> {
+pub struct LossOutput {
     /// Combined loss (policy CE + value MSE).
-    pub total: B::FloatElem,
+    pub total: f32,
     /// Soft-target cross-entropy loss.
-    pub policy: B::FloatElem,
+    pub policy: f32,
     /// Mean squared error on the value head.
-    pub value: B::FloatElem,
+    pub value: f32,
 }
 
 /// Compute combined policy + value loss.
-pub fn compute_loss<B: Backend>(input: LossInput<B>) -> Tensor<B, 1> {
+pub fn compute_loss(input: LossInput) -> Tensor<1> {
     let policy = policy_loss(input.policy_logits, input.policy_target);
     let value = value_loss(input.value_pred, input.value_target);
     policy + value
 }
 
 /// Soft-target cross entropy.
-fn policy_loss<B: Backend>(logits: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor<B, 1> {
+fn policy_loss(logits: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     let log_probs = log_softmax(logits, 1);
     // Element-wise π · log p, sum over moves, mean over batch.
     -(target * log_probs).sum_dim(1).mean()
 }
 
 /// Mean squared error on the value head.
-fn value_loss<B: Backend>(pred: Tensor<B, 2>, target: Tensor<B, 2>) -> Tensor<B, 1> {
+fn value_loss(pred: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     let diff = pred - target;
     diff.powf_scalar(2.0).mean()
 }
@@ -96,11 +95,11 @@ pub struct Metrics {
 /// Compute metrics from raw model outputs and targets.
 ///
 /// All tensors are on the backend; the result is pulled back to the host.
-pub fn compute_metrics<B: Backend>(
-    policy_logits: &Tensor<B, 2>,
-    policy_target: &Tensor<B, 2>,
-    value_pred: &Tensor<B, 2>,
-    value_target: &Tensor<B, 2>,
+pub fn compute_metrics(
+    policy_logits: &Tensor<2>,
+    policy_target: &Tensor<2>,
+    value_pred: &Tensor<2>,
+    value_target: &Tensor<2>,
 ) -> Metrics {
     let batch = policy_logits.dims()[0];
 
@@ -123,24 +122,21 @@ pub fn compute_metrics<B: Backend>(
 }
 
 /// Convenience: extract a scalar loss value for logging.
-pub fn loss_scalar<B: Backend>(loss: &Tensor<B, 1>) -> f32 {
+pub fn loss_scalar(loss: &Tensor<1>) -> f32 {
     loss.clone().into_scalar().elem()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
-    use burn::backend::flex::FlexDevice;
+    use burn::tensor::Device;
 
-    type B = Flex;
-
-    fn logits_and_target() -> (FlexDevice, Tensor<B, 2>, Tensor<B, 2>) {
-        let device = FlexDevice;
+    fn logits_and_target() -> (Device, Tensor<2>, Tensor<2>) {
+        let device = Device::flex();
         // One sample, three moves. Logits strongly favor move 0.
-        let logits = Tensor::<B, 2>::from_floats([[2.0, 1.0, 0.0]], &device);
+        let logits = Tensor::<2>::from_floats([[2.0, 1.0, 0.0]], &device);
         // Target puts 80% on move 0, 20% on move 1.
-        let target = Tensor::<B, 2>::from_floats([[0.8, 0.2, 0.0]], &device);
+        let target = Tensor::<2>::from_floats([[0.8, 0.2, 0.0]], &device);
         (device, logits, target)
     }
 
@@ -160,9 +156,9 @@ mod tests {
 
     #[test]
     fn value_loss_is_mse() {
-        let device = FlexDevice;
-        let pred = Tensor::<B, 2>::from_floats([[0.5], [-0.5], [0.0]], &device);
-        let target = Tensor::<B, 2>::from_floats([[1.0], [-1.0], [0.0]], &device);
+        let device = Device::flex();
+        let pred = Tensor::<2>::from_floats([[0.5], [-0.5], [0.0]], &device);
+        let target = Tensor::<2>::from_floats([[1.0], [-1.0], [0.0]], &device);
         let loss = value_loss(pred, target);
         let loss: f32 = loss.into_scalar().elem();
         // MSE = (0.25 + 0.25 + 0) / 3 = 0.1667
@@ -172,8 +168,8 @@ mod tests {
     #[test]
     fn combined_loss_is_sum() {
         let (device, logits, target) = logits_and_target();
-        let value_pred = Tensor::<B, 2>::from_floats([[0.5]], &device);
-        let value_target = Tensor::<B, 2>::from_floats([[1.0]], &device);
+        let value_pred = Tensor::<2>::from_floats([[0.5]], &device);
+        let value_target = Tensor::<2>::from_floats([[1.0]], &device);
 
         let total = compute_loss(LossInput {
             policy_logits: logits.clone(),
@@ -192,16 +188,16 @@ mod tests {
 
     #[test]
     fn metrics_count_correct_argmax_and_sign() {
-        let device = FlexDevice;
+        let device = Device::flex();
         // Batch of 2.
         // Sample 0: pred argmax=1, target argmax=1; pred sign +, target sign +.
         // Sample 1: pred argmax=0, target argmax=2; pred sign +, target sign -.
         let policy_logits =
-            Tensor::<B, 2>::from_floats([[0.0, 2.0, 1.0], [2.0, 0.0, 0.0]], &device);
+            Tensor::<2>::from_floats([[0.0, 2.0, 1.0], [2.0, 0.0, 0.0]], &device);
         let policy_target =
-            Tensor::<B, 2>::from_floats([[0.1, 0.8, 0.1], [0.2, 0.2, 0.6]], &device);
-        let value_pred = Tensor::<B, 2>::from_floats([[0.5], [0.1]], &device);
-        let value_target = Tensor::<B, 2>::from_floats([[0.3], [-0.5]], &device);
+            Tensor::<2>::from_floats([[0.1, 0.8, 0.1], [0.2, 0.2, 0.6]], &device);
+        let value_pred = Tensor::<2>::from_floats([[0.5], [0.1]], &device);
+        let value_target = Tensor::<2>::from_floats([[0.3], [-0.5]], &device);
 
         let metrics = compute_metrics(&policy_logits, &policy_target, &value_pred, &value_target);
         assert!((metrics.policy_top1_accuracy - 0.5).abs() < 1e-5);
@@ -210,8 +206,8 @@ mod tests {
 
     #[test]
     fn loss_scalar_roundtrips() {
-        let device = FlexDevice;
-        let loss = Tensor::<B, 1>::from_floats([1.25], &device);
+        let device = Device::flex();
+        let loss = Tensor::<1>::from_floats([1.25], &device);
         assert!((loss_scalar(&loss) - 1.25).abs() < 1e-6);
     }
 }

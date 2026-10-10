@@ -38,25 +38,24 @@ use crate::planes::{PADDED, Planes, planes};
 use burn::module::Module;
 use burn::nn::Relu;
 use burn::nn::conv::Conv2d;
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, TensorData};
+use burn::tensor::{Device, Tensor, TensorData};
 use engine::{Board, Color};
 
 /// The hand-written threat network.
 ///
-/// The type is backend-generic; instantiate it with `NdArray` (default)
-/// or `Wgpu` (with the `gpu` feature).
+/// The type has no backend type parameter; build it on `Device::flex()`
+/// (default) or `Device::wgpu(...)` (with the `gpu` feature).
 #[derive(Debug, Module)]
-pub struct ThreatNet<B: Backend> {
-    layer1: Conv2d<B>,
+pub struct ThreatNet {
+    layer1: Conv2d,
     relu1: Relu,
-    layer2: Conv2d<B>,
+    layer2: Conv2d,
     relu2: Relu,
 }
 
-impl<B: Backend> ThreatNet<B> {
+impl ThreatNet {
     /// Build a fresh network with hand-manufactured weights on `device`.
-    pub fn new(device: &B::Device) -> Self {
+    pub fn new(device: &Device) -> Self {
         Self {
             layer1: layer1_conv(device),
             relu1: Relu::new(),
@@ -72,7 +71,7 @@ impl<B: Backend> ThreatNet<B> {
     /// * `0` — win map,
     /// * `1..=4` — five-completing cells created per direction,
     /// * `5..=8` — open-three makers per direction.
-    pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
+    pub fn forward(&self, input: Tensor<4>) -> Tensor<4> {
         let (_l1, l2) = self.forward_intermediate(input);
         l2
     }
@@ -83,7 +82,7 @@ impl<B: Backend> ThreatNet<B> {
     /// Layer-1 activations are needed by the `double_threats` glue so
     /// it can count unique five-completing cells across firing pattern
     /// channels.
-    pub fn forward_intermediate(&self, input: Tensor<B, 4>) -> (Tensor<B, 4>, Tensor<B, 4>) {
+    pub fn forward_intermediate(&self, input: Tensor<4>) -> (Tensor<4>, Tensor<4>) {
         let x = self.layer1.forward(input);
         let l1 = self.relu1.forward(x);
         let x = self.layer2.forward(l1.clone());
@@ -145,11 +144,11 @@ impl ThreatMaps {
 ///
 /// This evaluates a single colour; call twice (or use
 /// [`analyze_both`]) to obtain maps for both sides.
-pub fn analyze<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn analyze(
+    net: &ThreatNet,
     b: &Board,
     s: Color,
-    device: &B::Device,
+    device: &Device,
 ) -> ThreatMaps {
     let planes = planes(b, s);
     let input = planes_to_tensor(&planes, device);
@@ -160,10 +159,10 @@ pub fn analyze<B: Backend>(
 /// Analyze board `b` for both colours in one batched forward pass.
 ///
 /// Returns `[black_maps, white_maps]`.
-pub fn analyze_both<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn analyze_both(
+    net: &ThreatNet,
     b: &Board,
-    device: &B::Device,
+    device: &Device,
 ) -> [ThreatMaps; 2] {
     let input = build_batched_input(b, device);
     let (l1, l2) = net.forward_intermediate(input);
@@ -172,7 +171,7 @@ pub fn analyze_both<B: Backend>(
     [black, white]
 }
 
-fn build_batched_input<B: Backend>(b: &Board, device: &B::Device) -> Tensor<B, 4> {
+fn build_batched_input(b: &Board, device: &Device) -> Tensor<4> {
     let black_planes = planes(b, Color::Black);
     let white_planes = planes(b, Color::White);
 
@@ -190,10 +189,10 @@ fn build_batched_input<B: Backend>(b: &Board, device: &B::Device) -> Tensor<B, 4
         input_data.extend(row);
     }
 
-    Tensor::<B, 4>::from_data(TensorData::new(input_data, [2, 2, PADDED, PADDED]), device)
+    Tensor::<4>::from_data(TensorData::new(input_data, [2, 2, PADDED, PADDED]), device)
 }
 
-fn planes_to_tensor<B: Backend>(planes: &Planes, device: &B::Device) -> Tensor<B, 4> {
+fn planes_to_tensor(planes: &Planes, device: &Device) -> Tensor<4> {
     let mut data = Vec::with_capacity(2 * PADDED * PADDED);
     for row in planes.stones {
         data.extend(row);
@@ -201,14 +200,14 @@ fn planes_to_tensor<B: Backend>(planes: &Planes, device: &B::Device) -> Tensor<B
     for row in planes.blocked {
         data.extend(row);
     }
-    Tensor::<B, 4>::from_data(TensorData::new(data, [1, 2, PADDED, PADDED]), device)
+    Tensor::<4>::from_data(TensorData::new(data, [1, 2, PADDED, PADDED]), device)
 }
 
-fn maps_from_output<B: Backend>(
+fn maps_from_output(
     b: &Board,
     s: Color,
-    l1: Tensor<B, 4>,
-    l2: Tensor<B, 4>,
+    l1: Tensor<4>,
+    l2: Tensor<4>,
     batch: usize,
 ) -> ThreatMaps {
     let l1_data: Vec<f32> = l1.to_data().iter::<f32>().collect();
@@ -354,7 +353,7 @@ fn offset_along_direction(dy: i32, dx: i32, dir: Direction) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::NdArray;
+    use burn::tensor::Device;
     use engine::reference::board_from_ascii;
     use engine::{Color, Move, MoveSet};
 
@@ -387,8 +386,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert_eq!(
             wins_set(&maps),
@@ -418,8 +417,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert_eq!(
             wins_set(&maps),
@@ -451,8 +450,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert!(wins_set(&maps).is_empty(), "no immediate win");
         assert_eq!(
@@ -485,8 +484,8 @@ mod tests {
             O . . . . . . . . . . . . . .
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert!(
             wins_set(&maps).is_empty(),
@@ -523,8 +522,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert_eq!(
             double_threat_set(&maps),
@@ -555,8 +554,8 @@ mod tests {
             O . . . . . . . . . . . . . O
             ",
         );
-        let device = Default::default();
-        let net = ThreatNet::<NdArray>::new(&device);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
         let maps = analyze(&net, &b, Color::Black, &device);
         assert_eq!(
             double_three_set(&maps),

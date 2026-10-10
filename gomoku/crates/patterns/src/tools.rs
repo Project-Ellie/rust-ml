@@ -41,7 +41,7 @@ impl DetectorBuilder {
         self
     }
 
-    /// Build a `Conv2d<B>` with weight shape `[O, C, kh, kw]` from one
+    /// Build a `Conv2d` with weight shape `[O, C, kh, kw]` from one
     /// row-major flat kernel per (output, input) channel pair, and one bias
     /// per output channel.
     ///

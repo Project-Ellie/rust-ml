@@ -316,9 +316,9 @@ This document is the canonical literature reference for the rust-ml Gomoku/Alpha
 
 ## Local project documents
 
-**Trace-AI (Burn maintainers) (2024).** *Burn v0.21.0 API Documentation*. Local/docs (crate docs).
-- Why this project cites it: Canonical API reference for the pinned Burn version used in the project.
-- Link: https://docs.rs/burn/0.21.0/burn/index.html
+**Trace-AI (Burn maintainers) (2024).** *Burn v0.22.0 API Documentation*. Local/docs (crate docs).
+- Why this project cites it: Canonical API reference for the pinned Burn version used in the gomoku workspace.
+- Link: https://docs.rs/burn/0.22.0/burn/index.html
 
 **rust-ml project (None).** *Chapter 12 — Gomoku Architecture*. Local/docs.
 - Why this project cites it: System design, milestone plan, crate boundaries, claim-label conventions, and honesty ledger.

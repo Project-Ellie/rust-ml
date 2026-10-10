@@ -180,7 +180,7 @@ The tutorial presents the following as **choices**, not as facts:
 - **I1 — Plane assembly lives in `net`.** The engine emits two planes;
   `net` adds the last-move planes from `Board::moves()`.
 - **I2 — `NetBatcher` implements Burn's `Batcher` trait.** Exact
-  generics per Burn 0.21.
+  generics per Burn 0.22.
 - **I3 — Policy target flattening.** Scatter `(move, mass)` into a
   row-major 225-vector.
 - **I4 — Hand-rolled soft-target CE.** Burn's built-in CE expects hard

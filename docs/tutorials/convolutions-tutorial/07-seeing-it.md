@@ -28,7 +28,7 @@ is the primer in
 | **`[experiment]` weights** | Hyper-parameters chosen to encode the priority ladder; documented as replaceable, not ordained. |
 | **Heatmap** | A terminal rendering of a threat map with coloured backgrounds on empty cells and stone glyphs for occupied cells. |
 | **Showcase** | One of the built-in demo positions: `double-three-fork`, `classic-fork`, `corner-fork`, or `quiet`. |
-| **GPU portability** | The guarantee that the same backend-generic code runs on `NdArray` (default) and on `Wgpu` with the opt-in `gpu` feature. |
+| **GPU portability** | The guarantee that the same code accepts a `Device` and runs on `Flex` (default CPU backend) or `Wgpu` with the opt-in `gpu` feature. |
 | **Exact equality** | A legitimate differential-test assertion here because all conv inputs and weights are small integers, so every `f32` sum is exact on both CPU and GPU. |
 
 ## Context
@@ -51,7 +51,7 @@ transparent:
    headline double-three fork, the engine's own classic fork, a corner
    fork, and a quiet position.
 3. **`tests/gpu_port.rs`** runs the full `analyze` pipeline and the
-   `policy()` combiner on both `NdArray` and `Wgpu` and asserts exact
+   `policy()` combiner on both `Flex` CPU and `Wgpu` and asserts exact
    equality.
 
 The chapter is intentionally lightweight in new concepts: the lesson
@@ -65,7 +65,7 @@ backend-portable artifact.
    * `pub const DOUBLE_THREAT_SCORE: f32 = 0.9;`
    * `pub const DOUBLE_THREE_SCORE: f32 = 0.8;`
    * `pub const THREE_SCORE: f32 = 0.3;`
-   * `pub fn policy<B: Backend>(net: &ThreatNet<B>, b: &Board, s: Color, device: &B::Device) -> Vec<(Move, f32)>;`
+   * `pub fn policy(net: &ThreatNet, b: &Board, s: Color, device: &Device) -> Vec<(Move, f32)>;`
    * `pub fn policy_from_maps(b: &Board, maps: &ThreatMaps) -> Vec<(Move, f32)>;`
 2. Implement `src/render.rs`:
    * `MapName` and `ShowcaseName` enums with `parse` and `label`.
@@ -75,8 +75,8 @@ backend-portable artifact.
    * `pub fn map_value(...)` helper.
 3. Implement `src/bin/patterndemo.rs`:
    * Parse `--map`, `--showcase`, `--gpu`, and `--help`.
-   * Run `analyze` on `NdArray` by default, or on `Wgpu` when `--gpu`
-     is supplied and the `gpu` feature is enabled.
+   * Run `analyze` on the `Flex` CPU backend by default, or on `Wgpu`
+     when `--gpu` is supplied and the `gpu` feature is enabled.
    * Print the rendered heatmap.
 4. Implement `tests/gpu_port.rs`:
    * CPU-vs-GPU exact-equality tests for all four showcase boards,
@@ -129,19 +129,19 @@ The demo is also a regression tool. The showcase positions are adapted
 from engine tests and the crate's own unit tests; if a refactor ever
 breaks the kernel table, the demo will show the wrong cell highlighted.
 
-### Why does `NdArray` stay the default?
+### Why does `Flex` stay the default?
 
 The `gpu` feature adds the `burn/wgpu` dependency tree and needs a
-working GPU adapter. The default build uses `NdArray` because it is:
+working GPU adapter. The default build uses `Flex` because it is:
 
 * deterministic on every machine,
 * light to compile,
 * sufficient for the tutorial's CPU-only gates.
 
 The backend abstraction is the real lesson: the same
-`ThreatNet<B>::new(device)` call works for `B = NdArray` and `B =
-Wgpu`. The net tutorial will train on GPU using exactly this
-abstraction.
+`ThreatNet::new(device)` call works with `device = Device::flex()` on
+CPU and `device = Device::wgpu(Default::default())` on GPU. The net
+tutorial will train on GPU using exactly this abstraction.
 
 ### Why is CPU-vs-GPU exact equality legitimate?
 
@@ -182,11 +182,11 @@ pub const DOUBLE_THREAT_SCORE: f32 = 0.9;
 pub const DOUBLE_THREE_SCORE: f32 = 0.8;
 pub const THREE_SCORE: f32 = 0.3;
 
-pub fn policy<B: Backend>(
-    net: &ThreatNet<B>,
+pub fn policy(
+    net: &ThreatNet,
     b: &Board,
     s: Color,
-    device: &B::Device,
+    device: &Device,
 ) -> Vec<(Move, f32)>;
 
 pub fn policy_from_maps(b: &Board, maps: &ThreatMaps) -> Vec<(Move, f32)>;
@@ -292,7 +292,8 @@ The test file is compiled only when the `gpu` feature is enabled:
 
 For each showcase it:
 
-1. Builds a `ThreatNet<NdArray>` and a `ThreatNet<Wgpu>`.
+1. Builds one `ThreatNet` with `Device::flex()` and one with
+   `Device::wgpu(Default::default())`.
 2. Runs `analyze` on both backends.
 3. Asserts `cpu_maps == gpu_maps` exactly.
 4. Runs `policy()` on both backends.
@@ -314,7 +315,7 @@ omit Cargo's own `Finished`/`Running` lines that precede the binary's
 stdout):
 
 ```text
-Showcase: double-three fork | Map: double-three forks | Backend: NdArray
+Showcase: double-three fork | Map: double-three forks | Backend: Flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   ○ . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .
@@ -349,7 +350,7 @@ cargo run -p patterns --bin patterndemo -- --showcase classic-fork --map double_
 Captured output:
 
 ```text
-Showcase: classic fork | Map: double threats | Backend: NdArray
+Showcase: classic fork | Map: double threats | Backend: Flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   . . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .
@@ -381,7 +382,7 @@ cargo run -p patterns --bin patterndemo -- --showcase double-three-fork --map po
 Captured output:
 
 ```text
-Showcase: double-three fork | Map: threat potential (policy) | Backend: NdArray
+Showcase: double-three fork | Map: threat potential (policy) | Backend: Flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   ○ . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .

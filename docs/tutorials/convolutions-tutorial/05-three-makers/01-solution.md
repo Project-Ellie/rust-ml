@@ -21,7 +21,7 @@
 
 mod common;
 
-use burn::backend::NdArray;
+use burn::tensor::Device;
 use engine::{Color, Move, MoveSet, reference::board_from_ascii};
 use patterns::net::{ThreatMaps, ThreatNet, analyze};
 use patterns::oracle::{Direction, double_threes, open_three_makers};
@@ -62,8 +62,8 @@ fn assert_threes_match(maps: &ThreatMaps, b: &engine::Board, s: Color) {
 }
 
 fn analyze_maps(b: &engine::Board, s: Color) -> ThreatMaps {
-    let device = Default::default();
-    let net = ThreatNet::<NdArray>::new(&device);
+    let device = Device::flex();
+    let net = ThreatNet::new(&device);
     analyze(&net, b, s, &device)
 }
 

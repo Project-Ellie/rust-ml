@@ -7,7 +7,7 @@ configurable residual convolutional network that takes the 4-plane
 17×17 input from chapter 1 and produces a policy vector and a value
 scalar. The locked architecture is the 128-channel, 10-block trunk from
 docs/12 §10; the implementation is made configurable so unit tests can
-run a tiny variant. By the end you will have a `Model<B: Backend>`
+run a tiny variant. By the end you will have a `Model`
 derived with Burn's `Module` trait, a `ModelConfig` derived with
 `Config`, a reusable `ResBlock`, and four tests that check output shapes,
 determinism, and the value range.
@@ -16,7 +16,7 @@ determinism, and the value range.
 
 | Term | Definition |
 |------|------------|
-| **Backend** | A Burn type parameter (`B: Backend` for inference, `B: AutodiffBackend` for training) that selects the tensor implementation. |
+| **Backend** | No longer a type parameter in Burn 0.22: the model is backend-agnostic and the `Device` passed to it selects CPU (Flex) or GPU (Wgpu). |
 | **Stem** | The first convolution that projects the 4 input planes into the trunk channel width. |
 | **Residual block** | A pair of 3×3 convolutions with batch normalization and ReLU, plus a skip connection: `ReLU(BN(conv2(BN(conv1(x)))) + x)`. |
 | **Policy head** | The branch that emits 225 logits, one per legal move on the 15×15 board. |
@@ -47,16 +47,16 @@ both numbers configurable so tests can use a tiny model.
 2. Define `ModelConfig` with `#[derive(Config)]`:
    * `channels: usize` default `128`.
    * `num_blocks: usize` default `10`.
-   * `init<B: Backend>(&self, device: &B::Device) -> Model<B>`.
+   * `init(&self, device: &Device) -> Model`.
    * `tiny()` → `{ channels: 8, num_blocks: 1 }`.
    * `mid()` → `{ channels: 32, num_blocks: 4 }`.
-3. Define `Model<B: Backend>` with `#[derive(Module)]` containing the
-   stem conv+batch norm, a `Vec<ResBlock<B>>`, the policy head
+3. Define `Model` with `#[derive(Module)]` containing the
+   stem conv+batch norm, a `Vec<ResBlock>`, the policy head
    conv+batch norm+linear, and the value head conv+batch norm+two
    linears.
-4. Define `ModelOutput<B: Backend>` `{ policy: Tensor<B, 2>, value:
-   Tensor<B, 2> }` to bundle the two forward outputs.
-5. Define `ResBlock<B: Backend>` with two 3×3 convolutions, batch norms,
+4. Define `ModelOutput` `{ policy: Tensor<2>, value:
+   Tensor<2> }` to bundle the two forward outputs.
+5. Define `ResBlock` with two 3×3 convolutions, batch norms,
    and ReLU, and implement its forward with the skip add.
 6. Implement `Model::forward`:
    * stem conv → batch norm → ReLU;
@@ -83,17 +83,17 @@ Observable done-state: `cargo test -p net` passes, `cargo clippy
 ### From the architecture diagram to Burn types
 
 The architecture sketch in docs/12 §10 is a stack of boxes. In Burn
-0.21 each box is a typed field in a `#[derive(Module)]` struct:
+0.22 each box is a typed field in a `#[derive(Module)]` struct:
 
 | Diagram box | Burn type | Notes |
 |-------------|-----------|-------|
-| 3×3 conv, 4→C | `Conv2d<B>` | same padding, no bias. |
-| Batch norm | `BatchNorm<B>` | channel dimension. |
+| 3×3 conv, 4→C | `Conv2d` | same padding, no bias. |
+| Batch norm | `BatchNorm` | channel dimension. |
 | ReLU | `Relu` | stateless; one shared instance is fine. |
-| Residual block | `ResBlock<B>` | nested `Module` struct. |
-| 1×1 conv | `Conv2d<B>` | same padding, no bias. |
+| Residual block | `ResBlock` | nested `Module` struct. |
+| 1×1 conv | `Conv2d` | same padding, no bias. |
 | Flatten | `Tensor::flatten(1, 3)` | keep batch dim 0. |
-| Linear | `Linear<B>` | configured with `LinearConfig`. |
+| Linear | `Linear` | configured with `LinearConfig`. |
 | tanh | `burn::tensor::activation::tanh` | applied to the value head. |
 
 The `Module` derive does two jobs: it makes the struct a learnable
@@ -119,7 +119,7 @@ arguments, `Model` for the initialized weights — is the Burn idiom.
 >
 > A natural test idea is: "seed the backend, initialize two models, and
 > assert their outputs are bit-identical." The reference implementation
-> tried exactly that and discovered that Burn 0.21's `B::seed` does
+> tried exactly that and discovered that Burn 0.22's backend seed does
 > **not** make two separate `Model::new` or `ModelConfig::init` calls
 > produce bit-identical weights in the same process. This is not a bug
 > in the network module; it is a backend-level quirk of how weight
@@ -157,9 +157,9 @@ architecture lock (docs/12 §10).
 use burn::nn::conv::Conv2d;
 use burn::nn::norm::BatchNorm;
 use burn::nn::{Linear, LinearConfig, PaddingConfig2d, Relu};
+use burn::tensor::Device;
 use burn::tensor::Tensor;
 use burn::tensor::activation::tanh;
-use burn::tensor::backend::Backend;
 use burn::{config::Config, module::Module};
 
 use engine::EXT;
@@ -179,21 +179,21 @@ pub struct ModelConfig {
 
 with `init`, `tiny`, and `mid` methods.
 
-`Model<B: Backend>`:
+`Model`:
 
 ```rust
 #[derive(Module, Debug)]
-pub struct Model<B: Backend> {
-    pub stem_conv: Conv2d<B>,
-    pub stem_bn: BatchNorm<B>,
-    pub blocks: Vec<ResBlock<B>>,
-    pub policy_conv: Conv2d<B>,
-    pub policy_bn: BatchNorm<B>,
-    pub policy_linear: Linear<B>,
-    pub value_conv: Conv2d<B>,
-    pub value_bn: BatchNorm<B>,
-    pub value_hidden: Linear<B>,
-    pub value_out: Linear<B>,
+pub struct Model {
+    pub stem_conv: Conv2d,
+    pub stem_bn: BatchNorm,
+    pub blocks: Vec<ResBlock>,
+    pub policy_conv: Conv2d,
+    pub policy_bn: BatchNorm,
+    pub policy_linear: Linear,
+    pub value_conv: Conv2d,
+    pub value_bn: BatchNorm,
+    pub value_hidden: Linear,
+    pub value_out: Linear,
     pub activation: Relu,
 }
 ```
@@ -202,13 +202,13 @@ All fields are `pub` so tests and the training loop can inspect them;
 they are still read-only to callers outside the module because the
 module owns mutation.
 
-`ModelOutput<B: Backend>`:
+`ModelOutput`:
 
 ```rust
 #[derive(Debug, Clone)]
-pub struct ModelOutput<B: Backend> {
-    pub policy: Tensor<B, 2>,
-    pub value: Tensor<B, 2>,
+pub struct ModelOutput {
+    pub policy: Tensor<2>,
+    pub value: Tensor<2>,
 }
 ```
 
@@ -234,15 +234,15 @@ pub struct ModelOutput<B: Backend> {
 5. Policy head on `x.clone()`; value head on `x`.
 6. Return `ModelOutput { policy, value }`.
 
-`ResBlock<B: Backend>`:
+`ResBlock`:
 
 ```rust
 #[derive(Module, Debug)]
-pub struct ResBlock<B: Backend> {
-    conv1: Conv2d<B>,
-    bn1: BatchNorm<B>,
-    conv2: Conv2d<B>,
-    bn2: BatchNorm<B>,
+pub struct ResBlock {
+    conv1: Conv2d,
+    bn1: BatchNorm,
+    conv2: Conv2d,
+    bn2: BatchNorm,
     activation: Relu,
 }
 ```
@@ -267,16 +267,14 @@ You will need `use burn::nn::norm::BatchNormConfig;` at module scope.
 
 ### Tests
 
-Use `burn::backend::Flex` as the concrete test backend, matching the
+Use `Device::flex()` as the concrete test device, matching the
 convolutions tutorial precedent:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::backend::Flex;
-
-    type B = Flex;
+    use burn::tensor::Device;
 
     // tests follow...
 }
@@ -338,7 +336,7 @@ Next: Chapter 04 — Loss + metrics.
 * [`docs/11-pitfalls.md`](../../11-pitfalls.md) — Burn traps including
   `argmax` dimension keeping.
 * [`docs/tutorials/convolutions-tutorial/`](../convolutions-tutorial/) —
-  Burn 0.21 `Conv2d`, `BatchNorm`, and `Linear` usage precedent.
-* Burn 0.21.0 source, `burn-nn-0.21.0/src/loss/cross_entropy.rs` —
+  Burn 0.22 `Conv2d`, `BatchNorm`, and `Linear` usage precedent.
+* Burn 0.22.0 source, `burn-nn-0.22.0/src/loss/cross_entropy.rs` —
   confirms the built-in cross entropy expects hard class-index targets,
   motivating the hand-rolled soft-target loss in chapter 4.

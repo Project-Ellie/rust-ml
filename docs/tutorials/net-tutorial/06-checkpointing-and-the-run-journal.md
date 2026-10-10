@@ -16,8 +16,8 @@ is a trap.
 | Term | Definition |
 |------|------------|
 | **Checkpoint** | A persistent artifact that lets a training run resume or be reproduced. In this crate it is the pair `model.mpk` + `run.json`. |
-| **`DefaultRecorder`** | Burn 0.21's full-precision recorder. It writes `f32` weights and is bit-identical on load. |
-| **`CompactRecorder`** | Burn 0.21's f16 recorder. Smaller files, but weights are rounded; a loaded model is not bit-identical to the saved one. |
+| **`DefaultRecorder`** | Burn 0.22's full-precision recorder. It writes `f32` weights and is bit-identical on load. |
+| **`CompactRecorder`** | Burn 0.22's f16 recorder. Smaller files, but weights are rounded; a loaded model is not bit-identical to the saved one. |
 | **Run journal** | The `run.json` sidecar file: seed, `ModelConfig`, `TrainConfig`, and the final step/eval metrics produced by the loop. |
 | **Sidecar** | A separate, human-readable file that travels with the binary model record and records metadata needed to reproduce the run. |
 | **Bit-identical forward pass** | A test that saves a model, loads it, runs the same input through both the original and the loaded model, and asserts exact equality of the outputs. |
@@ -40,7 +40,7 @@ reproduce the run: the random seed, the network configuration, the
 training configuration, and the final metrics.
 
 The most consequential choice in this chapter is the recorder. Burn
-0.21 ships two convenient recorders: `DefaultRecorder` (full precision)
+0.22 ships two convenient recorders: `DefaultRecorder` (full precision)
 and `CompactRecorder` (f16). The latter is smaller on disk, but it
 rounds weights to half precision. For a Gomoku policy/value network
 that difference is small in accuracy terms — on the order of 1e-4 — but
@@ -60,9 +60,9 @@ model records. The f16 trap is named explicitly in
    `EvalMetrics`.
 3. Implement `RunJournal::new` to assemble a journal from the pieces
    produced by a training run.
-4. Implement `save_model<B: Backend>(model, dir)` →
+4. Implement `save_model(model, dir)` →
    `dir/model.mpk` using `DefaultRecorder`.
-5. Implement `load_model<B: Backend>(dir, config, device)` → model
+5. Implement `load_model(dir, config, device)` → model
    by initializing a fresh model from the config and loading the
    record into it.
 6. Implement `save_journal(journal, dir)` → `dir/run.json` and
@@ -130,10 +130,10 @@ disk I/O and keeps the caller's ownership semantics simple.
 ### Why initialize a fresh model before `load_record`?
 
 Burn's record system separates *config* from *state*. A config knows
-how to build a module (`config.init::<B>(device)`). A record is only
+how to build a module (`config.init(device)`). A record is only
 the state. Loading a record therefore has two steps: build the module
 skeleton from the config, then pour the record into it. This matches
-the `Config::init` + `load_record` pattern from Burn 0.21 and avoids
+the `Config::init` + `load_record` pattern from Burn 0.22 and avoids
 the stale `InitRecord` API that older tutorials use.
 
 ## Low-level design
@@ -161,10 +161,10 @@ gomoku/crates/net/
 //! on resume (docs/11).
 
 use std::path::{Path, PathBuf};
+use burn::tensor::Device;
 
 use burn::prelude::Module;
 use burn::record::{DefaultRecorder, Recorder};
-use burn::tensor::backend::Backend;
 use serde::{Deserialize, Serialize};
 
 use crate::network::{Model, ModelConfig};
@@ -183,7 +183,7 @@ Implementation notes:
   in tests.
 * `save_model` calls `model.clone().save_file(path, &DefaultRecorder::new())`
   and returns the `PathBuf` of the written file.
-* `load_model` builds a fresh model with `config.init::<B>(device)` and
+* `load_model` builds a fresh model with `config.init(device)` and
   loads the record with `DefaultRecorder::new().load(path, device)?`.
 * `save_journal` uses `serde_json::to_string_pretty` and writes with
   `std::fs::write`.
@@ -196,8 +196,7 @@ Implementation notes:
 Inside `#[cfg(test)] mod tests` in `checkpoint.rs`:
 
 1. `save_load_roundtrip_is_bit_identical`:
-   * `type B = Flex;`
-   * `let device = FlexDevice;`
+   * `let device = Device::flex();`
    * Build a tiny model from `ModelConfig::tiny()`.
    * Run a `[1, 4, 17, 17]` zero tensor through `model.forward`.
    * Save with `save_model`.
@@ -264,13 +263,13 @@ Next: [Chapter 07 — The `nettrain` binary](07-the-nettrain-binary.md).
   — net tutorial design authority, inventions I6 (checkpoint layout)
   and I7 (test-scale config).
 * [`docs/11-pitfalls.md`](../../11-pitfalls.md) — the `CompactRecorder`
-  f16 trap and other Burn 0.21 pitfalls.
+  f16 trap and other Burn 0.22 pitfalls.
 * [`docs/12-gomoku-architecture.md`](../../12-gomoku-architecture.md) —
   network anatomy, optimizer/schedule decisions, and the Burn/application
   split that makes a manual training loop necessary.
 * [`docs/tutorials/net-tutorial/05-the-manual-training-loop.md`](05-the-manual-training-loop.md)
   — the training loop that produces the metrics stored in the run
   journal.
-* [Burn 0.21 `Recorder` trait source](https://github.com/tracel-ai/burn/blob/v0.21.0/crates/burn-core/src/record/recorder.rs)
+* [Burn 0.22 `Recorder` trait source](https://github.com/tracel-ai/burn/blob/v0.22.0/crates/burn-core/src/record/recorder.rs)
   — the authoritative definition of `DefaultRecorder` and
   `CompactRecorder`.
