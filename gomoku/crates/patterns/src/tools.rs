@@ -68,15 +68,19 @@ impl DetectorBuilder {
 
         let bias = Tensor::from_data(TensorData::new(bias.to_vec(), [O]), device);
 
-        Conv2d {
-            weight: Param::from_tensor(weight),
-            bias: Some(Param::from_tensor(bias)),
-            stride: template.stride,
-            kernel_size: template.kernel_size,
-            dilation: template.dilation,
-            groups: template.groups,
-            padding: template.padding,
-        }
+        conv_from_template(weight, bias, template)
+    }
+}
+
+pub fn conv_from_template(weight: Tensor<4>, bias: Tensor<1>, template: Conv2d) -> Conv2d {
+    Conv2d {
+        weight: Param::from_tensor(weight),
+        bias: Some(Param::from_tensor(bias)),
+        stride: template.stride,
+        kernel_size: template.kernel_size,
+        dilation: template.dilation,
+        groups: template.groups,
+        padding: template.padding,
     }
 }
 
