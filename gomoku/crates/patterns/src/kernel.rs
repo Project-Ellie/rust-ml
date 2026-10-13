@@ -184,7 +184,7 @@ pub fn pattern_table() -> Vec<PatternEntry> {
 }
 
 /// Build layer 1: an 11×11 conv from 2 input channels to
-/// [`LAYER1_OUT`] output channels.
+/// [`LAYER1_NUM_CHANNELS`] output channels.
 ///
 /// The returned conv uses valid padding and a ReLU activation (the
 /// caller supplies the activation by calling `forward` in the normal
@@ -226,8 +226,8 @@ pub fn layer1_conv(device: &Device) -> Conv2d {
     conv_from_template(weight_tensor, bias_tensor, template)
 }
 
-/// Build layer 2: a 1×1 conv from [`LAYER1_OUT`] channels to
-/// [`LAYER2_OUT`] channels.
+/// Build layer 2: a 1×1 conv from [`LAYER1_NUM_CHANNELS`] channels to
+/// [`LAYER2_NUM_CHANNELS`] channels.
 ///
 /// Output channel layout:
 ///
@@ -255,7 +255,12 @@ pub fn layer2_conv(device: &Device) -> Conv2d {
         // Channels 1..=4: fours created, per direction.
         match entry.family {
             PatternFamily::OpenFourMaker | PatternFamily::BrokenFourMaker => {
-                set_weight_1x1(&mut weight, 1, in_ch, entry.family.weight_scale());
+                set_weight_1x1(
+                    &mut weight,
+                    1 + entry.direction.index(),
+                    in_ch,
+                    entry.family.weight_scale(),
+                );
             }
             _ => {}
         }
