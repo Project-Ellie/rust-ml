@@ -1,20 +1,14 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes `src/net.rs` from the verified reference crate in
-> its **final** form (datagen-tutorial precedent). The pattern table
-> grows across chapters: 20 channels in chapter 3, 116 in chapter 4
-> after adding the four-makers, and 152 in chapters 5–6 once the
-> three-makers are added. Quoting the finished file here lets you
-> compare the shape of the `ThreatMaps` glue and the layer-2
-> integration without spoiling the incremental build.
+> This file quotes the final form of the crate's actual `src/net.rs`, evolved from the chapter-3 state and verified against the engine on 1000 boards × 2 colors. It matches the real crate's naming (`crate::kernel`, `LAYER1_NUM_CHANNELS`, `LAYER2_NUM_CHANNELS`). It keeps the chapter-3 `win_map` and win-map tests, adds `ThreatMaps`/`analyze`/`analyze_both`/the double-threat glue, and adds the chapter-4 unit tests. The differential-test files (`tests/common/mod.rs` and `tests/differential.rs`) are intentionally not quoted here — they are short, and writing them is part of the chapter's work.
 
 ````rust
-//! Hand-written Burn threat network and `ThreatMaps` glue.
+//! The hand-written threat network and the win map.
 //!
 //! The network is a tiny two-layer convolutional module:
 //!
 //! 1. Layer 1 (`Conv2d`, 11×11, 2 → 152 channels, valid padding, ReLU)
-//!    evaluates every pattern kernel from [`crate::kernels`] at every
+//!    evaluates every pattern kernel from [`crate::kernel`] at every
 //!    board cell.
 //! 2. Layer 2 (`Conv2d`, 1×1, 152 → 9 channels, ReLU) is a
 //!    cross-channel combiner: it ORs the five-completer channels into
@@ -22,29 +16,32 @@
 //!    open fours by 2), and sums the three-maker channels per
 //!    direction.
 //!
-//! A small amount of Rust glue then turns the per-direction count maps
-//! into the final `double_threats` and `double_threes` maps. For
-//! `double_threats` the glue must count *unique* five-completing cells,
-//! because the engine's `winning_cells` uses a `MoveSet`: one cell that
-//! completes five via two different windows is counted once. The
-//! network therefore exposes the layer-1 activations so the glue can
-//! compute the union of completing cells from the firing open-four and
-//! broken-four patterns.
+//! Every map is read at *empty* cells only: the kernel language does
+//! not condition on the candidate cell itself, so the raw network
+//! output fires on occupied cells as well. The win-map glue zeroes
+//! them, matching `engine::immediate_wins`, which only ever returns
+//! empty cells.
+//!
+//! The [`ThreatMaps`] glue post-processes the raw network outputs into
+//! game-level maps: immediate wins, double threats, double threes, and
+//! per-direction detail maps. See [`analyze`] and [`analyze_both`].
 
-use crate::kernels::{
-    Direction, LAYER1_OUT, LAYER2_OUT, PatternFamily, RADIUS, layer1_conv, layer2_conv,
+use crate::kernel::{
+    Direction, LAYER1_NUM_CHANNELS, LAYER2_NUM_CHANNELS, PatternFamily, RADIUS, layer1_conv,
+    layer2_conv,
 };
 use crate::planes::{PADDED, Planes, planes};
 use burn::module::Module;
 use burn::nn::Relu;
 use burn::nn::conv::Conv2d;
 use burn::tensor::{Device, Tensor, TensorData};
-use engine::{Board, Color};
+use engine::{Board, Color, Move};
 
 /// The hand-written threat network.
 ///
-/// The type has no backend type parameter; build it on `Device::flex()`
-/// (default) or `Device::wgpu(...)` (with the `gpu` feature).
+/// The type has no backend type parameter; build it on
+/// `Device::flex()` (default) or `Device::wgpu(...)` (with the `gpu`
+/// feature).
 #[derive(Debug, Module)]
 pub struct ThreatNet {
     layer1: Conv2d,
@@ -76,18 +73,39 @@ impl ThreatNet {
         l2
     }
 
-    /// Forward pass returning both the layer-1 ReLU activations and the
-    /// final layer-2 output.
+    /// Forward pass returning both the layer-1 ReLU activations and
+    /// the final layer-2 output.
     ///
-    /// Layer-1 activations are needed by the `double_threats` glue so
-    /// it can count unique five-completing cells across firing pattern
-    /// channels.
+    /// Layer-1 activations are exposed for chapter 4: the
+    /// double-threat glue must count *unique* five-completing cells,
+    /// which layer 2's per-direction sums cannot express.
     pub fn forward_intermediate(&self, input: Tensor<4>) -> (Tensor<4>, Tensor<4>) {
         let x = self.layer1.forward(input);
         let l1 = self.relu1.forward(x);
         let x = self.layer2.forward(l1.clone());
         let l2 = self.relu2.forward(x);
         (l1, l2)
+    }
+
+    /// The win map for `side` on `board`: a 15×15 grid that is
+    /// positive exactly at empty cells where placing a stone
+    /// completes five immediately.
+    pub fn win_map(&self, board: &Board, side: Color, device: &Device) -> [[f32; 15]; 15] {
+        let input = planes_tensor(board, side, device);
+        let out = self.forward(input);
+        let values: Vec<f32> = out.to_data().iter::<f32>().collect();
+
+        let mut map = [[0.0f32; 15]; 15];
+        for (r, row) in map.iter_mut().enumerate() {
+            for (c, cell) in row.iter_mut().enumerate() {
+                let mv = Move::new(r as u8, c as u8).expect("(r, c) is in-board");
+                if board.stone_at(mv).is_none() {
+                    // Channel 0 of the [1, 9, 15, 15] output.
+                    *cell = values[r * 15 + c];
+                }
+            }
+        }
+        map
     }
 }
 
@@ -115,7 +133,7 @@ pub struct ThreatMaps {
     ///
     /// This is a raw per-pattern sum (open four = 2, broken four = 1);
     /// it may double-count a single completing cell that is produced by
-    /// two windows. It is kept for visualisation; `double_threats`
+    /// two windows. It is kept for visualisation; [`ThreatMaps::double_threats`]
     /// uses the unique-cell count instead.
     ///
     /// Indexed `[direction][row][col]` where direction order is
@@ -144,14 +162,8 @@ impl ThreatMaps {
 ///
 /// This evaluates a single colour; call twice (or use
 /// [`analyze_both`]) to obtain maps for both sides.
-pub fn analyze(
-    net: &ThreatNet,
-    b: &Board,
-    s: Color,
-    device: &Device,
-) -> ThreatMaps {
-    let planes = planes(b, s);
-    let input = planes_to_tensor(&planes, device);
+pub fn analyze(net: &ThreatNet, b: &Board, s: Color, device: &Device) -> ThreatMaps {
+    let input = planes_tensor(b, s, device);
     let (l1, l2) = net.forward_intermediate(input);
     maps_from_output(b, s, l1, l2, 0)
 }
@@ -159,57 +171,41 @@ pub fn analyze(
 /// Analyze board `b` for both colours in one batched forward pass.
 ///
 /// Returns `[black_maps, white_maps]`.
-pub fn analyze_both(
-    net: &ThreatNet,
-    b: &Board,
-    device: &Device,
-) -> [ThreatMaps; 2] {
-    let input = build_batched_input(b, device);
+pub fn analyze_both(net: &ThreatNet, b: &Board, device: &Device) -> [ThreatMaps; 2] {
+    let input = planes_tensor_both(b, device);
     let (l1, l2) = net.forward_intermediate(input);
     let black = maps_from_output(b, Color::Black, l1.clone(), l2.clone(), 0);
     let white = maps_from_output(b, Color::White, l1, l2, 1);
     [black, white]
 }
 
-fn build_batched_input(b: &Board, device: &Device) -> Tensor<4> {
-    let black_planes = planes(b, Color::Black);
-    let white_planes = planes(b, Color::White);
-
-    let mut input_data = Vec::with_capacity(2 * 2 * PADDED * PADDED);
-    for row in black_planes.stones {
-        input_data.extend(row);
-    }
-    for row in black_planes.blocked {
-        input_data.extend(row);
-    }
-    for row in white_planes.stones {
-        input_data.extend(row);
-    }
-    for row in white_planes.blocked {
-        input_data.extend(row);
-    }
-
-    Tensor::<4>::from_data(TensorData::new(input_data, [2, 2, PADDED, PADDED]), device)
-}
-
-fn planes_to_tensor(planes: &Planes, device: &Device) -> Tensor<4> {
+/// Convert the padded planes for `side` into the network's NCHW input
+/// tensor `[1, 2, 25, 25]` (channel 0 = own stones, channel 1 =
+/// blocked cells).
+fn planes_tensor(board: &Board, side: Color, device: &Device) -> Tensor<4> {
+    let Planes { stones, blocked } = planes(board, side);
     let mut data = Vec::with_capacity(2 * PADDED * PADDED);
-    for row in planes.stones {
-        data.extend(row);
-    }
-    for row in planes.blocked {
-        data.extend(row);
-    }
+    data.extend_from_slice(&stones.concat());
+    data.extend_from_slice(&blocked.concat());
     Tensor::<4>::from_data(TensorData::new(data, [1, 2, PADDED, PADDED]), device)
 }
 
-fn maps_from_output(
-    b: &Board,
-    s: Color,
-    l1: Tensor<4>,
-    l2: Tensor<4>,
-    batch: usize,
-) -> ThreatMaps {
+/// Convert the padded planes for both sides into a batched NCHW input
+/// tensor `[2, 2, 25, 25]` (batch 0 = black, batch 1 = white).
+fn planes_tensor_both(board: &Board, device: &Device) -> Tensor<4> {
+    let black = planes(board, Color::Black);
+    let white = planes(board, Color::White);
+
+    let mut data = Vec::with_capacity(2 * 2 * PADDED * PADDED);
+    data.extend_from_slice(&black.stones.concat());
+    data.extend_from_slice(&black.blocked.concat());
+    data.extend_from_slice(&white.stones.concat());
+    data.extend_from_slice(&white.blocked.concat());
+
+    Tensor::<4>::from_data(TensorData::new(data, [2, 2, PADDED, PADDED]), device)
+}
+
+fn maps_from_output(b: &Board, s: Color, l1: Tensor<4>, l2: Tensor<4>, batch: usize) -> ThreatMaps {
     let l1_data: Vec<f32> = l1.to_data().iter::<f32>().collect();
     let l2_data: Vec<f32> = l2.to_data().iter::<f32>().collect();
     maps_from_flat(b, s, &l1_data, &l2_data, batch)
@@ -232,8 +228,8 @@ fn maps_from_flat(
     let mut fours_created_per_dir = [[[0.0f32; 15]; 15]; 4];
     let mut threes_per_dir = [[[0.0f32; 15]; 15]; 4];
 
-    let l2_base = batch * LAYER2_OUT * 15 * 15;
-    for ch in 0..LAYER2_OUT {
+    let l2_base = batch * LAYER2_NUM_CHANNELS * 15 * 15;
+    for ch in 0..LAYER2_NUM_CHANNELS {
         for r in 0..15 {
             for c in 0..15 {
                 let idx = l2_base + ((ch * 15) + r) * 15 + c;
@@ -252,11 +248,11 @@ fn maps_from_flat(
     let mut double_threats = [[0.0f32; 15]; 15];
     let mut double_threes = [[0.0f32; 15]; 15];
 
-    let table = crate::kernels::pattern_table();
+    let table = crate::kernel::pattern_table();
 
     for r in 0..15 {
         for c in 0..15 {
-            let mv = engine::Move::new(r as u8, c as u8).expect("in-board indices");
+            let mv = Move::new(r as u8, c as u8).expect("in-board indices");
             let occupied = b.stone_at(mv).is_some();
             if occupied {
                 // Threat maps are only defined for empty cells; the
@@ -287,13 +283,11 @@ fn maps_from_flat(
                     ) {
                         continue;
                     }
-                    let l1_idx = ((batch * LAYER1_OUT + ch) * 15 + r) * 15 + c;
+                    let l1_idx = ((batch * LAYER1_NUM_CHANNELS + ch) * 15 + r) * 15 + c;
                     if l1_data[l1_idx] > 0.0 {
                         for &(dy, dx) in &entry.completing_offsets {
                             let c2_r = r as i32 + dy;
                             let c2_c = c as i32 + dx;
-                            // Occupied completing cells cannot exist,
-                            // but guard anyway.
                             if !(0..15).contains(&c2_r) || !(0..15).contains(&c2_c) {
                                 continue;
                             }
@@ -353,229 +347,49 @@ fn offset_along_direction(dy: i32, dx: i32, dir: Direction) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::tensor::Device;
-    use engine::reference::board_from_ascii;
-    use engine::{Color, Move, MoveSet};
+    use engine::MoveSet;
 
-    fn set_of(cells: &[(u8, u8)]) -> MoveSet {
-        let mut s = MoveSet::EMPTY;
-        for &(r, c) in cells {
-            s.insert(Move::new(r, c).unwrap());
+    /// Parse a 15-line ASCII board: `x` = black stone, `o` = white
+    /// stone, anything else = empty. Black to move, so the position
+    /// must have at least as many white stones as black stones.
+    fn board_from_ascii(image: &str) -> Board {
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        for (r, line) in image.trim().lines().enumerate() {
+            for (c, ch) in line.chars().filter(|ch| !ch.is_whitespace()).enumerate() {
+                let mv = Move::new(r as u8, c as u8).expect("(r, c) is in-board");
+                match ch {
+                    'x' => black.push(mv),
+                    'o' => white.push(mv),
+                    _ => {}
+                }
+            }
         }
-        s
+        Board::from_position(&black, &white, Color::Black).expect("valid test position")
     }
 
-    #[test]
-    fn open_four_win_map_matches_engine() {
-        let b = board_from_ascii(
-            "
-            O . . . . . . . . . . . . . O
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . X X X X . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . O
-            ",
-        );
+    /// The win map must agree with `engine::immediate_wins` on every
+    /// one of the 225 cells — exact set equality, both directions.
+    fn assert_win_map_matches_engine(image: &str) {
+        let board = board_from_ascii(image);
         let device = Device::flex();
         let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert_eq!(
-            wins_set(&maps),
-            set_of(&[(7, 3), (7, 8)]),
-            "open four should have two winning cells"
-        );
+        let map = net.win_map(&board, Color::Black, &device);
+        let wins = engine::immediate_wins(&board, Color::Black);
+
+        for r in 0..15u8 {
+            for c in 0..15u8 {
+                let mv = Move::new(r, c).expect("(r, c) is in-board");
+                assert_eq!(
+                    map[r as usize][c as usize] > 0.0,
+                    wins.contains(mv),
+                    "win map disagrees with engine at ({r}, {c})"
+                );
+            }
+        }
     }
 
-    #[test]
-    fn broken_four_win_map_matches_engine() {
-        let b = board_from_ascii(
-            "
-            O . . . . . . . . . . . . . O
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . X X . X X . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . O
-            ",
-        );
-        let device = Device::flex();
-        let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert_eq!(
-            wins_set(&maps),
-            set_of(&[(7, 6)]),
-            "broken four should have one winning cell"
-        );
-    }
-
-    #[test]
-    fn classic_fork_double_threat() {
-        // Two closed threes through (7,7); playing there opens two
-        // fours, each with one winning cell.
-        let b = board_from_ascii(
-            "
-            . . . . . . . . . . . . . . O
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . O . . . . . . .
-            . . . . . . . X . . . . . . .
-            . . . . . . . X . . . . . . .
-            . . . . . . . X . . . . . . .
-            . . . O X X X . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . O . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . O
-            ",
-        );
-        let device = Device::flex();
-        let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert!(wins_set(&maps).is_empty(), "no immediate win");
-        assert_eq!(
-            double_threat_set(&maps),
-            set_of(&[(7, 7)]),
-            "classic fork is a single double threat"
-        );
-    }
-
-    #[test]
-    fn open_four_maker_is_double_threat() {
-        // Three black stones with both ends empty. Extending either
-        // end creates an open four, which is a double threat.
-        let b = board_from_ascii(
-            "
-            O . . . . . . . . . . . . . O
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . X X X . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . .
-            ",
-        );
-        let device = Device::flex();
-        let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert!(
-            wins_set(&maps).is_empty(),
-            "three stones alone do not complete five"
-        );
-        assert_eq!(
-            double_threat_set(&maps),
-            set_of(&[(7, 4), (7, 8)]),
-            "both extensions create an open four (two winning cells)"
-        );
-    }
-
-    #[test]
-    fn two_broken_fours_make_double_threat() {
-        // Black stones with two gaps; filling the middle gap creates
-        // two broken fours whose two unique completing cells make a
-        // double threat.
-        let b = board_from_ascii(
-            "
-            O . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            X . X . X . X . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . O
-            ",
-        );
-        let device = Device::flex();
-        let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert_eq!(
-            double_threat_set(&maps),
-            set_of(&[(7, 3)]),
-            "filling the middle gap creates two broken fours"
-        );
-    }
-
-    #[test]
-    fn double_three_fork_matches_oracle() {
-        // Horizontal and vertical threes through (7,7).
-        let b = board_from_ascii(
-            "
-            O . . . . . . . . . . . . . O
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . X . . . . . . .
-            . . . . . . X . X . . . . . .
-            . . . . . . . X . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . .
-            O . . . . . . . . . . . . . O
-            ",
-        );
-        let device = Device::flex();
-        let net = ThreatNet::new(&device);
-        let maps = analyze(&net, &b, Color::Black, &device);
-        assert_eq!(
-            double_three_set(&maps),
-            set_of(&[(7, 7)]),
-            "only the intersection is a double-three fork"
-        );
-    }
-
-    fn wins_set(maps: &ThreatMaps) -> MoveSet {
-        set_from_map(&maps.wins)
-    }
-
-    fn double_threat_set(maps: &ThreatMaps) -> MoveSet {
-        set_from_map(&maps.double_threats)
-    }
-
-    fn double_three_set(maps: &ThreatMaps) -> MoveSet {
-        set_from_map(&maps.double_threes)
-    }
-
+    /// Convert a 15×15 float map into a [`MoveSet`] for set comparisons.
     fn set_from_map(map: &[[f32; 15]; 15]) -> MoveSet {
         let mut s = MoveSet::EMPTY;
         for r in 0..15u8 {
@@ -586,6 +400,139 @@ mod tests {
             }
         }
         s
+    }
+
+    /// Assert that the network's `double_threats` map agrees with
+    /// `engine::double_threats` on the given board for Black.
+    fn assert_double_threats_match_engine(image: &str) {
+        let board = board_from_ascii(image);
+        let device = Device::flex();
+        let net = ThreatNet::new(&device);
+        let maps = analyze(&net, &board, Color::Black, &device);
+        let expected = engine::double_threats(&board, Color::Black);
+        assert_eq!(
+            set_from_map(&maps.double_threats),
+            expected,
+            "double threat map disagrees with engine"
+        );
+    }
+
+    #[test]
+    fn open_four_win_map_matches_engine() {
+        // Black has an open four on row 7 (cols 4..=7): both ends,
+        // (7, 3) and (7, 8), complete five immediately.
+        let image = "\
+            o o o o . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . x x x x . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .";
+        assert_win_map_matches_engine(image);
+    }
+
+    #[test]
+    fn broken_four_win_map_matches_engine() {
+        // Black has a broken four on row 7: cols 4,5,6 and 8. Only the
+        // gap (7, 7) completes five. The white stone at (7, 9) sits
+        // right next to the window — an occupied neighbour must not
+        // disturb the detector.
+        let image = "\
+            o o o o . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . x x x . x o . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .";
+        assert_win_map_matches_engine(image);
+    }
+
+    #[test]
+    fn classic_fork_double_threat() {
+        // Two closed threes through (7,7); playing there opens two
+        // fours, each with one winning cell.
+        let image = "\
+            . . . . . . . . . . . . . . o
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . o . . . . . . .
+            . . . . . . . x . . . . . . .
+            . . . . . . . x . . . . . . .
+            . . . . . . . x . . . . . . .
+            . . . o x x x . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . o . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            o . . . . . . . . . . . . . o";
+        assert_double_threats_match_engine(image);
+    }
+
+    #[test]
+    fn open_four_maker_is_double_threat() {
+        // Three black stones with both ends empty. Extending either
+        // end creates an open four, which is a double threat.
+        let image = "\
+            o . . . . . . . . . . . . . o
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . x x x . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            o . . . . . . . . . . . . . .";
+        assert_double_threats_match_engine(image);
+    }
+
+    #[test]
+    fn two_broken_fours_make_double_threat() {
+        // Black stones with two gaps; filling the middle gap creates
+        // two broken fours whose two unique completing cells make a
+        // double threat.
+        let image = "\
+            o . . . . . . . . . . . . . o
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            x . x . x . x . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . .
+            o . . . . . . . . . . . . . o";
+        assert_double_threats_match_engine(image);
     }
 }
 ````

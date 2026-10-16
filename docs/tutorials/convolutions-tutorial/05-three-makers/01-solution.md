@@ -1,14 +1,15 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes `tests/three_maps.rs` from the verified reference crate
-> verbatim. The kernels themselves already appear in chapter 3's solution
-> in their final form; the new artifact for chapter 5 is this direct test
-> file.
+> This file quotes `tests/three_maps.rs` from the verified reference
+> build verbatim. In that build the real `patterns` crate is evolved
+> through chapters 4–8 with all gates green. The three-maker kernels
+> it tests already exist in your `src/kernel.rs` from chapter 3; the
+> new artifact for chapter 5 is this direct test file.
 >
-> The file imports `patterns::oracle` for ground-truth comparisons. That
-> oracle is the subject of chapter 6, so if you are working strictly in
-> order you can either inline equivalent window checks now or run these
-> tests after the oracle exists.
+> The file imports `patterns::oracle` for ground-truth comparisons.
+> That oracle is the subject of chapter 6, so if you are working
+> strictly in order you can either inline equivalent window checks now
+> or run these tests after the oracle exists.
 
 ````rust
 //! Direct ASCII tests for the threat network's open-three maker maps.
@@ -22,7 +23,7 @@
 mod common;
 
 use burn::tensor::Device;
-use engine::{Color, Move, MoveSet, reference::board_from_ascii};
+use engine::{Color, Move, MoveSet};
 use patterns::net::{ThreatMaps, ThreatNet, analyze};
 use patterns::oracle::{Direction, double_threes, open_three_makers};
 
@@ -69,24 +70,22 @@ fn analyze_maps(b: &engine::Board, s: Color) -> ThreatMaps {
 
 #[test]
 fn quiet_board_has_empty_three_maps() {
-    let b = board_from_ascii(
-        "
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    let b = common::board_from_ascii(
+        ". . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -94,26 +93,24 @@ fn quiet_board_has_empty_three_maps() {
 
 #[test]
 fn xxx_pattern_matches_oracle_horizontally() {
-    // Existing black at (7,1),(7,2); O at (7,5) kills the broken
+    // Existing black at (7,1),(7,2); o at (7,5) kills the broken
     // _XX_X_ at (7,4). Only (7,3) makes _XXX_.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . X X . . O . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . x x . . o . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -121,26 +118,24 @@ fn xxx_pattern_matches_oracle_horizontally() {
 
 #[test]
 fn xxx_pattern_matches_oracle_diagonally_down() {
-    // Existing black at (1,1),(2,2); O at (5,5) kills the broken
+    // Existing black at (1,1),(2,2); o at (5,5) kills the broken
     // _XX_X_ at (4,4). Only (3,3) makes _XXX_.
-    let b = board_from_ascii(
-        "
-        . . . . . . . . . . . . . . .
-        . X . . . . . . . . . . . . .
-        . . X . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . O . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . O
-        ",
+    let b = common::board_from_ascii(
+        ". . . . . . . . . . . . . . .
+         . x . . . . . . . . . . . . .
+         . . x . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . o . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -152,24 +147,22 @@ fn x_xx_pattern_matches_oracle_horizontally() {
     // that becomes the isolated X of `_X_XX_` after placement; filling
     // the gap (7,7) also makes _XXX_; extending the pair gives
     // _XXX_ at (7,10) and _XX_X_ at (7,11).
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . X X . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . O
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . x x . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -179,24 +172,22 @@ fn x_xx_pattern_matches_oracle_horizontally() {
 fn x_xx_pattern_matches_oracle_diagonally_down() {
     // Pair at (9,9),(10,10); isolated X at (7,7). The gap (8,8)
     // is also a _XXX_ maker.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . X . . . . .
-        . . . . . . . . . . X . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . O
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . x . . . . .
+         . . . . . . . . . . x . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -204,28 +195,26 @@ fn x_xx_pattern_matches_oracle_diagonally_down() {
 
 #[test]
 fn xx_x_pattern_matches_oracle_horizontally() {
-    // Existing black at (7,6),(7,7); O at (7,3) kills the mirror
+    // Existing black at (7,6),(7,7); o at (7,3) kills the mirror
     // `_X_XX_` maker at (7,4) (blocks its leftmost required-empty
     // cell); to the right, (7,8) makes `_XXX_` and (7,9) is the lone
     // X of `_XX_X_`; to the left, (7,5) makes `_XXX_`.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . O . . X X . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . o . . x x . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -233,26 +222,24 @@ fn xx_x_pattern_matches_oracle_horizontally() {
 
 #[test]
 fn xx_x_pattern_matches_oracle_diagonally_down() {
-    // Pair at (5,5),(6,6); O at (3,3) kills the mirror _XXX_ at
+    // Pair at (5,5),(6,6); o at (3,3) kills the mirror _XXX_ at
     // (4,4). Lone X at (8,8); gap (7,7) is also a _XXX_ maker.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . O . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . X . . . . . . . . .
-        . . . . . . X . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . o . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . x . . . . . . . . .
+         . . . . . . x . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -262,24 +249,22 @@ fn xx_x_pattern_matches_oracle_diagonally_down() {
 fn edge_hugging_three_does_not_fire() {
     // Black at (7,0),(7,2); candidate (7,1). The left empty end of
     // _XXX_ would be off the board.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        X . X . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         x . x . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -287,25 +272,23 @@ fn edge_hugging_three_does_not_fire() {
 
 #[test]
 fn opponent_blocked_end_does_not_fire() {
-    // Black at (7,6),(7,8); O at (7,9) blocks the right empty end.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . X . X O . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        ",
+    // Black at (7,6),(7,8); o at (7,9) blocks the right empty end.
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . x . x o . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -314,24 +297,22 @@ fn opponent_blocked_end_does_not_fire() {
 #[test]
 fn anti_four_margin_rejects_three_maker() {
     // _XXX_ with an own stone at (7,10) immediately beyond the right end.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . O
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . X . X . X . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . O
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . o
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . x . x . x . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);
@@ -341,24 +322,22 @@ fn anti_four_margin_rejects_three_maker() {
 fn double_three_fork_matches_oracle() {
     // Horizontal and vertical threes through (7,7). There are other
     // single-direction makers, but only (7,7) has both.
-    let b = board_from_ascii(
-        "
-        O . . . . . . . . . . . . . O
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . X . . . . . . .
-        . . . . . . X . X . . . . . .
-        . . . . . . . X . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        . . . . . . . . . . . . . . .
-        O . . . . . . . . . . . . . O
-        ",
+    let b = common::board_from_ascii(
+        "o . . . . . . . . . . . . . o
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . x . . . . . . .
+         . . . . . . x . x . . . . . .
+         . . . . . . . x . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         o . . . . . . . . . . . . . o",
     );
     let maps = analyze_maps(&b, Color::Black);
     assert_threes_match(&maps, &b, Color::Black);

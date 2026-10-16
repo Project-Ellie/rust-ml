@@ -1,12 +1,6 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes `src/kernels.rs` from the verified reference crate in
-> its **final** form. The families beyond `FiveCompleter` are added in
-> chapters 4 and 5; the chapter-3 learner implements only
-> `FiveCompleter` (and the shared machinery), leaving the remaining
-> families as placeholders. Quoting the final file here lets you compare
-> the shape of the finished artifact without spoiling the incremental
-> build.
+> This file quotes the crate's actual `src/kernel.rs` exactly as it stands on `main` after the chapter-3 slice. The chapter text builds the pattern table incrementally, but the real slice implemented all six families at once, so this quote is also the final form that chapters 4–6 build on.
 
 ````rust
 //! Declarative pattern table and hand-manufactured convolution kernels.
@@ -34,33 +28,29 @@
 //! All kernel weights are small integers, so every f32 sum is exact on
 //! every Burn backend.
 
+use crate::tools::conv_from_template;
 use burn::module::Param;
 use burn::nn::PaddingConfig2d;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::tensor::{Device, Tensor, TensorData};
 
-/// Side length of the uniform square kernel footprint.
+/// Side length of the uniform square kernel footprint
 pub const KERNEL: usize = 11;
 
-/// Radius of the kernel footprint: `(KERNEL - 1) / 2`.
+/// Radius of the kernel footprint
 pub const RADIUS: i32 = 5;
 
-/// The four line directions, in the same order as the engine's win
-/// detector and the oracle.
+/// The four line directions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
-    /// Left-to-right.
     Horizontal,
-    /// Top-to-bottom.
     Vertical,
-    /// Top-left to bottom-right.
     DiagDown,
-    /// Bottom-left to top-right.
     DiagUp,
 }
 
 impl Direction {
-    /// All four directions in canonical order.
+    /// all four directions
     pub const ALL: [Direction; 4] = [
         Direction::Horizontal,
         Direction::Vertical,
@@ -68,7 +58,7 @@ impl Direction {
         Direction::DiagUp,
     ];
 
-    /// Direction index in `0..4`.
+    /// the index of each direction - to locate the pattern
     pub fn index(self) -> usize {
         match self {
             Direction::Horizontal => 0,
@@ -78,8 +68,7 @@ impl Direction {
         }
     }
 
-    /// Step vector `(drow, dcol)` for walking one cell along this
-    /// direction.
+    /// step vector (drow, dcol)
     pub fn step(self) -> (i32, i32) {
         match self {
             Direction::Horizontal => (0, 1),
@@ -94,41 +83,29 @@ impl Direction {
 /// of threat and share a layer-2 weight scale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PatternFamily {
-    /// Five-cell window containing `c`; placing at `c` completes five.
+    /// xxxxc or alike
     FiveCompleter,
-    /// Four consecutive stones including `c` with both ends empty.
+    /// cxxxc or alike
     OpenFourMaker,
-    /// Four stones in a five-cell window with one gap; the gap is the
-    /// unique five-completing cell.
+    /// xcxcx or alike
     BrokenFourMaker,
-    /// `_XXX_` open three.
+    /// cxxc
     ThreeXxx,
-    /// `_X_XX_` open three.
+    /// xxccx
     ThreeXxX,
-    /// `_XX_X_` open three.
+    /// xccxx
     ThreeXxXRev,
 }
 
 impl PatternFamily {
-    /// Scale applied in layer 2 so that the channel contributes the
-    /// correct number of five-completing cells.
     pub fn weight_scale(self) -> f32 {
         match self {
-            // One five-completing cell per broken four.
             PatternFamily::BrokenFourMaker => 1.0,
-            // One open four contributes two five-completing cells.
             PatternFamily::OpenFourMaker => 2.0,
-            // Threes and immediate wins are counted direction-wise in
-            // layer 2; their raw scale is 1.
             _ => 1.0,
         }
     }
 
-    /// Number of distinct horizontal base shapes for this family.
-    ///
-    /// A base shape fixes `c` at the origin and describes the pattern
-    /// along the horizontal direction. Direction variants are generated
-    /// by rotation.
     pub const fn base_shape_count(self) -> usize {
         match self {
             PatternFamily::FiveCompleter => 5,
@@ -140,8 +117,7 @@ impl PatternFamily {
         }
     }
 
-    /// Total channels contributed by this family across all directions.
-    pub const fn channels(self) -> usize {
+    pub const fn num_channels(self) -> usize {
         self.base_shape_count() * 4
     }
 }
@@ -153,42 +129,31 @@ impl PatternFamily {
 /// is stored at kernel position `(RADIUS + dy, RADIUS + dx)`.
 #[derive(Debug, Clone)]
 pub struct PatternEntry {
-    /// Which family this shape belongs to.
     pub family: PatternFamily,
-    /// Which direction this kernel detects.
     pub direction: Direction,
-    /// Cells that must hold an own stone of the evaluated side.
     pub stone_offsets: Vec<(i32, i32)>,
-    /// Cells that must be genuinely empty (no stone of either colour,
-    /// and not the materialised border).
     pub empty_offsets: Vec<(i32, i32)>,
-    /// Cells that must *not* hold an own stone. They may be empty or
-    /// occupied by the opponent. Used only for the anti-four margins
-    /// of open-three patterns.
     pub anti_margin_offsets: Vec<(i32, i32)>,
-    /// The five-completing cells produced by this pattern, relative to
-    /// `c`. An open four contributes two cells (its ends); a broken
-    /// four contributes one (its gap). A five-completer contributes
-    /// `c` itself.
     pub completing_offsets: Vec<(i32, i32)>,
 }
 
 /// Total number of output channels produced by layer 1.
-pub const LAYER1_OUT: usize = PatternFamily::FiveCompleter.channels()
-    + PatternFamily::OpenFourMaker.channels()
-    + PatternFamily::BrokenFourMaker.channels()
-    + PatternFamily::ThreeXxx.channels()
-    + PatternFamily::ThreeXxX.channels()
-    + PatternFamily::ThreeXxXRev.channels();
+pub const LAYER1_NUM_CHANNELS: usize = PatternFamily::FiveCompleter.num_channels()
+    + PatternFamily::OpenFourMaker.num_channels()
+    + PatternFamily::BrokenFourMaker.num_channels()
+    + PatternFamily::ThreeXxx.num_channels()
+    + PatternFamily::ThreeXxX.num_channels()
+    + PatternFamily::ThreeXxXRev.num_channels();
 
-/// Number of output channels produced by layer 2.
+// Number of output channels produced by layer 2.
 ///
 /// Layer 2 emits: one win map, four per-direction four-created maps,
 /// and four per-direction three maps. The final double-threat and
 /// double-three maps are derived from these by the small amount of
-/// glue code in [`crate::net::ThreatMaps`] (the `before` scalar and
-/// win masking are board-dependent, so they live outside the conv).
-pub const LAYER2_OUT: usize = 9;
+/// glue code that chapter 4 adds to `net.rs` as `ThreatMaps` (the
+/// `before` scalar and win masking are board-dependent, so they live
+/// outside the conv).
+pub const LAYER2_NUM_CHANNELS: usize = 9;
 
 /// Build the complete pattern table.
 ///
@@ -197,7 +162,7 @@ pub const LAYER2_OUT: usize = 9;
 /// `FiveCompleter`, then `OpenFourMaker`, then `BrokenFourMaker`,
 /// then `ThreeXxx`, `ThreeXxX`, and `ThreeXxXRev`.
 pub fn pattern_table() -> Vec<PatternEntry> {
-    let mut table = Vec::with_capacity(LAYER1_OUT);
+    let mut table = Vec::with_capacity(LAYER1_NUM_CHANNELS);
 
     for dir in Direction::ALL {
         for base in five_completer_base_shapes() {
@@ -220,12 +185,12 @@ pub fn pattern_table() -> Vec<PatternEntry> {
         }
     }
 
-    assert_eq!(table.len(), LAYER1_OUT);
+    assert_eq!(table.len(), LAYER1_NUM_CHANNELS);
     table
 }
 
 /// Build layer 1: an 11×11 conv from 2 input channels to
-/// [`LAYER1_OUT`] output channels.
+/// [`LAYER1_NUM_CHANNELS`] output channels.
 ///
 /// The returned conv uses valid padding and a ReLU activation (the
 /// caller supplies the activation by calling `forward` in the normal
@@ -233,16 +198,13 @@ pub fn pattern_table() -> Vec<PatternEntry> {
 pub fn layer1_conv(device: &Device) -> Conv2d {
     let table = pattern_table();
 
-    let conv: Conv2d = Conv2dConfig::new([2, LAYER1_OUT], [KERNEL, KERNEL])
+    let template: Conv2d = Conv2dConfig::new([2, LAYER1_NUM_CHANNELS], [KERNEL, KERNEL])
         .with_padding(PaddingConfig2d::Valid)
         .with_bias(true)
         .init(device);
 
-    // Burn 0.22 has no weight setter, so init-from-config gives us the
-    // metadata; `weight`/`bias` are then replaced via `Param::from_tensor`.
-    // See gomoku/crates/patterns/tests/spike.rs.
-    let mut weight = vec![0.0f32; LAYER1_OUT * 2 * KERNEL * KERNEL];
-    let mut bias = vec![0.0f32; LAYER1_OUT];
+    let mut weight = vec![0.0f32; LAYER1_NUM_CHANNELS * 2 * KERNEL * KERNEL];
+    let mut bias = vec![0.0f32; LAYER1_NUM_CHANNELS];
 
     for (out_ch, entry) in table.iter().enumerate() {
         let num_stones = entry.stone_offsets.len();
@@ -261,24 +223,17 @@ pub fn layer1_conv(device: &Device) -> Conv2d {
     }
 
     let weight_tensor = Tensor::<4>::from_data(
-        TensorData::new(weight, [LAYER1_OUT, 2, KERNEL, KERNEL]),
+        TensorData::new(weight, [LAYER1_NUM_CHANNELS, 2, KERNEL, KERNEL]),
         device,
     );
-    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER1_OUT]), device);
 
-    Conv2d {
-        weight: Param::from_tensor(weight_tensor),
-        bias: Some(Param::from_tensor(bias_tensor)),
-        stride: conv.stride,
-        kernel_size: conv.kernel_size,
-        dilation: conv.dilation,
-        groups: conv.groups,
-        padding: conv.padding,
-    }
+    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER1_NUM_CHANNELS]), device);
+
+    conv_from_template(weight_tensor, bias_tensor, template)
 }
 
-/// Build layer 2: a 1×1 conv from [`LAYER1_OUT`] channels to
-/// [`LAYER2_OUT`] channels.
+/// Build layer 2: a 1×1 conv from [`LAYER1_NUM_CHANNELS`] channels to
+/// [`LAYER2_NUM_CHANNELS`] channels.
 ///
 /// Output channel layout:
 ///
@@ -289,28 +244,29 @@ pub fn layer1_conv(device: &Device) -> Conv2d {
 pub fn layer2_conv(device: &Device) -> Conv2d {
     let table = pattern_table();
 
-    let conv: Conv2d = Conv2dConfig::new([LAYER1_OUT, LAYER2_OUT], [1, 1])
+    let template: Conv2d = Conv2dConfig::new([LAYER1_NUM_CHANNELS, LAYER2_NUM_CHANNELS], [1, 1])
         .with_padding(PaddingConfig2d::Valid)
         .with_bias(true)
         .init(device);
 
-    // Burn 0.22 has no weight setter, so init-from-config gives us the
-    // metadata; `weight`/`bias` are then replaced via `Param::from_tensor`.
-    // See gomoku/crates/patterns/tests/spike.rs.
-    let mut weight = vec![0.0f32; LAYER2_OUT * LAYER1_OUT];
-    let bias = vec![0.0f32; LAYER2_OUT];
+    let mut weight = vec![0.0f32; LAYER1_NUM_CHANNELS * LAYER2_NUM_CHANNELS];
+    let bias = vec![0.0f32; LAYER2_NUM_CHANNELS];
 
     for (in_ch, entry) in table.iter().enumerate() {
-        // Channel 0: wins.
+        // channel 0: wins:
         if matches!(entry.family, PatternFamily::FiveCompleter) {
             set_weight_1x1(&mut weight, 0, in_ch, 1.0);
         }
 
         // Channels 1..=4: fours created, per direction.
-        let dir_idx = 1 + entry.direction.index();
         match entry.family {
             PatternFamily::OpenFourMaker | PatternFamily::BrokenFourMaker => {
-                set_weight_1x1(&mut weight, dir_idx, in_ch, entry.family.weight_scale());
+                set_weight_1x1(
+                    &mut weight,
+                    1 + entry.direction.index(),
+                    in_ch,
+                    entry.family.weight_scale(),
+                );
             }
             _ => {}
         }
@@ -318,7 +274,7 @@ pub fn layer2_conv(device: &Device) -> Conv2d {
         // Channels 5..=8: threes, per direction.
         let three_idx = 5 + entry.direction.index();
         match entry.family {
-            PatternFamily::ThreeXxx | PatternFamily::ThreeXxX | PatternFamily::ThreeXxXRev => {
+            PatternFamily::ThreeXxX | PatternFamily::ThreeXxx | PatternFamily::ThreeXxXRev => {
                 set_weight_1x1(&mut weight, three_idx, in_ch, 1.0);
             }
             _ => {}
@@ -326,19 +282,19 @@ pub fn layer2_conv(device: &Device) -> Conv2d {
     }
 
     let weight_tensor = Tensor::<4>::from_data(
-        TensorData::new(weight, [LAYER2_OUT, LAYER1_OUT, 1, 1]),
+        TensorData::new(weight, [LAYER2_NUM_CHANNELS, LAYER1_NUM_CHANNELS, 1, 1]),
         device,
     );
-    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER2_OUT]), device);
+    let bias_tensor = Tensor::<1>::from_data(TensorData::new(bias, [LAYER2_NUM_CHANNELS]), device);
 
     Conv2d {
         weight: Param::from_tensor(weight_tensor),
         bias: Some(Param::from_tensor(bias_tensor)),
-        stride: conv.stride,
-        kernel_size: conv.kernel_size,
-        dilation: conv.dilation,
-        groups: conv.groups,
-        padding: conv.padding,
+        kernel_size: template.kernel_size,
+        stride: template.stride,
+        dilation: template.dilation,
+        groups: template.groups,
+        padding: template.padding,
     }
 }
 
@@ -346,10 +302,9 @@ pub fn layer2_conv(device: &Device) -> Conv2d {
 // Base shape generators (horizontal direction, `c` at the origin).
 // Offsets are 1-D positions along the line; `c` is position 0.
 // ------------------------------------------------------------------
-
 fn five_completer_base_shapes() -> Vec<PatternEntry> {
     let mut out = Vec::with_capacity(PatternFamily::FiveCompleter.base_shape_count());
-    // `c` sits at offset `k` inside a 5-cell window [-k, -k+1, ..., -k+4].
+
     for k in 0..5i32 {
         let window: Vec<i32> = (-k..=(-k + 4)).collect();
         let stones: Vec<(i32, i32)> = window
@@ -371,8 +326,6 @@ fn five_completer_base_shapes() -> Vec<PatternEntry> {
 
 fn open_four_maker_base_shapes() -> Vec<PatternEntry> {
     let mut out = Vec::with_capacity(PatternFamily::OpenFourMaker.base_shape_count());
-    // `c` sits at offset `k` inside a 4-cell segment [-k, ..., -k+3].
-    // The two cells immediately outside the segment must be empty.
     for k in 0..4i32 {
         let segment: Vec<i32> = (-k..=(-k + 3)).collect();
         let stones: Vec<(i32, i32)> = segment
@@ -380,9 +333,10 @@ fn open_four_maker_base_shapes() -> Vec<PatternEntry> {
             .filter(|&&p| p != 0)
             .map(|&p| (0, p))
             .collect();
+
         let empty = vec![(0, -k - 1), (0, -k + 4)];
-        // The two five-completing cells are the segment ends.
         let completing = vec![(0, -k - 1), (0, -k + 4)];
+
         out.push(PatternEntry {
             family: PatternFamily::OpenFourMaker,
             direction: Direction::Horizontal,
@@ -390,7 +344,7 @@ fn open_four_maker_base_shapes() -> Vec<PatternEntry> {
             empty_offsets: empty,
             anti_margin_offsets: Vec::new(),
             completing_offsets: completing,
-        });
+        })
     }
     out
 }
@@ -424,15 +378,13 @@ fn broken_four_maker_base_shapes() -> Vec<PatternEntry> {
 
 fn three_xxx_base_shapes() -> Vec<PatternEntry> {
     let mut out = Vec::with_capacity(PatternFamily::ThreeXxx.base_shape_count());
-    // Pattern `_XXX_`: stones at pattern positions 1,2,3; empty at 0,4.
-    // `c` is one of the three stones.
     for k in 1..=3i32 {
         out.push(make_three_shape(
             PatternFamily::ThreeXxx,
             k,
             &[1, 2, 3],
             &[0, 4],
-        ));
+        ))
     }
     out
 }
@@ -471,10 +423,9 @@ fn make_three_shape(
     stone_positions: &[i32],
     empty_positions: &[i32],
 ) -> PatternEntry {
-    // The pattern window starts at offset `-c_pos` relative to `c`.
     let shift = -c_pos;
-    let leftmost = shift;
-    let rightmost = shift + empty_positions.iter().max().copied().unwrap_or(0);
+    let left_most = shift;
+    let right_most = shift + empty_positions.iter().max().copied().unwrap_or(0);
 
     let stones: Vec<(i32, i32)> = stone_positions
         .iter()
@@ -482,7 +433,7 @@ fn make_three_shape(
         .filter(|&(_, p)| p != 0)
         .collect();
     let empty: Vec<(i32, i32)> = empty_positions.iter().map(|&p| (0, shift + p)).collect();
-    let anti_margin = vec![(0, leftmost - 1), (0, rightmost + 1)];
+    let anti_margin = vec![(0, left_most - 1), (0, right_most + 1)];
 
     PatternEntry {
         family,
@@ -495,14 +446,11 @@ fn make_three_shape(
 }
 
 // ------------------------------------------------------------------
-// Rotation and tensor helpers.
+// Rotation and tensor helpers
 // ------------------------------------------------------------------
 
 fn rotate(entry: &PatternEntry, dir: Direction) -> PatternEntry {
     let (dr, dc) = dir.step();
-    // The base shape is horizontal: offsets are `(0, p)` where `p`
-    // increases to the right. Rotating by `(dr,dc)` maps the horizontal
-    // vector `(0,1)` to `(dr,dc)`, so `(0,p)` becomes `(dr*p, dc*p)`.
     let rot_simple = |(_dy, dx): &(i32, i32)| (dr * dx, dc * dx);
 
     PatternEntry {
@@ -518,29 +466,31 @@ fn rotate(entry: &PatternEntry, dir: Direction) -> PatternEntry {
 fn set_weight(weight: &mut [f32], out_ch: usize, in_ch: usize, dy: i32, dx: i32, value: f32) {
     assert!(
         dy.abs() <= RADIUS && dx.abs() <= RADIUS,
-        "offset ({dy},{dx}) exceeds kernel radius {RADIUS}"
+        "offset ({dy}, {dx}) exceeds kernel radius {RADIUS} "
     );
     let ky = (dy + RADIUS) as usize;
     let kx = (dx + RADIUS) as usize;
     let idx = ((out_ch * 2 + in_ch) * KERNEL + ky) * KERNEL + kx;
+
     weight[idx] = value;
 }
 
 fn set_weight_1x1(weight: &mut [f32], out_ch: usize, in_ch: usize, value: f32) {
-    let idx = out_ch * LAYER1_OUT + in_ch;
+    let idx = out_ch * LAYER1_NUM_CHANNELS + in_ch;
     weight[idx] = value;
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
     fn channel_counts_match_table() {
         let table = pattern_table();
-        assert_eq!(table.len(), LAYER1_OUT);
-        assert_eq!(LAYER1_OUT, 152);
-        assert_eq!(LAYER2_OUT, 9);
+        assert_eq!(table.len(), LAYER1_NUM_CHANNELS);
+        assert_eq!(LAYER1_NUM_CHANNELS, 152);
+        assert_eq!(LAYER2_NUM_CHANNELS, 9);
     }
 
     #[test]
@@ -554,7 +504,7 @@ mod tests {
             {
                 assert!(
                     dy.abs() <= RADIUS && dx.abs() <= RADIUS,
-                    "{entry:?} contains offset ({dy},{dx}) outside radius {RADIUS}"
+                    "{entry:?} contains offset ({dy}, {dx} outside radius {RADIUS}"
                 );
             }
         }
@@ -574,7 +524,7 @@ mod tests {
             let count = table.iter().filter(|e| e.family == family).count();
             assert_eq!(
                 count,
-                family.channels(),
+                family.num_channels(),
                 "family {family:?} channel count mismatch"
             );
         }

@@ -516,13 +516,14 @@ positive marker. The win-map tests compare this map against
 
 ## Solution (opt-in)
 
-The complete reference `src/kernels.rs` for the finished crate lives
-in
+The crate's actual `src/kernel.rs` — quoted verbatim from the
+repository — lives in
 [03-the-kernel-language/01-solution.md](03-the-kernel-language/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare. The file is
-quoted in its final form; families beyond `FiveCompleter` are added in
-chapters 4 and 5.
+quoted in its final form: on `main` the chapter-3 slice implemented
+all six families at once (not just `FiveCompleter`), so the quoted
+file is also what chapters 4–6 build on.
 
 ## TDD checklist
 
@@ -573,7 +574,8 @@ The remaining reference tests exercise families added later:
 * Commit message for the code slice:
   `feat(patterns): exact-pattern kernels + win map`.
 
-Next: [Chapter 04 — The four level](04-the-four-level.md)
+Next: [Epilogue — the picture so far](03-epilogue-the-picture-so-far.md),
+then [Chapter 04 — The four level](04-the-four-level.md)
 
 ## References
 

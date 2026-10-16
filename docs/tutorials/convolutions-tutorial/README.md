@@ -39,19 +39,25 @@ Same conventions as the mcts and datagen tutorials:
 | 01 | [Planes and a conv by hand](01-planes-and-a-conv-by-hand.md) | Board → two channels (stones / blocked-with-border); a nested-loop cross-correlation in plain Rust. |
 | 02 | [Trusting the framework](02-trusting-the-framework.md) | Burn tensors, `Conv2d`, manual weight assignment; your loop must match `conv2d` exactly. |
 | 03 | [The kernel language](03-the-kernel-language.md) | Exact-pattern kernels (+1/−1/bias/ReLU); the pattern table; the win map. |
-| 04 | [The four-level](04-the-four-level.md) | Open/broken four makers; the 1×1 counting combiner; the engine differential gate. |
-| 05 | [Three-makers](05-three-makers.md) | The three pattern families as kernels; anti-four margins; why radius 5. |
+| 04 | [The four-level](04-the-four-level.md) | The four-level semantics; the `ThreatMaps` glue (`analyze`/`analyze_both`); the engine differential gate. |
+| 05 | [Three-makers](05-three-makers.md) | The three-maker families already in the table, understood and verified; anti-four margins; why radius 5. |
 | 06 | [The fork](06-the-fork.md) | The double-three map; the naive oracle; the three-level gate. The tutorial's point. |
 | 07 | [Seeing it](07-seeing-it.md) | Threat potential as a sparse policy; the heatmap demo; same network on GPU. |
 | 08 | [Acceptance](08-acceptance.md) | Crate polish and the full proof ritual, with measured numbers. |
 
 ## Status
 
-Complete. The reference implementation (a disposable worktree during
-development) passed the full acceptance ritual: 152 hand-written
-channels; three differential gates at 1000 boards × 2 colors (8.9 s in
-release); exact CPU-vs-GPU parity; engine still a Burn-free island.
-Chapter 8 quotes the measured numbers.
+Chapters 1–3 are implemented on `main`: the padded planes, the naive
+convolution, the Burn `Conv2d` trust exercises, and — landed in one
+slice — the complete 152-channel pattern table with both conv layers
+and the win map. Chapters 4–8 are the remaining work; their chapters
+and opt-in solutions were reconciled with the real crate (naming,
+file layout, test inventory) and their solutions quote a fresh
+verified reference build that evolves `main`'s crate exactly as it
+stands. That reference passed the full acceptance ritual: three
+differential gates at 1000 boards × 2 colors (~4.5 s in release);
+exact CPU-vs-GPU parity; engine still a Burn-free island. Chapter 8
+quotes the measured numbers.
 
 ## References
 

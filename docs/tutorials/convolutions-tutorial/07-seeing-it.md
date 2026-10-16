@@ -10,7 +10,7 @@ tutorial's `Sample::policy` and the future mcts `Evaluator` output. You
 will wire a terminal demo that renders any threat map as an ANSI
 heatmap over a built-in showcase position, so you can run the binary
 and **see the fork cell light up**. Finally, you will prove that the
-same hand-written network runs unchanged on the `Wgpu` backend, with a
+same hand-written network runs unchanged on the `wgpu` backend, with a
 CPU-vs-GPU differential test that asserts exact equality because every
 kernel weight and every input plane value is a small integer.
 
@@ -28,7 +28,7 @@ is the primer in
 | **`[experiment]` weights** | Hyper-parameters chosen to encode the priority ladder; documented as replaceable, not ordained. |
 | **Heatmap** | A terminal rendering of a threat map with coloured backgrounds on empty cells and stone glyphs for occupied cells. |
 | **Showcase** | One of the built-in demo positions: `double-three-fork`, `classic-fork`, `corner-fork`, or `quiet`. |
-| **GPU portability** | The guarantee that the same code accepts a `Device` and runs on `Flex` (default CPU backend) or `Wgpu` with the opt-in `gpu` feature. |
+| **GPU portability** | The guarantee that the same code accepts a `Device` and runs on `flex` (default CPU backend) or `wgpu` with the opt-in `gpu` feature. |
 | **Exact equality** | A legitimate differential-test assertion here because all conv inputs and weights are small integers, so every `f32` sum is exact on both CPU and GPU. |
 
 ## Context
@@ -51,7 +51,7 @@ transparent:
    headline double-three fork, the engine's own classic fork, a corner
    fork, and a quiet position.
 3. **`tests/gpu_port.rs`** runs the full `analyze` pipeline and the
-   `policy()` combiner on both `Flex` CPU and `Wgpu` and asserts exact
+   `policy()` combiner on both `flex` CPU and `wgpu` and asserts exact
    equality.
 
 The chapter is intentionally lightweight in new concepts: the lesson
@@ -75,7 +75,7 @@ backend-portable artifact.
    * `pub fn map_value(...)` helper.
 3. Implement `src/bin/patterndemo.rs`:
    * Parse `--map`, `--showcase`, `--gpu`, and `--help`.
-   * Run `analyze` on the `Flex` CPU backend by default, or on `Wgpu`
+   * Run `analyze` on the `flex` CPU backend by default, or on `wgpu`
      when `--gpu` is supplied and the `gpu` feature is enabled.
    * Print the rendered heatmap.
 4. Implement `tests/gpu_port.rs`:
@@ -129,10 +129,10 @@ The demo is also a regression tool. The showcase positions are adapted
 from engine tests and the crate's own unit tests; if a refactor ever
 breaks the kernel table, the demo will show the wrong cell highlighted.
 
-### Why does `Flex` stay the default?
+### Why does `flex` stay the default?
 
 The `gpu` feature adds the `burn/wgpu` dependency tree and needs a
-working GPU adapter. The default build uses `Flex` because it is:
+working GPU adapter. The default build uses `flex` because it is:
 
 * deterministic on every machine,
 * light to compile,
@@ -245,10 +245,10 @@ The four showcases (controller amendment: the demo has four, not two):
 | `corner-fork` | Engine tactics tests | A corner double-threat position. |
 | `quiet` | Crate's own test corpus | A position with no tactics. |
 
-All showcases are built by replaying a legal move sequence rather than
-using `board_from_ascii`, because `board_from_ascii` lives behind the
-engine's `testutil` feature and must not leak into non-test or binary
-code.
+Showcases are built by replaying a legal move sequence rather than by
+importing ASCII setup helpers into the binary; the crate keeps its own
+ASCII helpers in `tests/common/mod.rs`, and replaying legal moves makes
+sure no test-only machinery leaks into non-test or binary code.
 
 `render_heatmap` prints a title line, column header, each board row
 with stones and highlighted empty cells, and a legend. Occupied cells
@@ -266,7 +266,7 @@ Options:
                       threes_h | threes_v | threes_dd | threes_du | policy
   --showcase <NAME>   Built-in position (default: double-three-fork)
                       double-three-fork | classic-fork | corner-fork | quiet
-  --gpu               Run on the Wgpu backend (requires `gpu` feature)
+  --gpu               Run on the wgpu backend (requires `gpu` feature)
   --help              Print this help message
 ```
 
@@ -279,7 +279,7 @@ CLI conventions:
 * Runtime failures (for example `--gpu` without the `gpu` feature)
   print to stderr and exit with status **1**.
 
-The binary is split into `run_cpu` and `run_gpu` so that the `Wgpu`
+The binary is split into `run_cpu` and `run_gpu` so that the `wgpu`
 import is behind `#[cfg(feature = "gpu")]`.
 
 ### `tests/gpu_port.rs`
@@ -312,10 +312,11 @@ cargo run -p patterns --bin patterndemo
 
 Captured output (verbatim from the reference worktree; the snippets
 omit Cargo's own `Finished`/`Running` lines that precede the binary's
-stdout):
+stdout). The `^[` sequences are the visible form of the ANSI escape
+byte that drives the coloured background:
 
 ```text
-Showcase: double-three fork | Map: double-three forks | Backend: Flex
+Showcase: double-three fork | Map: double-three forks | Backend: flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   ○ . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .
@@ -324,7 +325,7 @@ Showcase: double-three fork | Map: double-three forks | Backend: Flex
  4   . . . . . . . . . . . . . . .
  5   . . . . . . . . . . . . . . .
  6   . . . . . . . ● . . . . . . .
- 7   . . . . . . ●[48;5;196m1 [0m ● . . . . . .
+ 7   . . . . . . ●^[[48;5;196m1 ^[[0m ● . . . . . .
  8   . . . . . . . ● . . . . . . .
  9   . . . . . . . . . . . . . . .
 10   . . . . . . . . . . . . . . .
@@ -350,7 +351,7 @@ cargo run -p patterns --bin patterndemo -- --showcase classic-fork --map double_
 Captured output:
 
 ```text
-Showcase: classic fork | Map: double threats | Backend: Flex
+Showcase: classic fork | Map: double threats | Backend: flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   . . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .
@@ -359,7 +360,7 @@ Showcase: classic fork | Map: double threats | Backend: Flex
  4   . . . . . . . ● . . . . . . .
  5   . . . . . . . ● . . . . . . .
  6   . . . . . . . ● . . . . . . .
- 7   . . . ○ ● ● ●[48;5;196m1 [0m . . . . . . .
+ 7   . . . ○ ● ● ●^[[48;5;196m1 ^[[0m . . . . . . .
  8   . . . . . . . . . . . . . . .
  9   . . . . . . . . . . . . . . .
 10   . . . . . . . . . . . . . . .
@@ -382,19 +383,19 @@ cargo run -p patterns --bin patterndemo -- --showcase double-three-fork --map po
 Captured output:
 
 ```text
-Showcase: double-three fork | Map: threat potential (policy) | Backend: Flex
+Showcase: double-three fork | Map: threat potential (policy) | Backend: flex
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14
  0   ○ . . . . . . . . . . . . . ○
  1   . . . . . . . . . . . . . . .
  2   . . . . . . . . . . . . . . .
  3   . . . . . . . . . . . . . . .
- 4   . . . . .[48;5;39m3 [0m . . .[48;5;39m3 [0m . . . . .
- 5   . . . .[48;5;39m3 [0m .[48;5;39m3 [0m[48;5;39m3 [0m[48;5;39m3 [0m .[48;5;39m3 [0m . . . .
- 6   . . . . .[48;5;39m3 [0m . ● .[48;5;39m3 [0m . . . . .
- 7   . . . . .[48;5;39m3 [0m ●[48;5;220m8 [0m ●[48;5;39m3 [0m . . . . .
- 8   . . . . .[48;5;39m3 [0m . ● .[48;5;39m3 [0m . . . . .
- 9   . . . .[48;5;39m3 [0m .[48;5;39m3 [0m[48;5;39m3 [0m[48;5;39m3 [0m .[48;5;39m3 [0m . . . .
-10   . . . . .[48;5;39m3 [0m . . .[48;5;39m3 [0m . . . . .
+ 4   . . . . .^[[48;5;39m3 ^[[0m . . .^[[48;5;39m3 ^[[0m . . . . .
+ 5   . . . .^[[48;5;39m3 ^[[0m .^[[48;5;39m3 ^[[0m^[[48;5;39m3 ^[[0m^[[48;5;39m3 ^[[0m .^[[48;5;39m3 ^[[0m . . . .
+ 6   . . . . .^[[48;5;39m3 ^[[0m . ● .^[[48;5;39m3 ^[[0m . . . . .
+ 7   . . . . .^[[48;5;39m3 ^[[0m ●^[[48;5;220m8 ^[[0m ●^[[48;5;39m3 ^[[0m . . . . .
+ 8   . . . . .^[[48;5;39m3 ^[[0m . ● .^[[48;5;39m3 ^[[0m . . . . .
+ 9   . . . .^[[48;5;39m3 ^[[0m .^[[48;5;39m3 ^[[0m^[[48;5;39m3 ^[[0m^[[48;5;39m3 ^[[0m .^[[48;5;39m3 ^[[0m . . . .
+10   . . . . .^[[48;5;39m3 ^[[0m . . .^[[48;5;39m3 ^[[0m . . . . .
 11   . . . . . . . . . . . . . . .
 12   . . . . . . . . . . . . . . .
 13   . . . . . . . . . . . . . . .

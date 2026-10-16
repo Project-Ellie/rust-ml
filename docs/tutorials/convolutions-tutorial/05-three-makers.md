@@ -2,14 +2,14 @@
 
 ## Abstract
 
-This chapter adds the **open-three maker** families to the pattern
-table and brings the threat network to its full layer-1 width. You
-will learn the three exact window patterns (`_XXX_`, `_X_XX_`,
-`_XX_X_`), the **anti-four margin** that keeps the three-level and
-four-level maps cleanly partitioned, and why the 11×11 kernel
-footprint from chapter 3 had to be radius 5. The layer-2 1×1
-combiner gains four more output channels — one per direction — that
-mark every empty cell where playing creates an open three. The
+This chapter studies the **open-three maker** families that are
+already wired into the pattern table, and adds the verification file
+that proves them correct. You will learn the three exact window
+patterns (`_XXX_`, `_X_XX_`, `_XX_X_`), the **anti-four margin**
+that keeps the three-level and four-level maps cleanly partitioned,
+and why the 11×11 kernel footprint from chapter 3 had to be radius 5.
+The layer-2 1×1 combiner already emits four per-direction channels
+that mark every empty cell where playing creates an open three. The
 acceptance is a direct ASCII comparison: the network's
 `threes_per_dir` channels must match the same-window logic of the
 naive oracle on hand-built boards.
@@ -28,30 +28,32 @@ naive oracle on hand-built boards.
 
 ## Context
 
-Chapter 4 ended with a 116-channel pattern table: 20 five-completers,
-16 open-four makers, and 80 broken-four makers. Layer 2 emitted five
-channels: the win map plus four per-direction counts of newly created
-five-completing cells.
+Chapter 3 ended with the complete 152-channel pattern table: 20
+five-completers, 16 open-four makers, 80 broken-four makers, and 36
+three-maker channels (3 families × 3 candidate positions × 4
+directions). Layer 2 already emits all nine channels: the win map,
+four per-direction four-created maps, and four per-direction
+open-three maps. Channels 5..=8 are the per-direction open-three maps.
 
-This chapter adds the last 36 layer-1 channels: 9 three-maker shapes
-per direction (3 families × 3 candidate positions). The table reaches
-its final size of 152 channels, and layer 2 reaches its final size of
-9 channels. Channels 5..=8 are the per-direction open-three maps.
-Chapter 6 will combine those four maps into the `double_threes` fork
-map.
+Chapter 4 added the `ThreatMaps` interpretation layer: it reads the
+network outputs into named fields and derives `double_threes` from
+the per-direction maps. This chapter does not change `src/kernel.rs`
+or `src/net.rs`; its new artifact is `tests/three_maps.rs`, which
+proves that the three-maker channels mean exactly what the spec
+says.
 
 ## Intention
 
-1. Implement the three three-maker families in `src/kernels.rs`:
-   * `ThreeXxx` for `_XXX_`,
-   * `ThreeXxX` for `_X_XX_`,
-   * `ThreeXxXRev` for `_XX_X_`.
-2. Update `PatternFamily::base_shape_count` so each three family
-   contributes 3 base shapes × 4 directions = 12 channels.
-3. Extend `layer2_conv` so channels 5..=8 OR-combine the nine
-   three-maker channels of each direction.
-4. Verify `ThreatMaps::threes_per_dir` against direct window checks
-   on ASCII boards.
+1. Read and understand the three-maker base-shape generators in
+   `src/kernel.rs`: `three_xxx_base_shapes`, `three_x_xx_base_shapes`,
+   `three_xx_x_base_shapes`, and their shared helper
+   `make_three_shape`.
+2. Connect each base-shape contract to the exact window it
+   implements (`_XXX_`, `_X_XX_`, `_XX_X_`) and to the anti-four
+   margin rule.
+3. Verify `ThreatMaps::threes_per_dir` — populated by chapter 4's
+   `analyze` glue — against direct window checks on ASCII boards in
+   `tests/three_maps.rs`.
 
 Observable done-state: the chapter-5 tests listed below pass,
 `cargo clippy --all-targets -- -D warnings` is green from `gomoku/`,
@@ -134,12 +136,14 @@ conditions is left as an end-of-chapter exercise.
 
 ```text
 gomoku/crates/patterns/
-└── src/
-    ├── kernels.rs   (add ThreeXxx, ThreeXxX, ThreeXxXRev, extend layer2_conv)
-    └── net.rs       (already reads channels 5..=8 into threes_per_dir)
+├── src/
+│   ├── kernel.rs   (no changes: the three-maker shapes are already complete)
+│   └── net.rs      (no changes: ThreatMaps reads channels 5..=8 from layer 2)
+└── tests/
+    └── three_maps.rs   (new: ASCII verification of threes_per_dir)
 ```
 
-### `PatternFamily` updates
+### `PatternFamily` channel counts
 
 Each three family has:
 
@@ -159,10 +163,10 @@ ThreeXxx:          12
 ThreeXxX:          12
 ThreeXxXRev:       12
 --------------------
-LAYER1_OUT:       152
+LAYER1_NUM_CHANNELS: 152
 ```
 
-`LAYER2_OUT` becomes `9`.
+`LAYER2_NUM_CHANNELS` is `9`.
 
 ### Base shape contracts
 
@@ -228,7 +232,7 @@ produces a non-zero marker iff at least one three-maker fires.
 
 ### `ThreatMaps::threes_per_dir`
 
-`net.rs` already extracts these four channels into
+Chapter 4's `net.rs` glue extracts these four channels into
 `threes_per_dir[direction][row][col]`. Occupied cells are zeroed by
 the glue, exactly as for `wins` and `fours_created_per_dir`.
 
@@ -238,18 +242,21 @@ The complete reference `tests/three_maps.rs` for this chapter lives in
 [05-three-makers/01-solution.md](05-three-makers/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare. The file is
-quoted verbatim from the verified reference crate.
+quoted verbatim from the verified reference build that evolves the
+real crate; the three-maker kernels it tests already exist in your
+`src/kernel.rs` from chapter 3.
 
-Note: the kernels themselves were already quoted in chapter 3's
-solution in their final form; this chapter's new artifact is the test
-file.
+Note: the file imports `patterns::oracle` for ground-truth
+comparisons. That oracle is the subject of chapter 6, so if you are
+working strictly in order you can either inline equivalent window
+checks now or run these tests after the oracle exists.
 
 ## TDD checklist
 
 Run these tests from `gomoku/` with `cargo test -p patterns`.
 
-The reference `tests/three_maps.rs` file defines 15 named functions:
-11 `#[test]` cases and 4 supporting helpers. The exact names are:
+The reference `tests/three_maps.rs` file defines 11 named `#[test]`
+functions and 4 supporting helpers. The exact names are:
 
 Tests:
 
@@ -280,13 +287,13 @@ gates) continue to pass and are part of the chapter-5 gate.
 
 Follow the red-green-refactor rhythm:
 
-1. **Red:** Add the three-maker families to `src/kernels.rs` with
-   `todo!()` bodies, extend `layer2_conv` to nine outputs, and add
-   `tests/three_maps.rs` with all tests. Run `cargo test -p patterns`.
-   Expect failures.
-2. **Green:** Implement the base-shape generators, update the
-   `PatternFamily` counts, and wire the layer-2 three channels. Run
-   `cargo test -p patterns`. The three-map tests should pass.
+1. **Red:** Add `tests/three_maps.rs` with all tests. Run
+   `cargo test -p patterns`. Expect failures because the oracle import
+   does not exist yet (or, if you inlined the window checks, because
+   the tests themselves fail before the glue is correct).
+2. **Green:** Once chapter 4's `ThreatMaps` glue and chapter 6's
+   `oracle` are in place, run `cargo test -p patterns`. The three-map
+   tests should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
    formatting issues.
@@ -310,7 +317,7 @@ time and curiosity.
 * `cargo clippy --all-targets -- -D warnings` passes from `gomoku/`.
 * `cargo fmt --all -- --check` makes no changes.
 * Commit message for the code slice:
-  `feat(patterns): three-maker kernels + per-direction maps`.
+  `test(patterns): three-maker maps verified against the window oracle`.
 
 Next: [Chapter 06 — The fork](06-the-fork.md)
 

@@ -1,4 +1,4 @@
-> **Opt-in solution — read only after you have been stuck for more than twenty minutes, or after you have finished the chapter and want to compare your work against the verified reference. The implementations below are the complete files from the reference crate, quoted verbatim.**
+> **Opt-in solution — read only after you have been stuck for more than twenty minutes, or after you have finished the chapter and want to compare your work against the verified reference. The implementations below are the complete files from the reference build that evolves the real `patterns` crate on main (using `crate::kernel`, `patterns::net::{analyze, ThreatNet, ThreatMaps}`, and the module layout from the verified final `src/lib.rs`), quoted verbatim.**
 >
 > Each file is fenced with four backticks so that any triple-backtick examples inside the source (for instance the usage block in the demo binary) do not break the markdown fence.
 
@@ -58,12 +58,7 @@ pub const THREE_SCORE: f32 = 0.3;
 ///
 /// The scores are chosen so that higher tactical value always dominates
 /// lower value: a cell is never represented by more than one score.
-pub fn policy(
-    net: &ThreatNet,
-    b: &Board,
-    s: Color,
-    device: &Device,
-) -> Vec<(Move, f32)> {
+pub fn policy(net: &ThreatNet, b: &Board, s: Color, device: &Device) -> Vec<(Move, f32)> {
     let maps = analyze(net, b, s, device);
     policy_from_maps(b, &maps)
 }
@@ -117,12 +112,29 @@ pub(crate) fn score_cell(maps: &ThreatMaps, r: usize, c: usize) -> f32 {
 mod tests {
     use super::*;
     use burn::tensor::Device;
-    use engine::{Color, Move, reference::board_from_ascii};
+    use engine::{Board, Color, Move};
+
+    fn board_from_ascii(image: &str) -> Board {
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        for (r, line) in image.trim().lines().enumerate() {
+            for (c, ch) in line.split_whitespace().enumerate() {
+                let mv = Move::new(r as u8, c as u8).expect("in-board coordinates");
+                match ch {
+                    "X" | "x" => black.push(mv),
+                    "O" | "o" => white.push(mv),
+                    "." => {}
+                    other => panic!("unexpected token {other:?} at ({r},{c})"),
+                }
+            }
+        }
+        Board::from_position(&black, &white, Color::Black).expect("valid test position")
+    }
 
     #[test]
     fn double_three_fork_scores_zero_point_eight() {
         // Four black stones plus four white filler stones to keep the
-        // board_from_ascii stone counts valid.
+        // board counts valid.
         let b = board_from_ascii(
             "
             . . . . . . . . . . . . . . .
@@ -138,7 +150,7 @@ mod tests {
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . O
+            O . . . . . . . . . . . . . O
             O . . . . . . . . . . . . . O
             ",
         );
@@ -204,7 +216,7 @@ mod tests {
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
-            . . . . . . . . . . . . . . O
+            O . . . . . . . . . . . . . O
             O . . . . . . . . . . . . . O
             ",
         );
@@ -303,13 +315,13 @@ pub enum MapName {
     /// Double-three fork moves.
     #[default]
     DoubleThrees,
-    /// Open-three makers in one selected direction.
+    /// Open-three makers in the horizontal direction.
     ThreesH,
-    /// Open-three makers in one selected direction.
+    /// Open-three makers in the vertical direction.
     ThreesV,
-    /// Open-three makers in one selected direction.
+    /// Open-three makers in the diagonal-down direction.
     ThreesDd,
-    /// Open-three makers in one selected direction.
+    /// Open-three makers in the diagonal-up direction.
     ThreesDu,
     /// The sparse threat potential (policy-shaped output).
     Policy,

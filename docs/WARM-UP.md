@@ -243,15 +243,21 @@ Current milestone-3 status:
   `datagen` binary. Verified acceptance: 50k samples in 45 s (debug),
   13 shards / 41 MB, 9.84% holdout, byte-identical regeneration.
 - [convolutions-tutorial](tutorials/convolutions-tutorial/README.md)
-  (side quest; primer + chapters 1–2 verified, 3–8 in progress): the
-  `patterns` crate — a hand-written 152-channel conv net (Burn 0.22,
-  `Flex` default + opt-in `gpu` feature) producing threat maps
-  (wins, double threats, double-three forks) plus the `patterndemo`
-  heatmap binary. Verified acceptance: three differential gates at
-  1000 boards × 2 colors vs `engine::{immediate_wins, double_threats}`
-  and an in-crate naive three-oracle — exact; full proof 8.9 s
-  release / ~620 s debug (gate-scheduling lesson in ch. 8); exact
-  CPU-vs-Wgpu parity.
+  (side quest; chapters 1–3 implemented on `main`, 4–8 documented and
+  ready to work): the `patterns` crate — a hand-written 152-channel
+  conv net (Burn 0.22, `Device::flex()` default + opt-in `gpu`
+  feature) producing threat maps (wins, double threats, double-three
+  forks) plus the `patterndemo` heatmap binary. The chapter-3 slice
+  landed the FULL pattern table (all six families, both conv layers)
+  plus `ThreatNet`/`win_map` at once — chapters 4–8 and all solution
+  files were then reconciled with that reality and re-quoted from a
+  fresh verified reference build (worktree `../rust-ml-reference`,
+  branch `patterns-reference-scratch`, kept for inspection). Verified
+  acceptance of that reference: three differential gates at 1000
+  boards × 2 colors vs `engine::{immediate_wins, double_threats}` and
+  an in-crate naive three-oracle — exact; full proof ~4.5 s release;
+  default suite ~36 s debug (83 passed / 3 ignored); exact CPU-vs-Wgpu
+  parity (93 passed with `--features gpu`).
 
 The net tutorial (phase-0 supervised training on the synthetic data)
 is next; milestones 4–8 (TSS anchor set, selfplay service, the phased

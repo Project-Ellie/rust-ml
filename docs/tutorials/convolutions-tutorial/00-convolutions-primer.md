@@ -188,13 +188,13 @@ before the net tutorial trains on GPU.
 ## 7. Gate scheduling
 
 The per-chapter gate is the default suite (`cargo test -p patterns`,
-~1 minute in debug): all unit and ASCII tests plus the differential
-gates at 100 boards. The full proof — 1000 boards × 2 colors — is
-`#[ignore]`d and run explicitly, in **release** mode
-(`cargo test -p patterns --release -- --ignored`, ~9 seconds on the
-reference machine; ~620 seconds in debug, which is why the release
-habit matters). The default gate uses a strict prefix of the full
-proof's seed range.
+~36 seconds in debug on the reference machine): all unit and ASCII
+tests plus the differential gates at 100 boards. The full proof —
+1000 boards × 2 colors — is `#[ignore]`d and run explicitly, in
+**release** mode (`cargo test -p patterns --release -- --ignored`,
+~4.5 seconds on the reference machine; ~5¾ minutes measured in debug,
+which is why the release habit matters). The default gate uses a
+strict prefix of the full proof's seed range.
 
 ## 8. What this tutorial defers
 

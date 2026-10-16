@@ -7,11 +7,13 @@ before you open this file — that is the deal.
 This chapter's only code artifact is the final `src/lib.rs` — the
 crate root with `#![deny(missing_docs)]` locking the public surface.
 The acceptance ritual itself is commands, not code; chapter 8's
-"Measured numbers" table quotes the reference implementation's actual
-runs.
+"Measured numbers" table quotes the verified reference build's actual
+runs on an Apple-silicon Mac.
 
 The file below is the complete `src/lib.rs` from the verified
-reference crate, quoted verbatim (extract-and-diff verified).
+reference crate, quoted verbatim (extract-and-diff verified). It
+registers the final module set: `naive`, `planes`, `kernel`, `tools`,
+`net`, `oracle`, `potential`, and `render`.
 
 ```rust
 //! Hand-written convolution kernels for Gomoku threat maps.
@@ -31,17 +33,27 @@ reference crate, quoted verbatim (extract-and-diff verified).
 
 #![deny(missing_docs)]
 
-pub mod kernels;
-
+/// Learner's hand-rolled cross-correlation on plain Rust arrays.
 pub mod naive;
 
-pub mod net;
-
-pub mod oracle;
-
+/// A representation of a gomoku board ready for pattern processing.
 pub mod planes;
 
+/// Declarative pattern table and hand-manufactured convolution kernels.
+pub mod kernel;
+
+/// Tools for developing gomoku heuristics and building convolution layers.
+pub mod tools;
+
+/// The hand-written threat network and the win map.
+pub mod net;
+
+/// Naive reference oracle for open-three threat detection.
+pub mod oracle;
+
+/// Threat potential: turn the threat maps into a sparse policy vector.
 pub mod potential;
 
+/// Heatmap rendering for the `patterndemo` binary.
 pub mod render;
 ```

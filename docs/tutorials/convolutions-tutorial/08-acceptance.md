@@ -15,7 +15,7 @@ reference implementation, never invented).
 | Term | Definition |
 |------|------------|
 | **Crate polish** | Adding `#![deny(missing_docs)]` so every public item must carry a doc comment. |
-| **Default suite** | `cargo test -p patterns`: unit tests, ASCII tests, and the 100-board differential gates. About one minute in debug. |
+| **Default suite** | `cargo test -p patterns`: unit tests, ASCII tests, and the 100-board differential gates. About 36 s in debug on the reference machine. |
 | **Full proof** | The 1000-board differential gates, `#[ignore]`d by default and run explicitly with `-- --ignored`. |
 | **Differential gate** | A test that requires the network's maps to equal an oracle's answers exactly, on every board: the engine for wins and double threats, the naive oracle for double threes. |
 | **GPU port test** | The `tests/gpu_port.rs` suite asserting exact CPU-vs-GPU equality, behind `--features gpu`. |
@@ -46,7 +46,7 @@ Acceptance is a sequence of checks that either pass or fail:
    colors per board. Run it in release mode: the proof is exhaustive,
    not slow.
 3. **GPU parity.** `cargo test -p patterns --features gpu` passes,
-   including the exact CPU-vs-Wgpu equality tests in
+   including the exact CPU-vs-wgpu equality tests in
    `tests/gpu_port.rs`. (Environment-dependent: it needs a working GPU
    adapter. It is part of the ritual on machines that have one, and
    documented as optional on machines that do not.)
@@ -66,18 +66,23 @@ will shift them. The shapes must match.
 
 | Check | Result |
 |-------|--------|
-| Default suite (debug) | **66 s**, all tests pass (35 lib + 3 bin + 7 differential + 20 oracle + 4 CPU spike + 15 three-maps) |
-| Full proof, 3 × 1000 boards × 2 colors (**release**) | **8.9 s** — all three gates pass |
-| Full proof (debug, measured at delivery) | ~620 s — this is why the proof is a release-mode ritual |
-| GPU default suite (`--features gpu`) | all pass, incl. 5 GPU spike + 4 `gpu_port` exact-equality tests |
+| Default suite (debug) | **~36 s**, 83 passed / 3 ignored (34 lib + 3 bin + 7 differential + 20 oracle + 4 spike + 15 three-maps) |
+| Full proof, 3 × 1000 boards × 2 colors (**release**) | **~4.5 s** — all three gates pass |
+| GPU suite (`--features gpu`) | **~80 s**, 93 passed / 3 ignored, incl. 4 `gpu_port` + 5 wgpu spike + 1 tools wgpu test |
 | Demo CPU vs GPU | byte-identical modulo the `Backend:` line |
 | Engine isolation | `cargo check -p engine` green — no Burn in sight |
 
-The 70× debug-to-release gap is itself a lesson: the differential
-proof's cost lives in the 152-channel 11×11 forward pass, and
-unoptimized convolution is genuinely slow. Release mode is not a
-luxury for the full proof; it is the point of the `--ignored`
-scheduling decision from chapter 4.
+Measured on the verified reference build on an Apple-silicon Mac;
+your hardware will shift the absolute seconds, but the shapes must
+match.
+
+The default debug suite already costs about 36 s, dominated by the
+100-board differential gates. The exhaustive release proof is actually
+faster at ~4.5 s because release mode optimizes the 152-channel
+11×11 forward pass. That inversion is why the full proof is scheduled
+as a release-mode `--ignored` ritual: it is not a slower version of
+the default gate; it is a deeper gate run in the only profile that
+makes exhaustiveness cheap.
 
 ## Why the gates are scheduled this way
 
@@ -93,11 +98,11 @@ strict prefix of the slow one.
 ## Crate polish
 
 Add `#![deny(missing_docs)]` to `src/lib.rs`, directly after the
-module documentation. On the reference implementation this compiles
-without a single new doc comment — the crate was documented as it
-grew, which is exactly the habit the attribute enforces retroactively
-on less disciplined code. If your crate produces errors here, write
-the missing docs now; they are part of the public contract the next
+module documentation. On the verified reference build this attribute
+compiles, but only after back-filling a handful of missing doc
+comments on public items in `kernel.rs` and `tools.rs`. Expect the
+same: the compiler will list exactly what needs documentation, and
+writing those docs is part of locking the public contract the next
 tutorial will read.
 
 ## What this was for

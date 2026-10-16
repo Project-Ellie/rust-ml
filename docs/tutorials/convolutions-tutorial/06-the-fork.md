@@ -31,10 +31,10 @@ stones of a double-three are the beginning of the end.
 
 ## Context
 
-Chapter 5 ended with layer 2 emitting four per-direction open-three
-maker channels. This chapter adds the tiny cross-channel step that
-turns those four maps into the `double_threes` map, and it adds the
-naive oracle that defines what "correct" means for the three level.
+Chapter 5 verified the four per-direction open-three maker channels.
+This chapter adds the naive oracle that defines what "correct" means
+for the three level, and proves that the `double_threes` map already
+derived by chapter 4's `ThreatMaps` glue matches that oracle.
 
 The four-level maps from chapter 4 were provable against the engine
 itself (`engine::immediate_wins`, `engine::double_threats`). The
@@ -43,6 +43,11 @@ own reference: `src/oracle.rs`. The oracle and the conv network are
 two independent implementations of spec §3.4. If they disagree, at
 least one is wrong — and the oracle is small enough that you can
 read it line by line and decide which.
+
+The verified reference build confirmed this agreement on 1000 seeded
+random boards for both colours: the simple `sum >= 2` rule in the
+`ThreatMaps` glue matched the oracle's explicit per-direction count
+exactly, cell by cell.
 
 ## Intention
 
@@ -55,17 +60,17 @@ read it line by line and decide which.
 2. Keep the oracle deliberately naive: plain array scans, no
    bitboards, no convolution. Readability and obvious correctness are
    the whole point.
-3. In `src/net.rs`, derive `double_threes` from the four
-   `threes_per_dir` maps by summing per-direction values and
-   thresholding at `>= 2`. Add the distinct-direction assumption
-   comment.
+3. Understand the `double_threes` derivation already present in
+   chapter 4's `ThreatMaps` glue: sum the four `threes_per_dir` maps
+   and threshold at `>= 2`. Add the distinct-direction assumption
+   comment if it is not already there.
 4. Add `tests/oracle.rs` with ASCII unit tests covering each pattern
    family in each direction, edge cases, anti-four margins, and
    overlines.
 5. Extend `tests/differential.rs` with `double_threes_default` and
    the ignored `double_threes_full` gate.
 6. Confirm the carried-over `double_three_fork_matches_oracle` test
-   in `net::tests` passes.
+   in `tests/three_maps.rs` passes.
 
 Observable done-state: the chapter-6 tests listed below pass,
 `cargo clippy --all-targets -- -D warnings` is green from `gomoku/`,
@@ -107,6 +112,11 @@ the four per-direction maps and thresholding at `>= 2` counts
 directions by construction. That is the **distinct-direction
 assumption**.
 
+The verified reference build proved this assumption empirically on
+1000 random boards per colour: no cell ever accumulated `2.0` from a
+single direction, and the `sum >= 2` rule matched the oracle's
+direction count exactly.
+
 ### The naive oracle as second implementation
 
 The network is one implementation of spec §3.4. The oracle is
@@ -114,7 +124,7 @@ another. They are independent in almost every way:
 
 | Network | Oracle |
 |---------|--------|
-| 9×9 conv kernels | Plain `for` loops over board windows |
+| 11×11 conv kernels | Plain `for` loops over board windows |
 | Declarative pattern table | Three hard-coded boolean windows |
 | Type-erased `Device` tensors | Direct `Board` / `MoveSet` engine types |
 | Layer-2 1×1 combiner | Per-direction `MoveSet` union |
@@ -153,9 +163,12 @@ are disjoint by construction.
 
 ```text
 gomoku/crates/patterns/
-└── src/
-    ├── oracle.rs   (new: the reference enumerator)
-    └── net.rs      (derive double_threes from threes_per_dir)
+├── src/
+│   ├── oracle.rs   (new: the reference enumerator)
+│   └── net.rs      (no changes needed if chapter 4's ThreatMaps glue is in place)
+└── tests/
+    ├── oracle.rs       (new: ASCII unit tests for the oracle)
+    └── differential.rs (extend: double_threes_default and double_threes_full)
 ```
 
 ### `src/oracle.rs` contracts
@@ -202,8 +215,9 @@ and returns `true` only when the window ends are genuinely empty.
 
 ### The double-three combiner in `src/net.rs`
 
-After extracting the four per-direction three maps from the layer-2
-output, the glue computes:
+Chapter 4's `ThreatMaps` glue already derives `double_threes` from
+the four per-direction three maps. The essence of that computation
+is:
 
 ```rust
 let mut three_sum = 0.0f32;
@@ -219,10 +233,11 @@ if three_sum >= 2.0 {
 
 The comment is load-bearing. It records why a simple sum is enough:
 the layer-1 kernels are mutually exclusive within a direction, so a
-cell cannot accumulate `2.0` from a single direction. If you ever
-find yourself wanting to change that comment, stop and prove the
-mutual-exclusion property first — or switch to counting directions
-explicitly.
+cell cannot accumulate `2.0` from a single direction. The verified
+reference build confirmed this on 1000 random boards per colour. If
+you ever find yourself wanting to change that comment, stop and prove
+the mutual-exclusion property first — or switch to counting
+directions explicitly.
 
 Occupied cells are zeroed before this step, exactly as for the other
 maps, because the kernel language does not condition on the candidate
@@ -234,8 +249,8 @@ The complete reference `src/oracle.rs` for this chapter lives in
 [06-the-fork/01-solution.md](06-the-fork/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after
 you have finished the chapter and want to compare. The file is
-quoted verbatim from the verified reference crate and then verified
-by extract-and-diff.
+quoted verbatim from the verified reference build consistent with
+main's `patterns` crate.
 
 ## TDD checklist
 
@@ -272,11 +287,11 @@ the binary also runs the 4 generator helper tests from
 * `double_threes_default`
 * `double_threes_full` — `#[ignore = "full 1000-board differential gate; run explicitly with -- --ignored"]`
 
-### `net::tests`
+### `tests/three_maps.rs`
 
 * `double_three_fork_matches_oracle` — this was named in chapter 5's
-  checklist as a carried-over test; it becomes fully runnable once
-  the oracle exists.
+  checklist as a carried-over test; it becomes fully runnable once the
+  oracle exists.
 
 ### Carried-over note
 
@@ -287,10 +302,11 @@ engine differential gates, and the chapter-5 three-maker ASCII tests.
 Follow the red-green-refactor rhythm:
 
 1. **Red:** Add `src/oracle.rs` with the enum shells and `todo!()`
-   function bodies, wire `double_threes` in `src/net.rs`, and add all
-   tests above. Run `cargo test -p patterns`. Expect failures.
+   function bodies, confirm `double_threes` is already derived in
+   `src/net.rs`, and add all tests above. Run `cargo test -p patterns`.
+   Expect failures.
 2. **Green:** Implement the oracle's window scans, make sure the
-   `Direction` order matches the array indices, and fill in the
+   `Direction` order matches the array indices, and verify the
    `double_threes` combiner. Run `cargo test -p patterns`. The
    default tests should pass.
 3. **Full proof:** Run `cargo test -p patterns --release -- --ignored`

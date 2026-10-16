@@ -3,7 +3,11 @@
 Open this only if you have been stuck for more than twenty minutes,
 or after you have finished the chapter and want to compare your work
 against the verified reference. The implementation below is the
-complete `src/oracle.rs` from the reference crate, quoted verbatim.
+complete `src/oracle.rs` from the reference build, quoted verbatim.
+The reference build evolves the real `patterns` crate through
+chapters 4–8 with all gates green, including the 1000-board per-colour
+three-level differential gate; the file is consistent with main's
+crate.
 
 The point of the oracle is not cleverness — it is **obvious
 correctness**. Read it slowly; every line should map directly onto
