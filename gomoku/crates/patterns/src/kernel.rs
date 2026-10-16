@@ -63,7 +63,7 @@ impl Direction {
         }
     }
 
-    /// step vector (dcol, drow)
+    /// step vector (drow, dcol)
     pub fn step(self) -> (i32, i32) {
         match self {
             Direction::Horizontal => (0, 1),
@@ -145,8 +145,9 @@ pub const LAYER1_NUM_CHANNELS: usize = PatternFamily::FiveCompleter.num_channels
 /// Layer 2 emits: one win map, four per-direction four-created maps,
 /// and four per-direction three maps. The final double-threat and
 /// double-three maps are derived from these by the small amount of
-/// glue code in [`crate::net::ThreatMaps`] (the `before` scalar and
-/// win masking are board-dependent, so they live outside the conv).
+/// glue code that chapter 4 adds to `net.rs` as `ThreatMaps` (the
+/// `before` scalar and win masking are board-dependent, so they live
+/// outside the conv).
 pub const LAYER2_NUM_CHANNELS: usize = 9;
 
 /// Build the complete pattern table.
