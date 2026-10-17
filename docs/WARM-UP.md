@@ -262,8 +262,32 @@ Current milestone-3 status:
   parity (93 passed with `--features gpu`).
 
 The net tutorial (phase-0 supervised training on the synthetic data)
-is next; milestones 4–8 (TSS anchor set, selfplay service, the phased
-loop, hardening, upgrades) have not started.
+is next after the two queued side quests; milestones 4–8 (TSS anchor
+set, selfplay service, the phased loop, hardening, upgrades) have not
+started.
+
+Two further tutorial tracks are written and verified, ready to work:
+
+- [baseline-tutorial](tutorials/baseline-tutorial/README.md) (primer +
+  5 chapters, solutions land as worked): the `baseline` crate — a
+  hand-written evaluator (threat maps + gravity kernel → tiered policy
+  logits + saturating value) behind the `mcts::Evaluator` seam, with
+  measured-strength acceptance. Design spec:
+  [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md).
+- [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
+  (primer + 7 chapters + opt-in solutions, written 2026-10-17): the
+  `cli` crate grows into the study table — two seats (human or AI,
+  take/release anytime), a persistent variation tree with silent
+  branching, a headless `SessionCore` (commands/events, REST-ready),
+  policy overlays + value strip, per-seat sims. Reference built
+  TDD-first in worktree `../rust-ml-ref-playable-cli` (branch
+  `reference/playable-cli`, 10 commits, 122 tests + 1 ignored
+  measurement green, kept for inspection until chapter 07 is worked).
+  Design spec: [2026-10-17-playable-cli-design.md](specs/2026-10-17-playable-cli-design.md);
+  plan: [2026-10-17-playable-cli.md](plans/2026-10-17-playable-cli.md).
+  Note: baseline ch.4's `--versus baseline` plan is superseded — the
+  baseline evaluator will enroll as an `EvaluatorKind` in the study
+  table (spec §13).
 
 ## How the tutorials work (respect the pedagogy)
 
