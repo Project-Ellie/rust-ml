@@ -47,20 +47,18 @@ Same conventions as the mcts and datagen tutorials:
 
 ## Status
 
-Chapters 1–7 are implemented on `main`: the padded planes, the naive
-convolution, the Burn `Conv2d` trust exercises, the complete
+**The tutorial is COMPLETE** — all eight chapters implemented on
+`main` and the acceptance ritual run for real: the padded planes, the
+naive convolution, the Burn `Conv2d` trust exercises, the complete
 152-channel pattern table with both conv layers, the four-level
 `ThreatMaps` glue with the engine differential gate, the three-maker
-oracle, the double-three fork proven against it, and the chapter-7
-payoff — threat potential (`policy()`), the `patterndemo` heatmap
-binary, and CPU-vs-GPU exact-equality tests (all four `gpu_port`
-tests green on a working adapter). Chapter 8 (acceptance) is the
-remaining work; its chapter and opt-in solution were reconciled with
-the real crate (naming, file layout, test inventory) and quote a
-verified reference build. That reference passed the full acceptance
-ritual: three differential gates at 1000 boards × 2 colors (~4.5 s in
-release); exact CPU-vs-GPU parity; engine still a Burn-free island.
-Chapter 8 quotes the measured numbers.
+oracle, the double-three fork proven against it, threat potential
+(`policy()`), the `patterndemo` heatmap binary, and CPU-vs-GPU
+exact-equality tests. Chapter 8 locked the public surface with
+`#![deny(missing_docs)]` and quotes the measured numbers from `main`:
+default suite 67 green / 3 ignored; the three 1000-board full proofs
+green in release; GPU parity 77 green / 3 ignored; engine still a
+Burn-free island.
 
 ## References
 

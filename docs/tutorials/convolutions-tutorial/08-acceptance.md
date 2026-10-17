@@ -66,15 +66,14 @@ will shift them. The shapes must match.
 
 | Check | Result |
 |-------|--------|
-| Default suite (debug) | **~36 s**, 83 passed / 3 ignored (34 lib + 3 bin + 7 differential + 20 oracle + 4 spike + 15 three-maps) |
-| Full proof, 3 × 1000 boards × 2 colors (**release**) | **~4.5 s** — all three gates pass |
-| GPU suite (`--features gpu`) | **~80 s**, 93 passed / 3 ignored, incl. 4 `gpu_port` + 5 wgpu spike + 1 tools wgpu test |
+| Default suite (debug) | **~35 s**, 67 passed / 3 ignored (35 lib + 3 bin + 7 differential + 10 oracle + 4 spike + 11 three-maps) |
+| Full proof, 3 × 1000 boards × 2 colors (**release**) | **~5.1 s** — all three gates pass |
+| GPU suite (`--features gpu`) | **~44 s**, 77 passed / 3 ignored, incl. 4 `gpu_port` + 5 wgpu spike + 1 tools wgpu test |
 | Demo CPU vs GPU | byte-identical modulo the `Backend:` line |
 | Engine isolation | `cargo check -p engine` green — no Burn in sight |
 
-Measured on the verified reference build on an Apple-silicon Mac;
-your hardware will shift the absolute seconds, but the shapes must
-match.
+Measured on an Apple M5 Max; your hardware will shift the absolute
+seconds, but the shapes must match.
 
 The default debug suite already costs about 36 s, dominated by the
 100-board differential gates. The exhaustive release proof is actually

@@ -243,13 +243,15 @@ Current milestone-3 status:
   `datagen` binary. Verified acceptance: 50k samples in 45 s (debug),
   13 shards / 41 MB, 9.84% holdout, byte-identical regeneration.
 - [convolutions-tutorial](tutorials/convolutions-tutorial/README.md)
-  (side quest; chapters 1–7 implemented on `main`, chapter 8
-  documented and ready to work): the `patterns` crate — a hand-written
-  152-channel conv net (Burn 0.22, `Device::flex()` default + opt-in
-  `gpu` feature) producing threat maps (wins, double threats,
-  double-three forks) plus threat potential (`policy()`), the
-  `patterndemo` heatmap binary, and green CPU-vs-GPU exact-equality
-  tests. The chapter-3 slice
+  (side quest; COMPLETE 2026-10-17, all 8 chapters on `main`): the
+  `patterns` crate — a hand-written 152-channel conv net (Burn 0.22,
+  `Device::flex()` default + opt-in `gpu` feature) producing threat
+  maps (wins, double threats, double-three forks) plus threat
+  potential (`policy()`), the `patterndemo` heatmap binary, and green
+  CPU-vs-GPU exact-equality tests. Acceptance ritual measured on
+  `main`: default suite 67/3 ignored, full proof 3×1000 boards green
+  in release, GPU parity 77/3, crate locked with
+  `#![deny(missing_docs)]`. The chapter-3 slice
   landed the FULL pattern table (all six families, both conv layers)
   plus `ThreatNet`/`win_map` at once — chapters 4–8 and all solution
   files were then reconciled with that reality and re-quoted from a
