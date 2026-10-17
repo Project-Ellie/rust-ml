@@ -280,8 +280,8 @@ pub fn board_from_ascii(rows: &str) -> crate::board::Board {
         );
         for (c, t) in tokens.iter().enumerate() {
             match *t {
-                "X" => xs.push((r as u8, c as u8)),
-                "O" => os.push((r as u8, c as u8)),
+                "X" | "x" => xs.push((r as u8, c as u8)),
+                "O" | "o" => os.push((r as u8, c as u8)),
                 "." => {}
                 other => panic!("row {r}, col {c}: unexpected token {other:?} (want X, O, or .)"),
             }

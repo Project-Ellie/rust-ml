@@ -1,221 +1,355 @@
-# Chapter 06 — opt-in solution: `src/oracle.rs`
+> **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
+>
+> This file quotes `tests/three_maps.rs`, verified green (all 11 tests)
+> against main's `patterns` crate with chapters 4 and 5 in place.
+>
+> Explicit dependencies: `patterns::oracle` is chapter 5's module, and
+> the ASCII fixtures are parsed with
+> `engine::reference::board_from_ascii` (the `testutil` dev-dependency
+> introduced in chapter 5). `tests/common/mod.rs` (`seeded_board`) is
+> only needed by `tests/differential.rs`, not by this file.
+
+# Chapter 06 — opt-in solution: `tests/three_maps.rs`
 
 Open this only if you have been stuck for more than twenty minutes,
 or after you have finished the chapter and want to compare your work
-against the verified reference. The implementation below is the
-complete `src/oracle.rs` from the reference build, quoted verbatim.
-The reference build evolves the real `patterns` crate through
-chapters 4–8 with all gates green, including the 1000-board per-colour
-three-level differential gate; the file is consistent with main's
-crate.
-
-The point of the oracle is not cleverness — it is **obvious
-correctness**. Read it slowly; every line should map directly onto
-the spec §3.4 definition.
+against the verified reference. The file below is the complete
+`tests/three_maps.rs`, quoted verbatim from a build verified against
+main.
 
 ````rust
-//! Naive reference oracle for open-three threat detection.
+//! Direct ASCII tests for the threat network's open-three maker maps.
 //!
-//! This module is intentionally slow and obviously correct. It
-//! implements the v1 open-three definition from the design spec,
-//! §3.4, by plain array scans — no bitboards, no convolution. It
-//! exists only to serve as ground truth for the differential tests
-//! that verify the hand-written conv kernels.
-//!
-//! The three exact window patterns (reading along a line, `X` = own
-//! stone, `_` = empty in-board cell) are:
-//!
-//! * `_XXX_`   — five cells, three consecutive own stones,
-//! * `_X_XX_`  — six cells, a gap before the last stone,
-//! * `_XX_X_`  — six cells, a gap after the first stone.
-//!
-//! In every case the window's `_` cells must be genuinely empty
-//! in-board cells, and the cells immediately beyond the two window
-//! ends must not hold an own stone (the anti-four margin). A cell
-//! off the board satisfies the margin automatically.
+//! Each hand-built board is evaluated with [`ThreatNet`] and the
+//! resulting [`ThreatMaps::threes_per_dir`] channels are compared
+//! *as exact cell sets* against the naive [`oracle::open_three_makers`].
+//! The double-three fork test also compares [`ThreatMaps::double_threes`]
+//! against [`oracle::double_threes`].
 
-use engine::{Board, Color, Move, MoveSet};
+use burn::tensor::Device;
+use engine::reference::board_from_ascii;
+use engine::{Color, Move, MoveSet};
+use patterns::net::{ThreatMaps, ThreatNet, analyze};
+use patterns::oracle::{Direction, double_threes, open_three_makers};
 
-/// The four line directions used by the oracle.
-///
-/// The discriminant values match the index order of
-/// [`open_three_makers`]: horizontal, vertical, diagonal down-right,
-/// diagonal up-right.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(usize)]
-pub enum Direction {
-    /// Left-to-right.
-    Horizontal = 0,
-    /// Top-to-bottom.
-    Vertical = 1,
-    /// Top-left to bottom-right.
-    DiagDown = 2,
-    /// Bottom-left to top-right.
-    DiagUp = 3,
-}
-
-impl Direction {
-    /// All four directions, in the canonical order.
-    pub const ALL: [Direction; 4] = [
-        Direction::Horizontal,
-        Direction::Vertical,
-        Direction::DiagDown,
-        Direction::DiagUp,
-    ];
-
-    /// Step vector `(drow, dcol)` for walking along this direction.
-    pub fn step(self) -> (i32, i32) {
-        match self {
-            Direction::Horizontal => (0, 1),
-            Direction::Vertical => (1, 0),
-            Direction::DiagDown => (1, 1),
-            Direction::DiagUp => (-1, 1),
-        }
-    }
-}
-
-/// Returns the set of empty cells that create an open three in each
-/// of the four directions.
-///
-/// The returned array is indexed by [`Direction`] discriminant:
-/// `[horizontal, vertical, diag_down, diag_up]`.
-pub fn open_three_makers(b: &Board, s: Color) -> [MoveSet; 4] {
-    let grid = grid_from_board(b);
-    let mut out = [MoveSet::EMPTY; 4];
-
+fn threes_set(maps: &ThreatMaps, dir: Direction) -> MoveSet {
+    let mut s = MoveSet::EMPTY;
     for r in 0..15u8 {
         for c in 0..15u8 {
-            let mv = Move::new(r, c).expect("in-board coordinates");
-            if b.stone_at(mv).is_some() {
-                continue;
-            }
-
-            for dir in Direction::ALL {
-                if open_three_at(&grid, r, c, s, dir.step()) {
-                    out[dir as usize].insert(mv);
-                }
+            if maps.threes_per_dir[dir as usize][r as usize][c as usize] > 0.0 {
+                s.insert(Move::new(r, c).unwrap());
             }
         }
     }
-
-    out
+    s
 }
 
-/// Returns the set of empty cells where placing a stone of side `s`
-/// creates open threes in two or more distinct directions.
-pub fn double_threes(b: &Board, s: Color) -> MoveSet {
-    let per_dir = open_three_makers(b, s);
-    let mut out = MoveSet::EMPTY;
-
+fn double_three_set(maps: &ThreatMaps) -> MoveSet {
+    let mut s = MoveSet::EMPTY;
     for r in 0..15u8 {
         for c in 0..15u8 {
-            let mv = Move::new(r, c).expect("in-board coordinates");
-            let count = per_dir.iter().filter(|set| set.contains(mv)).count();
-            if count >= 2 {
-                out.insert(mv);
+            if maps.double_threes[r as usize][c as usize] > 0.0 {
+                s.insert(Move::new(r, c).unwrap());
             }
         }
     }
-
-    out
+    s
 }
 
-/// Snapshot of the board as a 15×15 grid of optional stone colors.
-fn grid_from_board(b: &Board) -> [[Option<Color>; 15]; 15] {
-    let mut grid = [[None; 15]; 15];
-    for r in 0..15u8 {
-        for c in 0..15u8 {
-            let mv = Move::new(r, c).expect("in-board coordinates");
-            grid[r as usize][c as usize] = b.stone_at(mv);
-        }
+fn assert_threes_match(maps: &ThreatMaps, b: &engine::Board, s: Color) {
+    let oracle = open_three_makers(b, s);
+    for dir in Direction::ALL {
+        assert_eq!(
+            threes_set(maps, dir),
+            oracle[dir as usize],
+            "three-maker mismatch in direction {dir:?}"
+        );
     }
-    grid
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CellState {
-    /// Empty in-board cell.
-    Empty,
-    /// Occupied by the side we are evaluating for.
-    Own,
-    /// Occupied by the opponent or outside the board.
-    Blocked,
+fn analyze_maps(b: &engine::Board, s: Color) -> ThreatMaps {
+    let device = Device::flex();
+    let net = ThreatNet::new(&device);
+    analyze(&net, b, s, &device)
 }
 
-/// True iff placing an `s`-stone at `(r, c)` creates an open three
-/// along `(dr, dc)` according to the spec §3.4 definition.
-fn open_three_at(
-    grid: &[[Option<Color>; 15]; 15],
-    r: u8,
-    c: u8,
-    s: Color,
-    (dr, dc): (i32, i32),
-) -> bool {
-    // The three v1 window patterns. `true` = own stone (`X`),
-    // `false` = required empty in-board cell (`_`).
-    const PATTERNS: &[&[bool]] = &[
-        &[false, true, true, true, false],        // _XXX_
-        &[false, true, false, true, true, false], // _X_XX_
-        &[false, true, true, false, true, false], // _XX_X_
-    ];
+#[test]
+fn quiet_board_has_empty_three_maps() {
+    let b = board_from_ascii(
+        ". . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-    let cell = |k: i32| -> CellState {
-        // The grid content at (r, c) is deliberately ignored: the
-        // hypothetical stone occupies it; callers only query empty cells.
-        let rr = r as i32 + dr * k;
-        let cc = c as i32 + dc * k;
-        if !(0..15).contains(&rr) || !(0..15).contains(&cc) {
-            CellState::Blocked
-        } else if rr == r as i32 && cc == c as i32 {
-            CellState::Own // the hypothetical stone
-        } else {
-            match grid[rr as usize][cc as usize] {
-                Some(color) if color == s => CellState::Own,
-                None => CellState::Empty,
-                Some(_) => CellState::Blocked,
-            }
-        }
-    };
+#[test]
+fn xxx_pattern_matches_oracle_horizontally() {
+    // Existing black at (7,1),(7,2); o at (7,5) kills the broken
+    // _XX_X_ at (7,4). Only (7,3) makes _XXX_.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . x x . . o . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-    for pattern in PATTERNS {
-        let len = pattern.len() as i32;
-        // Window start offsets that put the candidate cell (offset 0)
-        // somewhere inside the window.
-        for start in -(len - 1)..=0 {
-            let mut contains_c = false;
-            let mut window_ok = true;
+#[test]
+fn xxx_pattern_matches_oracle_diagonally_down() {
+    // Existing black at (1,1),(2,2); o at (5,5) kills the broken
+    // _XX_X_ at (4,4). Only (3,3) makes _XXX_.
+    let b = board_from_ascii(
+        ". . . . . . . . . . . . . . .
+         . x . . . . . . . . . . . . .
+         . . x . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . o . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-            for (i, &needs_own) in pattern.iter().enumerate() {
-                let k = start + i as i32;
-                match (cell(k), needs_own) {
-                    (CellState::Own, true) => {
-                        if k == 0 {
-                            contains_c = true;
-                        }
-                    }
-                    (CellState::Empty, false) => {}
-                    _ => {
-                        window_ok = false;
-                        break;
-                    }
-                }
-            }
+#[test]
+fn x_xx_pattern_matches_oracle_horizontally() {
+    // Existing black at (7,8),(7,9). (7,6) is the empty MAKER cell
+    // that becomes the isolated X of `_X_XX_` after placement; filling
+    // the gap (7,7) also makes _XXX_; extending the pair gives
+    // _XXX_ at (7,10) and _XX_X_ at (7,11).
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . x x . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-            if !window_ok || !contains_c {
-                continue;
-            }
+#[test]
+fn x_xx_pattern_matches_oracle_diagonally_down() {
+    // Pair at (9,9),(10,10); isolated X at (7,7). The gap (8,8)
+    // is also a _XXX_ maker.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . x . . . . .
+         . . . . . . . . . . x . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-            // Anti-four margin: the cells just beyond the two window
-            // ends must not be own stones.
-            let left_ok = !matches!(cell(start - 1), CellState::Own);
-            let right_ok = !matches!(cell(start + len), CellState::Own);
+#[test]
+fn xx_x_pattern_matches_oracle_horizontally() {
+    // Existing black at (7,6),(7,7); o at (7,3) kills the mirror
+    // `_X_XX_` maker at (7,4) (blocks its leftmost required-empty
+    // cell); to the right, (7,8) makes `_XXX_` and (7,9) is the lone
+    // X of `_XX_X_`; to the left, (7,5) makes `_XXX_`.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . o . . x x . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-            if left_ok && right_ok {
-                return true;
-            }
-        }
-    }
+#[test]
+fn xx_x_pattern_matches_oracle_diagonally_down() {
+    // Pair at (5,5),(6,6); o at (3,3) kills the mirror _XXX_ at
+    // (4,4). Lone X at (8,8); gap (7,7) is also a _XXX_ maker.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . o . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . x . . . . . . . . .
+         . . . . . . x . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
 
-    false
+#[test]
+fn edge_hugging_three_does_not_fire() {
+    // Black at (7,0),(7,2); candidate (7,1). The left empty end of
+    // _XXX_ would be off the board.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         x . x . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
+
+#[test]
+fn opponent_blocked_end_does_not_fire() {
+    // Black at (7,6),(7,8); o at (7,9) blocks the right empty end.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . x . x o . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
+
+#[test]
+fn anti_four_margin_rejects_three_maker() {
+    // _XXX_ with an own stone at (7,10) immediately beyond the right end.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . o
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . x . x . x . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . o",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+}
+
+#[test]
+fn double_three_fork_matches_oracle() {
+    // Horizontal and vertical threes through (7,7). There are other
+    // single-direction makers, but only (7,7) has both.
+    let b = board_from_ascii(
+        "o . . . . . . . . . . . . . o
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . x . . . . . . .
+         . . . . . . x . x . . . . . .
+         . . . . . . . x . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         . . . . . . . . . . . . . . .
+         o . . . . . . . . . . . . . o",
+    );
+    let maps = analyze_maps(&b, Color::Black);
+    assert_threes_match(&maps, &b, Color::Black);
+    assert_eq!(
+        double_three_set(&maps),
+        double_threes(&b, Color::Black),
+        "double-three fork map must match the oracle"
+    );
 }
 ````

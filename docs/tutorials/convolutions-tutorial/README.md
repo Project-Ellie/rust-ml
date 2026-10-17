@@ -40,8 +40,8 @@ Same conventions as the mcts and datagen tutorials:
 | 02 | [Trusting the framework](02-trusting-the-framework.md) | Burn tensors, `Conv2d`, manual weight assignment; your loop must match `conv2d` exactly. |
 | 03 | [The kernel language](03-the-kernel-language.md) | Exact-pattern kernels (+1/−1/bias/ReLU); the pattern table; the win map. |
 | 04 | [The four-level](04-the-four-level.md) | The four-level semantics; the `ThreatMaps` glue (`analyze`/`analyze_both`); the engine differential gate. |
-| 05 | [Three-makers](05-three-makers.md) | The three-maker families already in the table, understood and verified; anti-four margins; why radius 5. |
-| 06 | [The fork](06-the-fork.md) | The double-three map; the naive oracle; the three-level gate. The tutorial's point. |
+| 05 | [Three-makers](05-three-makers.md) | The three-maker families already in the table; the open-three definition; the naive oracle, demonstrated and tested. |
+| 06 | [The fork](06-the-fork.md) | The double-three fork, proven against the chapter-5 oracle; the three-level gate. The tutorial's point. |
 | 07 | [Seeing it](07-seeing-it.md) | Threat potential as a sparse policy; the heatmap demo; same network on GPU. |
 | 08 | [Acceptance](08-acceptance.md) | Crate polish and the full proof ritual, with measured numbers. |
 

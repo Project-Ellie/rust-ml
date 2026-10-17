@@ -3,16 +3,17 @@
 ## Abstract
 
 This chapter studies the **open-three maker** families that are
-already wired into the pattern table, and adds the verification file
-that proves them correct. You will learn the three exact window
-patterns (`_XXX_`, `_X_XX_`, `_XX_X_`), the **anti-four margin**
-that keeps the three-level and four-level maps cleanly partitioned,
-and why the 11×11 kernel footprint from chapter 3 had to be radius 5.
-The layer-2 1×1 combiner already emits four per-direction channels
-that mark every empty cell where playing creates an open three. The
-acceptance is a direct ASCII comparison: the network's
-`threes_per_dir` channels must match the same-window logic of the
-naive oracle on hand-built boards.
+already wired into the pattern table, and introduces the **naive
+oracle** that defines what "open three" means for the rest of the
+crate. You will learn the three exact window patterns (`_XXX_`,
+`_X_XX_`, `_XX_X_`), the **anti-four margin** that keeps the
+three-level and four-level maps cleanly partitioned, and why the
+11×11 kernel footprint from chapter 3 had to be radius 5. Then you
+will write `src/oracle.rs` — a deliberately slow, obviously correct
+reference implementation in plain Rust — and `tests/oracle.rs`, which
+watches it behave on ASCII boards you can read by eye. The oracle is
+introduced and tested before it is ever used to judge a conv kernel;
+chapter 6 will turn it loose on the network.
 
 ## Glossary
 
@@ -25,6 +26,7 @@ naive oracle on hand-built boards.
 | **Maturation room** | Empty cells beyond the anti-four margins that would let the open three grow into an open four. v1 ignores this. |
 | **Per-direction map** | One of four layer-2 channels that counts open-three makers along horizontal, vertical, diagonal-down, or diagonal-up lines. |
 | **OR-combine** | Layer-2 wiring that sums nine 0/1 family channels per direction; ReLU turns any positive sum into a marker. |
+| **Naive oracle** | A slow, obviously-correct reference implementation used as ground truth in a differential test. This chapter's new artifact is the open-three oracle in `src/oracle.rs`. |
 
 ## Context
 
@@ -37,10 +39,14 @@ open-three maps. Channels 5..=8 are the per-direction open-three maps.
 
 Chapter 4 added the `ThreatMaps` interpretation layer: it reads the
 network outputs into named fields and derives `double_threes` from
-the per-direction maps. This chapter does not change `src/kernel.rs`
-or `src/net.rs`; its new artifact is `tests/three_maps.rs`, which
-proves that the three-maker channels mean exactly what the spec
-says.
+the per-direction maps.
+
+This chapter does not change `src/kernel.rs` or `src/net.rs`. Its new
+artifacts are `src/oracle.rs` and `tests/oracle.rs`. The engine has no
+open-three concept, so the tutorial crate carries its own reference:
+a plain-Rust enumerator of the three exact windows. Before we trust it
+to judge 108 hand-written kernel channels, we demonstrate it on
+hand-built boards.
 
 ## Intention
 
@@ -51,9 +57,19 @@ says.
 2. Connect each base-shape contract to the exact window it
    implements (`_XXX_`, `_X_XX_`, `_XX_X_`) and to the anti-four
    margin rule.
-3. Verify `ThreatMaps::threes_per_dir` — populated by chapter 4's
-   `analyze` glue — against direct window checks on ASCII boards in
-   `tests/three_maps.rs`.
+3. Create `src/oracle.rs` with the naive open-three enumerator:
+   * `Direction` enum in canonical order (Horizontal, Vertical,
+     DiagDown, DiagUp) with `#[repr(usize)]` discriminants matching
+     the `[MoveSet; 4]` index order.
+   * Internal `CellState` enum (`Empty`, `Own`, `Blocked`).
+   * `open_three_makers(b, s) -> [MoveSet; 4]`.
+   * `double_threes(b, s) -> MoveSet`.
+4. Keep the oracle deliberately naive: plain array scans, no
+   bitboards, no convolution. Readability and obvious correctness are
+   the whole point.
+5. Add `tests/oracle.rs` with ASCII unit tests covering each pattern
+   family in each direction, edge cases, anti-four margins, and
+   overlines.
 
 Observable done-state: the chapter-5 tests listed below pass,
 `cargo clippy --all-targets -- -D warnings` is green from `gomoku/`,
@@ -130,6 +146,33 @@ out is not a "real" threat. v1 keeps the kernels small and the
 definition local. Extending the kernels with maturation-room
 conditions is left as an end-of-chapter exercise.
 
+### Why define the open three in plain Rust first?
+
+The `engine` crate computes wins, forced blocks, and double threats
+as bitboard operations. It has no concept of "open three" because the
+engine's tactics head start stops one rung higher on the threat ladder.
+That leaves the `patterns` crate without an independent authority for
+the three level — so we write one.
+
+`src/oracle.rs` is that authority. It is intentionally slow and
+obviously correct: it walks every empty cell, aligns the three exact
+windows along each of the four directions, checks the required-empty
+cells and the anti-four margins, and returns a `MoveSet` per
+direction. You can read it line by line and map each line onto the
+spec definition.
+
+The oracle is not production code. It exists only so that the fast
+conv network can be tested against something you can reason about by
+hand. Chapter 6 will compare the network's `threes_per_dir` channels
+to `oracle::open_three_makers` and the network's `double_threes` map
+to `oracle::double_threes`. If the two implementations disagree, the
+oracle gives you a concrete expected set to debug against.
+
+This is the philosophy of **differential testing**: two independent
+implementations of one definition. It is the same discipline that made
+the chapter-4 engine gate trustworthy, extended to a level the engine
+does not compute.
+
 ## Low-level design
 
 ### Files you will create or modify
@@ -138,10 +181,15 @@ conditions is left as an end-of-chapter exercise.
 gomoku/crates/patterns/
 ├── src/
 │   ├── kernel.rs   (no changes: the three-maker shapes are already complete)
-│   └── net.rs      (no changes: ThreatMaps reads channels 5..=8 from layer 2)
+│   ├── net.rs      (no changes: ThreatMaps reads channels 5..=8 from layer 2)
+│   └── oracle.rs   (new: the reference enumerator for open threes)
 └── tests/
-    └── three_maps.rs   (new: ASCII verification of threes_per_dir)
+    └── oracle.rs   (new: ASCII unit tests for the oracle)
 ```
+
+Note: `tests/common/mod.rs` with `board_from_ascii` is available from
+chapter 4, and the same 4 generator helper tests from `common` run
+whenever you invoke an integration test that includes `mod common;`.
 
 ### `PatternFamily` channel counts
 
@@ -234,69 +282,118 @@ produces a non-zero marker iff at least one three-maker fires.
 
 Chapter 4's `net.rs` glue extracts these four channels into
 `threes_per_dir[direction][row][col]`. Occupied cells are zeroed by
-the glue, exactly as for `wins` and `fours_created_per_dir`.
+the glue, exactly as for `wins` and `fours_created_per_dir`. The
+oracle does not need this masking because it only inspects empty
+cells, but the network does because the kernel language deliberately
+ignores what sits at `c`.
+
+### `src/oracle.rs` contracts
+
+The module is public and documented as a reference oracle, not
+production code. Its contracts are:
+
+```rust
+/// Direction order must match the array index order returned by
+/// `open_three_makers`.
+#[repr(usize)]
+pub enum Direction {
+    Horizontal = 0,
+    Vertical = 1,
+    DiagDown = 2,
+    DiagUp = 3,
+}
+
+impl Direction {
+    pub const ALL: [Direction; 4];
+    pub fn step(self) -> (i32, i32);
+}
+
+/// Per-direction open-three makers for side `s`.
+pub fn open_three_makers(b: &Board, s: Color) -> [MoveSet; 4];
+
+/// Empty cells that create open threes in two or more distinct directions.
+pub fn double_threes(b: &Board, s: Color) -> MoveSet;
+```
+
+The internal `CellState` is:
+
+```rust
+enum CellState {
+    Empty,   // genuinely empty in-board cell
+    Own,     // side `s` stone (including the hypothetical new stone)
+    Blocked, // opponent stone or off-board
+}
+```
+
+The `open_three_at` helper scans the three windows `_XXX_`,
+`_X_XX_`, and `_XX_X_` along one direction, checks that the
+candidate cell is inside the window, checks the anti-four margins,
+and returns `true` only when the window ends are genuinely empty.
+Off-board cells are `Blocked`, so edge-hugging pseudo-threes are
+rejected without special cases.
 
 ## Solution (opt-in)
 
-The complete reference `tests/three_maps.rs` for this chapter lives in
+The complete reference `src/oracle.rs` for this chapter lives in
 [05-three-makers/01-solution.md](05-three-makers/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare. The file is
 quoted verbatim from the verified reference build that evolves the
-real crate; the three-maker kernels it tests already exist in your
+real crate; the three-maker kernels it presumes already exist in your
 `src/kernel.rs` from chapter 3.
 
-Note: the file imports `patterns::oracle` for ground-truth
-comparisons. That oracle is the subject of chapter 6, so if you are
-working strictly in order you can either inline equivalent window
-checks now or run these tests after the oracle exists.
+`tests/oracle.rs` is intentionally **not** quoted. Writing the
+demonstration tests from the checklist is the core work of this
+chapter.
 
 ## TDD checklist
 
 Run these tests from `gomoku/` with `cargo test -p patterns`.
 
-The reference `tests/three_maps.rs` file defines 11 named `#[test]`
-functions and 4 supporting helpers. The exact names are:
+### `tests/oracle.rs`
 
-Tests:
+The reference file defines the following `#[test]` functions. The
+exact set verified from the reference is 16 tests (the three vertical
+variants come from the Task-1 quality round). Note that
+`cargo test -p patterns --test oracle -- --list` reports 20 tests:
+the binary also runs the 4 generator helper tests from
+`tests/common/mod.rs`; the 16 below are the oracle assertions:
 
-1. `quiet_board_has_empty_three_maps`
-2. `xxx_pattern_matches_oracle_horizontally`
-3. `xxx_pattern_matches_oracle_diagonally_down`
-4. `x_xx_pattern_matches_oracle_horizontally`
-5. `x_xx_pattern_matches_oracle_diagonally_down`
-6. `xx_x_pattern_matches_oracle_horizontally`
-7. `xx_x_pattern_matches_oracle_diagonally_down`
-8. `edge_hugging_three_does_not_fire`
-9. `opponent_blocked_end_does_not_fire`
-10. `anti_four_margin_rejects_three_maker`
-11. `double_three_fork_matches_oracle`
-
-Supporting helpers (not `#[test]`):
-
-1. `analyze_maps`
-2. `assert_threes_match`
-3. `threes_set`
-4. `double_three_set`
-
-The reference file imports `patterns::oracle::{Direction, double_threes, open_three_makers}` for its ground-truth checks. Chapter 6 builds that oracle. If you are working strictly in chapter order, you can either inline the same window checks here or defer running these tests until the oracle exists; the test names and board semantics are the same either way.
-
-As in chapter 4, all tests from previous chapters (planes, naive,
-spike, kernels, win map, four-level maps, and the default differential
-gates) continue to pass and are part of the chapter-5 gate.
+1. `quiet_board_has_no_three_makers`
+2. `xxx_pattern_fires_horizontally`
+3. `xxx_pattern_fires_vertically`
+4. `xxx_pattern_fires_diagonally_down`
+5. `x_xx_pattern_fires_horizontally`
+6. `x_xx_pattern_fires_vertically`
+7. `x_xx_pattern_fires_diagonally_down`
+8. `xx_x_pattern_fires_horizontally`
+9. `xx_x_pattern_fires_vertically`
+10. `xx_x_pattern_fires_diagonally_down`
+11. `xxx_does_not_fire_when_end_is_opponent_blocked`
+12. `xxx_does_not_fire_when_edge_hugging`
+13. `anti_four_margin_rejects_extension_to_four`
+14. `overline_present_rejects_adjacent_three_maker`
+15. `double_three_fork_fires_in_two_directions`
+16. `diagonal_up_direction_is_independent`
 
 Follow the red-green-refactor rhythm:
 
-1. **Red:** Add `tests/three_maps.rs` with all tests. Run
-   `cargo test -p patterns`. Expect failures because the oracle import
-   does not exist yet (or, if you inlined the window checks, because
-   the tests themselves fail before the glue is correct).
-2. **Green:** Once chapter 4's `ThreatMaps` glue and chapter 6's
-   `oracle` are in place, run `cargo test -p patterns`. The three-map
-   tests should pass.
+1. **Red:** Add `src/oracle.rs` with the enum shells and `todo!()`
+   function bodies, and add `tests/oracle.rs` with all tests. Run
+   `cargo test -p patterns --test oracle`. Expect failures.
+2. **Green:** Implement the oracle's window scans. Pay special
+   attention to `Direction` order: the discriminants must match the
+   array indices returned by `open_three_makers`, because chapter 6
+   will index `threes_per_dir[dir as usize]` using these same values.
+   Run `cargo test -p patterns --test oracle`. The 16 oracle
+   assertions plus the 4 helper tests should pass.
 3. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
    formatting issues.
+
+As in chapter 4, all tests from previous chapters (planes, naive,
+spike, kernels, win map, and four-level maps) continue to pass and
+are part of the chapter-5 gate.
 
 ## End-of-chapter exercise
 
@@ -310,14 +407,23 @@ base-shape offsets would change and which test cases would now be
 expected to fail; do not implement the full solution unless you have
 time and curiosity.
 
+## Bridge to chapter 6
+
+An open three is a strong threat, but it is answerable: the opponent
+can block one of the two empty ends. **Two** open threes in distinct
+directions through the same cell are not answerable — that is the
+**double-three fork**. The oracle already computes it; chapter 6
+proves that the network sees it.
+
 ## Done when
 
-* `cargo test -p patterns` passes from `gomoku/` (including the
-  chapter-5 tests and all earlier tests).
+* `cargo test -p patterns --test oracle` passes from `gomoku/`.
+* `cargo test -p patterns` passes from `gomoku/` (including all
+  earlier tests).
 * `cargo clippy --all-targets -- -D warnings` passes from `gomoku/`.
 * `cargo fmt --all -- --check` makes no changes.
 * Commit message for the code slice:
-  `test(patterns): three-maker maps verified against the window oracle`.
+  `feat(patterns): the open-three oracle + its test suite`.
 
 Next: [Chapter 06 — The fork](06-the-fork.md)
 

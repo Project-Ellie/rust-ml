@@ -493,7 +493,7 @@ Next: [Chapter 08 — Acceptance](08-acceptance.md)
 ## References
 
 * [`06-the-fork.md`](06-the-fork.md) — the previous chapter:
-  double-three maps and the naive oracle.
+  the double-three fork, proven against the oracle.
 * [`docs/specs/2026-09-27-convolutions-tutorial-design.md`](../../specs/2026-09-27-convolutions-tutorial-design.md)
   — §4.4 (backend story, batching, and the opt-in GPU feature) and
   §4.5 (policy-shaped output).

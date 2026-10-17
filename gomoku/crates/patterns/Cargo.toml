@@ -12,6 +12,7 @@ burn = { workspace = true, features = ["flex"] }
 [dev-dependencies]
 burn = { workspace = true, features = ["flex"] }
 rand = "0.10.3"
+engine = { path = "../engine", features = ["testutil"]}
 
 [features]
 gpu = ["burn/wgpu"]

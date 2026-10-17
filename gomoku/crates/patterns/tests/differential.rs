@@ -20,6 +20,7 @@ use burn::tensor::Device;
 use common::seeded_board;
 use engine::{Board, Color, Move, MoveSet};
 use patterns::net::{ThreatNet, analyze};
+use patterns::oracle::double_threes;
 
 /// Seeds covered by the default (every-commit) gate.
 const DEFAULT_SEEDS: Range<u64> = 0..100;
@@ -58,6 +59,17 @@ fn wins_full() {
 #[ignore = "full 1000-board proof: cargo test -p patterns --release -- --ignored"]
 fn double_threats_full() {
     check_double_threats(FULL_SEEDS);
+}
+
+#[test]
+fn double_threes_default() {
+    check_double_threes(DEFAULT_SEEDS);
+}
+
+#[test]
+#[ignore = "full 1000-board proof: cargo test -p patterns --release -- --ignored"]
+fn double_threes_full() {
+    check_double_threes(FULL_SEEDS);
 }
 
 /// Run the win-map gate over `seeds`, both colours per board.
@@ -101,6 +113,26 @@ fn check_double_threats(seeds: Range<u64>) {
 
     eprintln!(
         "double-threat gate: engine oracle non-empty for {oracle_nonempty} board/colour samples"
+    );
+}
+
+fn check_double_threes(seeds: Range<u64>) {
+    let device = Device::flex();
+    let net = ThreatNet::new(&device);
+    let mut oracle_non_empty = 0u32;
+
+    for seed in seeds {
+        let board = seeded_board(seed);
+        for side in [Color::Black, Color::White] {
+            let want = double_threes(&board, side);
+            oracle_non_empty += u32::from(!want.is_empty());
+            let maps = analyze(&net, &board, side, &device);
+            let got = set_from_map(&maps.double_threes);
+            assert_agreement(seed, &board, side, "double-three map", &got, &want);
+        }
+    }
+    eprintln!(
+        "double-threat gate: engine oracle non-empty for {oracle_non_empty} board/colour samples"
     );
 }
 

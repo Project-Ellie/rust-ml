@@ -317,11 +317,7 @@ fn five_completer_base_shapes() -> Vec<PatternEntry> {
 }
 
 fn as_coords_without_origin(steps: Vec<i32>) -> Vec<(i32, i32)> {
-    steps
-        .iter()
-        .filter(|&&p| p != 0)
-        .map(|&p| (0, p))
-        .collect()
+    steps.iter().filter(|&&p| p != 0).map(|&p| (0, p)).collect()
 }
 
 fn open_four_maker_base_shapes() -> Vec<PatternEntry> {
@@ -526,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn display_patterns () {
+    fn display_patterns() {
         let device = Device::flex();
 
         let layer1 = layer1_conv(&device);
@@ -540,7 +536,7 @@ mod tests {
         let p = p11_2[0][0];
         let (rows, _) = p.as_chunks::<11>();
 
-        rows.iter().for_each(|row| {println!("{:?}", row)});
+        rows.iter().for_each(|row| println!("{:?}", row));
 
         // for all plane pairs of all patterns
         for p121_2 in weights.as_chunks::<121>().0.as_chunks::<2>().0 {
@@ -548,12 +544,15 @@ mod tests {
             for planes in p121_2 {
                 let rows = planes.as_chunks::<11>().0;
                 for row in rows {
-                    let row_image = row.iter().map(|v| match v {
-                        0.0 => " . ",
-                        1.0 => " x ",
-                        -1.0 => " # ",
-                        _ => " ? "
-                    }).collect::<String>();
+                    let row_image = row
+                        .iter()
+                        .map(|v| match v {
+                            0.0 => " . ",
+                            1.0 => " x ",
+                            -1.0 => " # ",
+                            _ => " ? ",
+                        })
+                        .collect::<String>();
                     println!("{}", row_image);
                 }
                 println!();
