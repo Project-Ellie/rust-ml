@@ -26,6 +26,7 @@ pub struct DetectorBuilder {
 }
 
 impl DetectorBuilder {
+    /// Start building a detector with the given spatial kernel size.
     pub fn new(kernel_size: [usize; 2]) -> Self {
         Self {
             kernel_size,
@@ -72,6 +73,8 @@ impl DetectorBuilder {
     }
 }
 
+/// Rebuild a `Conv2d` from explicit weight and bias tensors while preserving
+/// the stride, dilation, groups and padding of an initialized template.
 pub fn conv_from_template(weight: Tensor<4>, bias: Tensor<1>, template: Conv2d) -> Conv2d {
     Conv2d {
         weight: Param::from_tensor(weight),

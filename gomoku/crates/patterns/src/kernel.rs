@@ -35,12 +35,16 @@ pub const KERNEL: usize = 11;
 /// Radius of the kernel footprint
 pub const RADIUS: i32 = 5;
 
-/// The four line directions
+/// The four line directions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
+    /// Left-to-right.
     Horizontal,
+    /// Top-to-bottom.
     Vertical,
+    /// Top-left to bottom-right.
     DiagDown,
+    /// Bottom-left to top-right.
     DiagUp,
 }
 
@@ -93,6 +97,7 @@ pub enum PatternFamily {
 }
 
 impl PatternFamily {
+    /// Multiplier used when this family contributes to the four-created map.
     pub fn weight_scale(self) -> f32 {
         match self {
             PatternFamily::BrokenFourMaker => 1.0,
@@ -101,6 +106,7 @@ impl PatternFamily {
         }
     }
 
+    /// Number of distinct base shapes in this family (one horizontal template).
     pub const fn base_shape_count(self) -> usize {
         match self {
             PatternFamily::FiveCompleter => 5,
@@ -112,6 +118,7 @@ impl PatternFamily {
         }
     }
 
+    /// Total channels for this family across all four directions.
     pub const fn num_channels(self) -> usize {
         self.base_shape_count() * 4
     }
@@ -124,11 +131,17 @@ impl PatternFamily {
 /// is stored at kernel position `(RADIUS + dy, RADIUS + dx)`.
 #[derive(Debug, Clone)]
 pub struct PatternEntry {
+    /// Threat family this entry belongs to.
     pub family: PatternFamily,
+    /// Board direction this entry is rotated into.
     pub direction: Direction,
+    /// Cells that must hold an own stone.
     pub stone_offsets: Vec<(i32, i32)>,
+    /// Cells that must be empty (own or opponent stone violates).
     pub empty_offsets: Vec<(i32, i32)>,
+    /// Cells immediately beyond a three window that must not hold an own stone.
     pub anti_margin_offsets: Vec<(i32, i32)>,
+    /// Empty cells that become five-completing when this pattern fires.
     pub completing_offsets: Vec<(i32, i32)>,
 }
 
