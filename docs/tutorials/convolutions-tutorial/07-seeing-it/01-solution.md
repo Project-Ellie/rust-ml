@@ -112,24 +112,8 @@ pub(crate) fn score_cell(maps: &ThreatMaps, r: usize, c: usize) -> f32 {
 mod tests {
     use super::*;
     use burn::tensor::Device;
+    use engine::reference::board_from_ascii;
     use engine::{Board, Color, Move};
-
-    fn board_from_ascii(image: &str) -> Board {
-        let mut black = Vec::new();
-        let mut white = Vec::new();
-        for (r, line) in image.trim().lines().enumerate() {
-            for (c, ch) in line.split_whitespace().enumerate() {
-                let mv = Move::new(r as u8, c as u8).expect("in-board coordinates");
-                match ch {
-                    "X" | "x" => black.push(mv),
-                    "O" | "o" => white.push(mv),
-                    "." => {}
-                    other => panic!("unexpected token {other:?} at ({r},{c})"),
-                }
-            }
-        }
-        Board::from_position(&black, &white, Color::Black).expect("valid test position")
-    }
 
     #[test]
     fn double_three_fork_scores_zero_point_eight() {

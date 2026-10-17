@@ -105,6 +105,7 @@ impl ThreatNet {
 /// Every map scores empty cells; occupied cells are zeroed by the glue
 /// because the kernel language does not condition on the candidate
 /// cell `c` itself.
+#[derive(Debug, PartialEq)]
 pub struct ThreatMaps {
     /// Cells where playing completes Five immmediately
     pub wins: [[f32; 15]; 15],
