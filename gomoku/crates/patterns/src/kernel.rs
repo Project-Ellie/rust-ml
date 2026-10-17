@@ -302,11 +302,8 @@ fn five_completer_base_shapes() -> Vec<PatternEntry> {
 
     for k in 0..5i32 {
         let window: Vec<i32> = (-k..=(-k + 4)).collect();
-        let stones: Vec<(i32, i32)> = window
-            .iter()
-            .filter(|&&p| p != 0)
-            .map(|&p| (0, p))
-            .collect();
+        let stones: Vec<(i32, i32)> = as_coords_without_origin(window);
+
         out.push(PatternEntry {
             family: PatternFamily::FiveCompleter,
             direction: Direction::Horizontal,
@@ -319,15 +316,19 @@ fn five_completer_base_shapes() -> Vec<PatternEntry> {
     out
 }
 
+fn as_coords_without_origin(steps: Vec<i32>) -> Vec<(i32, i32)> {
+    steps
+        .iter()
+        .filter(|&&p| p != 0)
+        .map(|&p| (0, p))
+        .collect()
+}
+
 fn open_four_maker_base_shapes() -> Vec<PatternEntry> {
     let mut out = Vec::with_capacity(PatternFamily::OpenFourMaker.base_shape_count());
     for k in 0..4i32 {
         let segment: Vec<i32> = (-k..=(-k + 3)).collect();
-        let stones: Vec<(i32, i32)> = segment
-            .iter()
-            .filter(|&&p| p != 0)
-            .map(|&p| (0, p))
-            .collect();
+        let stones = as_coords_without_origin(segment);
 
         let empty = vec![(0, -k - 1), (0, -k + 4)];
         let completing = vec![(0, -k - 1), (0, -k + 4)];
@@ -477,7 +478,6 @@ fn set_weight_1x1(weight: &mut [f32], out_ch: usize, in_ch: usize, value: f32) {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -522,6 +522,43 @@ mod tests {
                 family.num_channels(),
                 "family {family:?} channel count mismatch"
             );
+        }
+    }
+
+    #[test]
+    fn display_patterns () {
+        let device = Device::flex();
+
+        let layer1 = layer1_conv(&device);
+
+        let data = layer1.weight.to_data();
+        let weights: &[f32] = data.as_slice().unwrap();
+
+        let (p11, _) = weights.as_chunks::<121>();
+        let (p11_2, _) = p11.as_chunks::<2>();
+
+        let p = p11_2[0][0];
+        let (rows, _) = p.as_chunks::<11>();
+
+        rows.iter().for_each(|row| {println!("{:?}", row)});
+
+        // for all plane pairs of all patterns
+        for p121_2 in weights.as_chunks::<121>().0.as_chunks::<2>().0 {
+            // for both planes of the pair
+            for planes in p121_2 {
+                let rows = planes.as_chunks::<11>().0;
+                for row in rows {
+                    let row_image = row.iter().map(|v| match v {
+                        0.0 => " . ",
+                        1.0 => " x ",
+                        -1.0 => " # ",
+                        _ => " ? "
+                    }).collect::<String>();
+                    println!("{}", row_image);
+                }
+                println!();
+            }
+            println!();
         }
     }
 }
