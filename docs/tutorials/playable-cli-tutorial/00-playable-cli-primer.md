@@ -29,7 +29,7 @@ The crate splits into a library and a thin binary:
 ```text
 cli/
 ├── src/lib.rs
-│   ├── history.rs    the variation tree (arena + cursor)
+│   ├── history.rs    the variation tree (nodes + cursor)
 │   ├── command.rs    Command, Event, parser, CommandError
 │   ├── session.rs    SessionCore — the state machine
 │   ├── actor.rs      Occupant, AiConfig, SearchInfo
@@ -69,7 +69,7 @@ terminal, never knows crossterm exists. This buys three things:
 Undo in the old CLI meant replaying a linear log. The study table keeps
 a **tree**: every position ever reached stays reachable.
 
-- Arena + node indices (the `mcts::Tree` idiom), a **cursor** pointing
+- A tree of nodes (the `mcts::Tree` idiom), a **cursor** pointing
   at the displayed position, and a root holding the opening board.
 - `play` at the cursor: if that exact move already exists as a child,
   the cursor just *follows* it. Otherwise a new child is appended —
@@ -163,4 +163,4 @@ only). No time-based search budgets (sim counts are deterministic).
 No REST server, no GUI — the core is *ready* for them; building them
 is out of scope.
 
-Next: [Chapter 01 — The history arena](01-the-history-arena.md)
+Next: [Chapter 01 — The variation tree](01-the-variation-tree.md)

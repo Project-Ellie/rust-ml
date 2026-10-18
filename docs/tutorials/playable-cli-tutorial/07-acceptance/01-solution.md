@@ -3,11 +3,11 @@
 > This file quotes the two files that changed for chapter 07:
 > `gomoku/crates/cli/tests/acceptance.rs` and
 > `gomoku/crates/cli/src/lib.rs`. The acceptance test file was
-> introduced at commit `d4079c8`, amended at commit `febcb0f` to use
-> a uniform-random baseline, and cleaned up at commit `d0570fd` (an
+> introduced at commit `3853033`, amended at commit `3980a82` to use
+> a uniform-random baseline, and cleaned up at commit `6e905f4` (an
 > unused import the clippy gate caught); the text below is the final
-> `d0570fd` state. The quoted text was verified byte-for-byte against
-> the reference worktree with `git show d0570fd:<path>`.
+> `6e905f4` state. The quoted text was verified byte-for-byte against
+> the reference worktree with `git show 6e905f4:<path>`.
 
 # Chapter 07 — opt-in solution
 

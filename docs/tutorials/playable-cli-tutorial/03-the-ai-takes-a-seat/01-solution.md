@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the verified reference files for chapter 03. The
-> source was commit `22466dd` in the disposable reference worktree.
+> source was commit `38cc986` in the disposable reference worktree.
 > `src/history.rs` and `src/fmt.rs` are unchanged from chapter 02 and
 > are not repeated.
 

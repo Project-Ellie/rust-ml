@@ -1,4 +1,4 @@
-# Chapter 01 — The history arena
+# Chapter 01 — The variation tree
 
 ## Abstract
 
@@ -12,7 +12,7 @@ table. It is delivered in two slices:
   and install a `clap` subcommand skeleton (`play` / `selfplay`) that
   keeps every legacy invocation working.
 * **Slice 1** builds [`History`](../../../gomoku/crates/cli/src/history.rs):
-  an arena-and-cursor tree that silently branches on new moves and
+  a persistent variation tree that silently branches on new moves and
   replays `root → cursor` to produce a board.
 
 The capstone is `historydemo`: a small binary that walks a scripted
@@ -24,9 +24,9 @@ study table has its memory — every position reached stays reachable.
 | Term | Definition |
 |------|------------|
 | **Core/shell split** | The `cli` crate is divided into a headless library (`history`, `command`, `session`, `actor`) and a thin binary front-end. Commands go in; events and snapshots come out. |
-| **History / variation tree** | A persistent arena of game positions with a cursor. Each node stores the move that led to it; the root stores the opening board. Siblings are preserved. |
+| **History / variation tree** | A persistent tree of game positions with a cursor. Each node stores the move that led to it; the root stores the opening board. Siblings are preserved. |
 | **Cursor** | The currently displayed node in the history tree. All `History` mutations act at the cursor. |
-| **NodeId** | A `u32` index into [`History::arena`](../../../gomoku/crates/cli/src/history.rs). |
+| **NodeId** | A `u32` index into [`History::nodes`](../../../gomoku/crates/cli/src/history.rs). |
 | **PlayOutcome** | Return type that distinguishes a newly appended child (`Moved`) from a walk along an existing edge (`FollowedExisting`). |
 | **ForwardOutcome** | Return type that distinguishes forward motion (`Moved`), a branch point that needs a choice (`NeedsChoice`), and a leaf (`AtLeaf`). |
 | **Replay-to-cursor** | Rebuilding the board by replaying moves from the root to the cursor. The maximum cost is 225 `Board::play` calls. |
@@ -68,7 +68,7 @@ that treats every new line as a destructive action.
 ### Arena + indices: reuse the `mcts::Tree` idiom
 
 The `mcts` crate already stores its search tree as one `Vec<Node>`
-with `NodeId` handles. `History` uses the same shape: a single arena,
+with `NodeId` handles. `History` uses the same shape: a single tree of nodes,
 a root index, and a cursor index. You are not inventing a data
 structure; you are applying an in-repo idiom to game history.
 
@@ -106,7 +106,7 @@ matters.
 
 ### Slice 0 — crate split and clap skeleton
 
-Files touched at commit `353d0a8`:
+Files touched at commit `c7da12b`:
 
 * [`gomoku/crates/cli/Cargo.toml`](../../../gomoku/crates/cli/Cargo.toml)
   — add `[lib]`, keep `[[bin]]`, add `clap`.
@@ -138,9 +138,9 @@ exactly as before. The clap parser achieves this by flattening
 subcommand is given, the top-level `play` flags dispatch to the old
 flow.
 
-### Slice 1 — the `History` arena
+### Slice 1 — the variation tree
 
-Files created or modified at commit `1420081`:
+Files created or modified at commit `ad1aa26`:
 
 * [`gomoku/crates/cli/src/history.rs`](../../../gomoku/crates/cli/src/history.rs)
   — the variation tree.
@@ -151,7 +151,7 @@ Files created or modified at commit `1420081`:
 
 #### Exact `History` API
 
-The public contract from the verified reference (`1420081`) is:
+The public contract from the verified reference (`ad1aa26`) is:
 
 ```rust
 pub type NodeId = u32;
@@ -235,7 +235,7 @@ cargo run -q -p cli --bin historydemo
 The verified output is:
 
 ```text
-variation-tree history arena demo
+variation-tree demo
 =================================
 
 start: empty board, root cursor
@@ -419,7 +419,7 @@ ply 0  path: (root)
 > you have been stuck for more than twenty minutes.**
 >
 > The complete reference files for both slices are quoted in
-> [`01-the-history-arena/01-solution.md`](01-the-history-arena/01-solution.md).
+> [`01-the-variation-tree/01-solution.md`](01-the-variation-tree/01-solution.md).
 > Open it only if you need it; using it is not failure.
 
 ## TDD checklist
@@ -473,7 +473,7 @@ and puzzle flows are untouched.
 * Commit slice 0:
   `refactor(cli): lib/bin split + clap subcommands`.
 * Commit slice 1:
-  `feat(cli): variation-tree history arena + historydemo`.
+  `feat(cli): variation-tree history + historydemo`.
 
 Next: [Chapter 02 — The command language](02-the-command-language.md)
 

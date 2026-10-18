@@ -1,17 +1,17 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the four files that changed at commit `0e231a1`:
+> This file quotes the four files that changed at commit `a377237`:
 > `src/tui/overlay.rs` (new), `src/tui/study.rs`, `src/tui/render.rs`,
 > and `src/tui/mod.rs`. All other files are unchanged from chapter 05.
 > The quoted text was verified byte-for-byte against the reference
-> worktree with `git show 0e231a1:<path>`.
+> worktree with `git show a377237:<path>`.
 
 # Chapter 06 — opt-in solution
 
 ## Unchanged files
 
 The following files are identical to their chapter-05 versions at
-`f596202`:
+`a2e5373`:
 
 * `gomoku/crates/cli/src/lib.rs`
 * `gomoku/crates/cli/src/main.rs`

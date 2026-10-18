@@ -195,11 +195,11 @@ which is what tests assert.
 
 ### Files changed vs chapter 03
 
-The diff from chapter 03 (`22466dd`) to this chapter (`47eb83d`) is
+The diff from chapter 03 (`38cc986`) to this chapter (`ce6c4dd`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 22466dd..47eb83d --stat -- gomoku/crates/cli
+$ git diff 38cc986..ce6c4dd --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/actor.rs           |  21 +++
  gomoku/crates/cli/src/bin/sessiondemo.rs |  12 +-
  gomoku/crates/cli/src/session.rs         |  93 +++++++++--
@@ -345,7 +345,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/study.rs`
 
-Exact `#[test]` function names from commit `47eb83d`:
+Exact `#[test]` function names from commit `ce6c4dd`:
 
 1. `scripted_study_transcript`
 2. `opening_schedule_changes_ai_vs_ai_play`
@@ -386,7 +386,7 @@ cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --seed 7 --script crates/cli/study_demo.txt
 ```
 
-Key frames from the measured output (commit `47eb83d`):
+Key frames from the measured output (commit `ce6c4dd`):
 
 Releasing both seats:
 

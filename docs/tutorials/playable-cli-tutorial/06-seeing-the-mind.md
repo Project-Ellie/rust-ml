@@ -153,11 +153,11 @@ hidden.
 
 ### Files changed vs chapter 05
 
-The diff from chapter 05 (`f596202`) to this chapter (`0e231a1`) is
+The diff from chapter 05 (`a2e5373`) to this chapter (`a377237`) is
 confined to four files under `src/tui/`:
 
 ```text
-$ git diff f596202..0e231a1 --stat -- gomoku/crates/cli
+$ git diff a2e5373..a377237 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/tui/mod.rs     |   1 +
  gomoku/crates/cli/src/tui/overlay.rs | 409 +++++++++++++++++++++++++++++++++++
  gomoku/crates/cli/src/tui/render.rs  | 241 ++++++++++++++++++++-
@@ -245,7 +245,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/overlay.rs`
 
-Exact `#[test]` function names from commit `0e231a1`:
+Exact `#[test]` function names from commit `a377237`:
 
 1. `cycle_order_is_off_visits_prior_off`
 2. `overlay_off_returns_none`
@@ -265,7 +265,7 @@ Exact `#[test]` function names from commit `0e231a1`:
 
 ### `src/tui/render.rs`
 
-Exact `#[test]` function name added at `0e231a1`:
+Exact `#[test]` function name added at `a377237`:
 
 1. `policy_overlay_snapshot_with_fake_search_info`
 

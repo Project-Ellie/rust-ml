@@ -106,8 +106,10 @@ pub fn search(
 
 `search` runs `config.simulations` PUCT descents from `root`, using the
 evaluator for priors and leaf values, and returns the full tree. See
-[mcts tutorial chapter 07 — the simulation loop](07-the-simulation-loop.md)
-for the select/expand/backup loop and chapter 03 for the arena tree.
+[mcts tutorial chapter 07 — the simulation loop](../mcts-tutorial/07-the-simulation-loop.md)
+for the select/expand/backup loop and
+[chapter 02 — the arena](../mcts-tutorial/02-the-arena.md) for the
+arena tree.
 
 ```rust
 pub fn visit_distribution(tree: &Tree, root: NodeId) -> Vec<(Move, u32)>;
@@ -115,7 +117,7 @@ pub fn visit_distribution(tree: &Tree, root: NodeId) -> Vec<(Move, u32)>;
 
 After search, the improved policy is the visit-count distribution over
 root edges. See
-[mcts tutorial chapter 08 — from tree to move](08-from-tree-to-move.md).
+[mcts tutorial chapter 08 — from tree to move](../mcts-tutorial/08-from-tree-to-move.md).
 
 ```rust
 pub fn select_move(
@@ -141,7 +143,7 @@ pub fn add_dirichlet_noise(
 
 Dirichlet noise mixes into the root priors for opening variety. It is
 applied only when `AiConfig::noise_epsilon > 0.0`. See
-[mcts tutorial chapter 08](08-from-tree-to-move.md) and the opening
+[mcts tutorial chapter 08](../mcts-tutorial/08-from-tree-to-move.md) and the opening
 schedule discussion in the playable CLI primer.
 
 `SessionCore::execute_step` is a straight-line composition of these
@@ -205,7 +207,7 @@ two simulation budgets and look only at the `SearchInfo`.
 The position is the win-in-one setup from
 `tactics_ai_takes_win_in_one` in `tests/actor.rs`: Black has an open
 four on row 7 and can win by playing (7, 2) or (7, 7). Measured in the
-reference worktree at commit `22466dd`:
+reference worktree at commit `38cc986`:
 
 | Simulations | `value` | total visits | top move(s) |
 |-------------|---------|--------------|-------------|
@@ -233,11 +235,11 @@ clear baseline.
 
 ### Files changed vs chapter 02
 
-The diff from chapter 02 (`8340f44`) to this chapter (`22466dd`) is
+The diff from chapter 02 (`5a5a5f6`) to this chapter (`38cc986`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 8340f44..22466dd --stat -- gomoku/crates/cli
+$ git diff 5a5a5f6..38cc986 --stat -- gomoku/crates/cli
  gomoku/crates/cli/Cargo.toml             |   1 +
  gomoku/crates/cli/demo_script.txt        |   8 +
  gomoku/crates/cli/src/actor.rs           |  63 +++++++
@@ -339,7 +341,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/actor.rs`
 
-Exact `#[test]` function names from commit `22466dd`:
+Exact `#[test]` function names from commit `38cc986`:
 
 1. `tactics_ai_takes_win_in_one`
 2. `tactics_ai_blocks_opponent_open_four`
@@ -378,7 +380,7 @@ cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --script ../crates/cli/demo_script.txt
 ```
 
-Key frames from the real output (measured at commit `22466dd`):
+Key frames from the real output (measured at commit `38cc986`):
 
 Releasing White:
 

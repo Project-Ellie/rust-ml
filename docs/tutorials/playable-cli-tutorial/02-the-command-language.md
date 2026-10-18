@@ -117,7 +117,7 @@ gomoku/crates/cli/
 ```
 
 `src/history.rs` from chapter 01 is **unchanged** in this chapter. The
-verified diff from chapter 01 (`1420081`) to this chapter (`8340f44`)
+verified diff from chapter 01 (`ad1aa26`) to this chapter (`5a5a5f6`)
 adds the files above and touches `Cargo.toml` and `src/bin/historydemo.rs`
 (formatting pass), but `history.rs` itself has zero diff.
 
@@ -498,5 +498,5 @@ Next: [Chapter 03 — The AI takes a seat](03-the-ai-takes-a-seat.md)
   — §5 session core, commands, events, parser.
 * [`docs/plans/2026-10-17-playable-cli.md`](../../plans/2026-10-17-playable-cli.md)
   — Task 2 (chapter 02).
-* [`01-the-history-arena.md`](01-the-history-arena.md) — the
+* [`01-the-variation-tree.md`](01-the-variation-tree.md) — the
   `History` variation tree this chapter wraps.

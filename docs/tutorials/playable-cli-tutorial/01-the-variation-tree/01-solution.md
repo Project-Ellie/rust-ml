@@ -4,8 +4,8 @@
 > This file quotes the verified reference implementation for both
 > slices of Chapter 01. The files come from the disposable worktree
 > `/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli`
-> (branch `reference/playable-cli`): slice 0 at commit `353d0a8`,
-> slice 1 at commit `1420081`.
+> (branch `reference/playable-cli`): slice 0 at commit `c7da12b`,
+> slice 1 at commit `ad1aa26`.
 
 # Slice 0 — `refactor(cli): lib/bin split + clap subcommands`
 
@@ -389,7 +389,7 @@ pub mod ui;
 `history.rs`:
 
 ```rust
-//! Variation tree + cursor arena.
+//! Variation tree, stored as a flat node vector (the mcts::Tree idiom).
 ```
 
 `session.rs`:
@@ -398,12 +398,12 @@ pub mod ui;
 //! Session core — headless state machine.
 ```
 
-# Slice 1 — `feat(cli): variation-tree history arena + historydemo`
+# Slice 1 — `feat(cli): variation-tree history + historydemo`
 
 ## `gomoku/crates/cli/src/history.rs`
 
 ```rust
-//! Variation tree + cursor arena.
+//! Variation tree, stored as a flat node vector (the mcts::Tree idiom).
 //!
 //! A persistent game history: every position reached stays reachable.
 //! Playing a move at an old position adds a child branch without deleting
@@ -419,7 +419,7 @@ pub mod ui;
 use engine::{Board, Move, PlayError};
 use thiserror::Error;
 
-/// Node identifier: an index into [`History::arena`].
+/// Node identifier: an index into [`History::nodes`].
 pub type NodeId = u32;
 
 /// One node in the variation tree.
@@ -436,7 +436,7 @@ struct Node {
 /// Persistent variation tree with a cursor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct History {
-    arena: Vec<Node>,
+    nodes: Vec<Node>,
     root: NodeId,
     cursor: NodeId,
     root_board: Board,
@@ -492,7 +492,7 @@ impl History {
     #[must_use]
     pub fn from_opening(board: &Board) -> Self {
         Self {
-            arena: vec![Node {
+            nodes: vec![Node {
                 parent: None,
                 mv: None,
                 children: Vec::new(),
@@ -539,21 +539,21 @@ impl History {
         probe.play(mv)?;
 
         // Follow an identical child if one exists.
-        for &child_id in &self.arena[self.cursor as usize].children {
-            if self.arena[child_id as usize].mv == Some(mv) {
+        for &child_id in &self.nodes[self.cursor as usize].children {
+            if self.nodes[child_id as usize].mv == Some(mv) {
                 self.cursor = child_id;
                 return Ok(PlayOutcome::FollowedExisting(child_id));
             }
         }
 
         // Append a new child node.
-        let new_id = self.arena.len() as NodeId;
-        self.arena.push(Node {
+        let new_id = self.nodes.len() as NodeId;
+        self.nodes.push(Node {
             parent: Some(self.cursor),
             mv: Some(mv),
             children: Vec::new(),
         });
-        self.arena[self.cursor as usize].children.push(new_id);
+        self.nodes[self.cursor as usize].children.push(new_id);
         self.cursor = new_id;
         Ok(PlayOutcome::Moved(new_id))
     }
@@ -564,7 +564,7 @@ impl History {
     pub fn back(&mut self, n: u32) -> u32 {
         let mut moved = 0;
         for _ in 0..n {
-            match self.arena[self.cursor as usize].parent {
+            match self.nodes[self.cursor as usize].parent {
                 Some(parent) => {
                     self.cursor = parent;
                     moved += 1;
@@ -585,7 +585,7 @@ impl History {
     pub fn forward(&mut self, n: u32) -> ForwardOutcome {
         let mut moved = 0;
         for _ in 0..n {
-            let children = &self.arena[self.cursor as usize].children;
+            let children = &self.nodes[self.cursor as usize].children;
             match children.len() {
                 0 => return ForwardOutcome::AtLeaf,
                 1 => {
@@ -596,7 +596,7 @@ impl History {
                     return ForwardOutcome::NeedsChoice(
                         children
                             .iter()
-                            .map(|&id| self.arena[id as usize].mv.expect("child has a move"))
+                            .map(|&id| self.nodes[id as usize].mv.expect("child has a move"))
                             .collect(),
                     );
                 }
@@ -611,7 +611,7 @@ impl History {
     /// Returns [`HistoryError::VarOutOfBounds`] if `index` is not a valid
     /// child index.
     pub fn var(&mut self, index: usize) -> Result<Move, HistoryError> {
-        let children = &self.arena[self.cursor as usize].children;
+        let children = &self.nodes[self.cursor as usize].children;
         if index >= children.len() {
             return Err(HistoryError::VarOutOfBounds {
                 index,
@@ -620,16 +620,16 @@ impl History {
         }
         let child_id = children[index];
         self.cursor = child_id;
-        Ok(self.arena[child_id as usize].mv.expect("child has a move"))
+        Ok(self.nodes[child_id as usize].mv.expect("child has a move"))
     }
 
     /// The child moves of `at`, in creation order.
     #[must_use]
     pub fn children(&self, at: NodeId) -> Vec<Move> {
-        self.arena[at as usize]
+        self.nodes[at as usize]
             .children
             .iter()
-            .map(|&id| self.arena[id as usize].mv.expect("child has a move"))
+            .map(|&id| self.nodes[id as usize].mv.expect("child has a move"))
             .collect()
     }
 
@@ -638,7 +638,7 @@ impl History {
     pub fn ply(&self) -> u32 {
         let mut depth = 0;
         let mut id = self.cursor;
-        while let Some(parent) = self.arena[id as usize].parent {
+        while let Some(parent) = self.nodes[id as usize].parent {
             depth += 1;
             id = parent;
         }
@@ -649,9 +649,9 @@ impl History {
     fn path_to_cursor(&self) -> Vec<Move> {
         let mut path = Vec::new();
         let mut id = self.cursor;
-        while let Some(parent) = self.arena[id as usize].parent {
+        while let Some(parent) = self.nodes[id as usize].parent {
             path.push(
-                self.arena[id as usize]
+                self.nodes[id as usize]
                     .mv
                     .expect("non-root node has a move"),
             );
@@ -672,7 +672,7 @@ impl Default for History {
 ## `gomoku/crates/cli/src/bin/historydemo.rs`
 
 ````rust
-//! Chapter-01 capstone: a scripted walk through the variation-tree arena.
+//! Chapter-01 capstone: a scripted walk through the variation tree.
 //!
 //! Plays a short main line, branches, navigates back, chooses a variation,
 //! extends it, and finally returns to the root. Prints the board, ply, and
@@ -688,7 +688,7 @@ use cli::history::{ForwardOutcome, History, PlayOutcome};
 use engine::{Board, Color, Move};
 
 fn main() {
-    println!("variation-tree history arena demo");
+    println!("variation-tree demo");
     println!("=================================\n");
 
     let mut history = History::new();
@@ -825,7 +825,7 @@ fn i9() -> Move {
 ## `gomoku/crates/cli/tests/history.rs`
 
 ```rust
-//! Headless tests for the variation-tree history arena.
+//! Headless tests for the variation-tree history.
 
 use cli::history::{ForwardOutcome, History, HistoryError, PlayOutcome};
 use engine::{Board, Color, Move, PlayError, Status};

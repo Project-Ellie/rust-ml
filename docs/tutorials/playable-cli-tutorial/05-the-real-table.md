@@ -255,11 +255,11 @@ position it was given.
 
 ### Files changed vs chapter 04
 
-The diff from chapter 04 (`47eb83d`) to this chapter (`f596202`) is
+The diff from chapter 04 (`ce6c4dd`) to this chapter (`a2e5373`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 47eb83d..f596202 --stat -- gomoku/crates/cli
+$ git diff ce6c4dd..a2e5373 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/main.rs       | 150 +++++++++---
  gomoku/crates/cli/src/session.rs    |  34 ++-
  gomoku/crates/cli/src/tui/mod.rs    |   1 +
@@ -380,7 +380,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/render.rs`
 
-Exact new `#[test]` function names from commit `f596202`:
+Exact new `#[test]` function names from commit `a2e5373`:
 
 1. `study_board_shows_star_points_on_empty_cells`
 2. `study_board_marks_last_move`
@@ -389,7 +389,7 @@ Exact new `#[test]` function names from commit `f596202`:
 
 ### `src/tui/study.rs`
 
-Exact new `#[test]` function name from commit `f596202`:
+Exact new `#[test]` function name from commit `a2e5373`:
 
 1. `empty_line_step_only_when_ai_to_move`
 

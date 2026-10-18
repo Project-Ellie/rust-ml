@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the reference implementation files for chapter 05,
-> verified green at commit `f596202` in the reference worktree.
+> verified green at commit `a2e5373` in the reference worktree.
 
 Open this only if you have been stuck for more than twenty minutes,
 or after you have finished the chapter and want to compare your work

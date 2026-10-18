@@ -1,11 +1,11 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the verified reference implementation for chapter 02.
-> The source files below are byte-for-byte copies from commit `8340f44`
+> The source files below are byte-for-byte copies from commit `5a5a5f6`
 > of the reference worktree (`rust-ml-ref-playable-cli`).
 >
 > `src/history.rs` from chapter 01 is **unchanged** in this chapter.
-> The diff from chapter 01 (`1420081`) to this chapter (`8340f44`)
+> The diff from chapter 01 (`ad1aa26`) to this chapter (`5a5a5f6`)
 > touches:
 > ```
 >  Cargo.toml                              |   5 +

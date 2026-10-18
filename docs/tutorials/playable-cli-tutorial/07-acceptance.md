@@ -75,13 +75,13 @@ reproduces the table quoted below.
 ## The three acceptance artifacts
 
 The reference implementation contains exactly these three tests,
-landed across three commits: `d4079c8` introduced them, `febcb0f`
+landed across three commits: `3853033` introduced them, `3980a82`
 amended the measurement to a uniform-random baseline (the story
-below), and `d0570fd` dropped an unused import the clippy gate
-caught. The diff from chapter 06 (`0e231a1`) is small and confined:
+below), and `6e905f4` dropped an unused import the clippy gate
+caught. The diff from chapter 06 (`a377237`) is small and confined:
 
 ```text
-$ git diff 0e231a1..d0570fd --stat -- gomoku/crates/cli
+$ git diff a377237..6e905f4 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/lib.rs          |   2 +
  gomoku/crates/cli/src/tui/board.rs    |  11 +
  gomoku/crates/cli/src/tui/input.rs    |   7 +
@@ -288,13 +288,13 @@ baseline tutorial's evaluator (spec §13), which becomes
 same seat abstraction with zero redesign.
 
 **There is a second, subtler lesson in the commit history.** The first
-version of this measurement, at commit `d4079c8`, used a "near-random"
+version of this measurement, at commit `3853033`, used a "near-random"
 opponent defined as 1 simulation with temperature 1.0. That sounds
 like randomness, but 1 simulation of PUCT collapses to a deterministic
 top-prior greed: the evaluator's highest prior is always selected. The
 result was an unexplained cliff at 50 and 200 simulations — some
 losses that disappeared at 800 — and the table was hard to interpret.
-The amendment at `febcb0f` replaced that opponent with a truly
+The amendment at `3980a82` replaced that opponent with a truly
 uniform-random driver, which yielded the clean 100% table above.
 
 The meta-lesson of the chapter is that **acceptance criteria are
@@ -349,9 +349,9 @@ Run from `gomoku/`:
 
 3. **Clippy.** `cargo clippy --all-targets -- -D warnings`: green.
    Getting there was the gate doing its job: the amendment at
-   `febcb0f` replaced a hand-rolled `Board::new()` with
+   `3980a82` replaced a hand-rolled `Board::new()` with
    `SessionInit::ai_vs_ai` and left `use engine::{Board, ...}` behind,
-   which `-D warnings` refused to pass. The fix (`d0570fd`) is the
+   which `-D warnings` refused to pass. The fix (`6e905f4`) is the
    one-line import cleanup. Run the gate; it must pass clean, not
    "clean except".
 
@@ -363,7 +363,7 @@ Run from `gomoku/`:
    reference machine because the uniform-random baseline resigns
    quickly.
 
-The final state (`d0570fd`) is the one worth committing.
+The final state (`6e905f4`) is the one worth committing.
 
 ## Solution (opt-in)
 
@@ -372,8 +372,8 @@ The complete reference files for this chapter are quoted verbatim in
 only if you have been stuck for more than twenty minutes, or after you
 have finished the chapter and want to compare your work.
 
-The solution file quotes two commits: `d4079c8` introduced the three
-acceptance tests, and `febcb0f` amended the measurement to use a
+The solution file quotes two commits: `3853033` introduced the three
+acceptance tests, and `3980a82` amended the measurement to use a
 uniform-random baseline. The quoted text was verified byte-for-byte
 against the reference worktree with `git show <commit>:<path>`.
 
@@ -482,7 +482,7 @@ the milestone status when the owner signs off.
 * `gomoku/crates/cli/src/lib.rs` — crate entry point and
   `#![deny(missing_docs)]`.
 * `gomoku/crates/cli/tests/acceptance.rs` — the three acceptance tests
-  (reference commits `d4079c8`, `febcb0f`, and `d0570fd`).
+  (reference commits `3853033`, `3980a82`, and `6e905f4`).
 * Christopher D. Rosin (2011). *Multi-armed bandits with episode
   context*. Annals of Mathematics and Artificial Intelligence 61(3),
   203–230. [`https://doi.org/10.1007/s10472-011-9258-6`](https://doi.org/10.1007/s10472-011-9258-6)

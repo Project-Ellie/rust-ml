@@ -53,7 +53,7 @@ tutorials:
 | # | Chapter | The one thing you get |
 |---|---------|------------------------|
 | 00 | [Primer](00-playable-cli-primer.md) | The study table, core/shell, commands/events, the four knobs, no depth knob. |
-| 01 | [The history arena](01-the-history-arena.md) | `historydemo` walks branches as ASCII boards: **now you can branch off and navigate back.** |
+| 01 | [The variation tree](01-the-variation-tree.md) | `historydemo` walks branches as ASCII boards: **now you can branch off and navigate back.** |
 | 02 | [The command language](02-the-command-language.md) | `sessiondemo` REPL: **you play a whole game through the language a web server will one day speak.** |
 | 03 | [The AI takes a seat](03-the-ai-takes-a-seat.md) | `release white` + `step` + `info`: **the AI sits down at your table — and shows its working.** |
 | 04 | [The study loop](04-the-study-loop.md) | Take/release mid-game, per-seat sims, the opening schedule: **steal the AI's seat, explore, hand it back.** |

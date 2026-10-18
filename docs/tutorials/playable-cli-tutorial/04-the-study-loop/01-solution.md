@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the reference files for chapter 04, verified green at
-> commit `47eb83d` against main's `cli` crate with chapters 01–03 in
+> commit `ce6c4dd` against main's `cli` crate with chapters 01–03 in
 > place. Files unchanged from chapter 03 are not quoted; they are listed
 > at the end.
 
@@ -1760,7 +1760,7 @@ step
 ## Files unchanged from chapter 03
 
 The following files are identical to their chapter-03 versions at
-`22466dd` and are not quoted above:
+`38cc986` and are not quoted above:
 
 * `gomoku/crates/cli/src/command.rs`
 * `gomoku/crates/cli/src/history.rs`
@@ -1771,14 +1771,14 @@ The following files are identical to their chapter-03 versions at
 
 ## Verification
 
-The quoted files were extracted from commit `47eb83d` of the reference
+The quoted files were extracted from commit `ce6c4dd` of the reference
 worktree. To verify them yourself:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 REPO=/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli
-COMMIT=47eb83d
+COMMIT=ce6c4dd
 SOLUTION=/Users/wgiersche/workspace/Project-Ellie/rust-ml/docs/tutorials/playable-cli-tutorial/04-the-study-loop/01-solution.md
 
 python3 - "$REPO" "$COMMIT" "$SOLUTION" <<'PY'
