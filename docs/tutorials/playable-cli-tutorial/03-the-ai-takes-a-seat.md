@@ -206,13 +206,13 @@ two simulation budgets and look only at the `SearchInfo`.
 
 The position is the win-in-one setup from
 `tactics_ai_takes_win_in_one` in `tests/actor.rs`: Black has an open
-four on row 7 and can win by playing (7, 2) or (7, 7). Measured in the
-reference worktree at commit `38cc986`:
+four on row 7 and can win by playing `c8` or `h8`. Measured in the
+reference worktree at commit `baa2c1a`:
 
 | Simulations | `value` | total visits | top move(s) |
 |-------------|---------|--------------|-------------|
-| 50 | +1.000 | 50 | (7, 2) with 50 visits |
-| 800 | +1.000 | 800 | (7, 2) and (7, 7) with 400 visits each |
+| 50 | +1.000 | 50 | `c8` with 50 visits |
+| 800 | +1.000 | 800 | `c8` and `h8` with 400 visits each |
 
 There is no `depth` field anywhere. The only knob that changed was
 `simulations`. If you find yourself wanting a depth parameter, what
@@ -225,7 +225,7 @@ section and spec §6.1.
 forced blocks get most of the prior mass; everything else is uniform.
 On a quiet board it has **no positional sense at all**. The demo below
 shows exactly that: after a human center stone, the AI plays the corner
-(0, 0), then (0, 1), then (0, 2) — the argmax tie-break on a flat
+`a1`, then `b1`, then `c1` — the argmax tie-break on a flat
 visit distribution. It looks silly, and it is. The baseline tutorial
 exists specifically to cure this blindness with a positional
 (gravity-style) evaluator; this tutorial uses the silly moves as a
@@ -235,11 +235,11 @@ clear baseline.
 
 ### Files changed vs chapter 02
 
-The diff from chapter 02 (`5a5a5f6`) to this chapter (`38cc986`) is
+The diff from chapter 02 (`161c49b`) to this chapter (`baa2c1a`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 5a5a5f6..38cc986 --stat -- gomoku/crates/cli
+$ git diff 161c49b..baa2c1a --stat -- gomoku/crates/cli
  gomoku/crates/cli/Cargo.toml             |   1 +
  gomoku/crates/cli/demo_script.txt        |   8 +
  gomoku/crates/cli/src/actor.rs           |  63 +++++++
@@ -319,11 +319,11 @@ A short script used by the capstone:
 
 ```text
 release white
-7 7
+h8
 step
-6 7
+h7
 step
-7 8
+i8
 step
 info
 ```
@@ -341,7 +341,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/actor.rs`
 
-Exact `#[test]` function names from commit `38cc986`:
+Exact `#[test]` function names from commit `baa2c1a`:
 
 1. `tactics_ai_takes_win_in_one`
 2. `tactics_ai_blocks_opponent_open_four`
@@ -380,7 +380,7 @@ cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --script ../crates/cli/demo_script.txt
 ```
 
-Key frames from the real output (measured at commit `38cc986`):
+Key frames from the real output (measured at commit `baa2c1a`):
 
 Releasing White:
 
@@ -392,24 +392,47 @@ ply 0  status Ongoing  black Human  white Ai
 A human move:
 
 ```text
-  Moved (7, 7) by Human
+  Moved h8 by Human
 ply 1  status Ongoing  black Human  white Ai
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- ...
- 7  .  .  .  .  .  .  .  x  .  .  .  .  .  .  .
- ...
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  x  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 ```
 
 The AI's answer (note the corner junk — the uniform prior at work):
 
 ```text
-  Moved (0, 0) by Ai
+  Moved a1 by Ai
 ply 2  status Ongoing  black Human  white Ai
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  o  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- ...
- 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  o  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 ```
 
 After the script's final `info`, the stored `SearchInfo` at the cursor:
@@ -417,18 +440,17 @@ After the script's final `info`, the stored `SearchInfo` at the cursor:
 ```text
 value 0.000  total visits 400
 top moves (visits, prior%):
-  1. (2, 0.5%) (0, 2)
-  2. (2, 0.5%) (0, 3)
-  3. (2, 0.5%) (0, 4)
-  4. (2, 0.5%) (0, 5)
-  5. (2, 0.5%) (0, 6)
+  1. (2, 0.5%) c1
+  2. (2, 0.5%) d1
+  3. (2, 0.5%) e1
+  4. (2, 0.5%) f1
+  5. (2, 0.5%) g1
 ```
 
 On a quiet board the search has nothing to prefer, so the top moves
 are scattered along the first row with two visits each and a flat
 0.5% prior. The AI sat down, answered, and honestly reported that it
 had no idea what to do. The baseline tutorial will teach it better.
-
 ## Done when
 
 * `cargo test -p cli` passes from `gomoku/` (including all chapter-02

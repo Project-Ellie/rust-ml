@@ -255,11 +255,11 @@ position it was given.
 
 ### Files changed vs chapter 04
 
-The diff from chapter 04 (`ce6c4dd`) to this chapter (`a2e5373`) is
+The diff from chapter 04 (`f71de2f`) to this chapter (`8ad0061`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff ce6c4dd..a2e5373 --stat -- gomoku/crates/cli
+$ git diff f71de2f..8ad0061 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/main.rs       | 150 +++++++++---
  gomoku/crates/cli/src/session.rs    |  34 ++-
  gomoku/crates/cli/src/tui/mod.rs    |   1 +
@@ -380,7 +380,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/render.rs`
 
-Exact new `#[test]` function names from commit `a2e5373`:
+Exact new `#[test]` function names from commit `8ad0061`:
 
 1. `study_board_shows_star_points_on_empty_cells`
 2. `study_board_marks_last_move`
@@ -389,7 +389,7 @@ Exact new `#[test]` function names from commit `a2e5373`:
 
 ### `src/tui/study.rs`
 
-Exact new `#[test]` function name from commit `a2e5373`:
+Exact new `#[test]` function name from commit `8ad0061`:
 
 1. `empty_line_step_only_when_ai_to_move`
 
@@ -418,7 +418,7 @@ Run the non-tty demo in the reference worktree:
 
 ```text
 cd gomoku
-printf '7 7\nstep\nq\n' | cargo run -q -p cli --bin gomoku -- play --ai tactics --color white --no-swap2
+printf 'h8\nstep\nq\n' | cargo run -q -p cli --bin gomoku -- play --ai tactics --color white --no-swap2
 ```
 
 Because `--color white` seats the human in White, Black is the AI. The
@@ -429,7 +429,7 @@ captured output.
 Initial frame:
 
 ```text
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: AI(400)
  0 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: Human
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1   
@@ -447,22 +447,22 @@ Initial frame:
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  
 14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  
    +---------------------------------------------+     
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       
 ```
 
-After the `7 7` line, the table credits the Black AI with the move.
+After the `h8` line, the table credits the Black AI with the move.
 The last-move marker brackets the stone, and the side panel updates:
 
 ```text
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: AI(400)
  0 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: Human
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1   
  2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   Ply: 1
- 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: (7, 7)
+ 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: h8
  4 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 4   
  5 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 5   Last events:
- 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved (7, 7) by Ai
+ 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved h8 by Ai
  7 | .  .  .  +  .  .  . [x] .  .  .  +  .  .  . | 7   
  8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8   h help · q quit
  9 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 9   p policy overlay (ch.06)
@@ -472,7 +472,7 @@ The last-move marker brackets the stone, and the side panel updates:
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  
 14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  
    +---------------------------------------------+     
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       
 ```
 
 After the `step` line, White is to move and White is human, so `Step`
@@ -491,15 +491,15 @@ printf '\n\nq\n' | cargo run -q -p cli --bin gomoku -- selfplay --sims 200 --see
 The first empty line makes Black search and play:
 
 ```text
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: AI(200)
  0 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: AI(200)
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1   
  2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   Ply: 1
- 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: (9, 8)
+ 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: i10
  4 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 4   
  5 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 5   Last events:
- 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved (9, 8) by Ai
+ 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved i10 by Ai
  7 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 7   
  8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8   h help · q quit
  9 | .  .  .  .  .  .  .  . [x] .  .  .  .  .  . | 9   p policy overlay (ch.06)
@@ -509,22 +509,22 @@ The first empty line makes Black search and play:
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  
 14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  
    +---------------------------------------------+     
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       
 ```
 
 The second empty line makes White answer:
 
 ```text
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: AI(200)
  0 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: AI(200)
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1   
  2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   Ply: 2
- 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: (9, 8) (10, 7)
+ 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: i10 h11
  4 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 4   
  5 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 5   Last events:
- 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved (9, 8) by Ai
- 7 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 7     Moved (10, 7) by Ai
+ 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved i10 by Ai
+ 7 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 7     Moved h11 by Ai
  8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8   
  9 | .  .  .  .  .  .  .  .  x  .  .  .  .  .  . | 9   h help · q quit
 10 | .  .  .  .  .  .  . [o] .  .  .  .  .  .  . | 10  p policy overlay (ch.06)
@@ -533,7 +533,7 @@ The second empty line makes White answer:
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  
 14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  
    +---------------------------------------------+     
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       
 ```
 
 The board is on screen, the side panel is populated, and the table

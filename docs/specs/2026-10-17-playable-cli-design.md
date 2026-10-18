@@ -5,6 +5,12 @@ recorded inline). **Audience**: the tutorial author (the owner) and the
 implementation agents. **Scope**: the `cli` crate of the gomoku workspace;
 the next solution-backed tutorial after the baseline tutorial.
 
+**Amendment 2026-10-17 (algebraic notation):** the study table accepts and
+displays moves in algebraic notation (`h8`, `a1`). The internal
+`engine::Move` representation (`row`, `col`, 0–14) and all `Event` fields
+remain unchanged; the parser and rendering layers map between algebraic
+input/display and internal coordinates.
+
 ## Abstract
 
 The terminal client grows from a human-vs-human board into a **study

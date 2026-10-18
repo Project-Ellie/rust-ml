@@ -4,8 +4,8 @@
 > This file quotes the verified reference implementation for both
 > slices of Chapter 01. The files come from the disposable worktree
 > `/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli`
-> (branch `reference/playable-cli`): slice 0 at commit `c7da12b`,
-> slice 1 at commit `ad1aa26`.
+> (branch `reference/playable-cli`): slice 0 at commit `28d3697`,
+> slice 1 at commit `0782500`.
 
 # Slice 0 — `refactor(cli): lib/bin split + clap subcommands`
 
@@ -27,6 +27,10 @@ path = "src/lib.rs"
 name = "gomoku"
 path = "src/main.rs"
 
+[[bin]]
+name = "historydemo"
+path = "src/bin/historydemo.rs"
+
 [features]
 default = ["naive-engine"]
 naive-engine = ["engine/testutil"]
@@ -38,6 +42,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest.workspace = true
 ```
 
 ## `gomoku/Cargo.toml` (workspace dependency line in context)
@@ -773,9 +780,9 @@ fn path_string(history: &History) -> String {
 
 fn render_board(board: &Board) -> String {
     let mut lines = Vec::new();
-    lines.push("    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14".to_string());
+    lines.push("    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o".to_string());
     for r in 0..15u8 {
-        let mut row = format!("{:2}  ", r);
+        let mut row = format!("{:2}  ", r + 1);
         for c in 0..15u8 {
             let ch = match board.stone_at(Move::new(r, c).unwrap()) {
                 Some(Color::Black) => 'X',

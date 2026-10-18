@@ -117,7 +117,7 @@ gomoku/crates/cli/
 ```
 
 `src/history.rs` from chapter 01 is **unchanged** in this chapter. The
-verified diff from chapter 01 (`ad1aa26`) to this chapter (`5a5a5f6`)
+verified diff from chapter 01 (`0782500`) to this chapter (`161c49b`)
 adds the files above and touches `Cargo.toml` and `src/bin/historydemo.rs`
 (formatting pass), but `history.rs` itself has zero diff.
 
@@ -255,8 +255,8 @@ impl SessionCore {
 
 | Input | `Command` | Notes |
 |---|---|---|
-| `7 7` | `Play(Move { row: 7, col: 7 })` | Bare numeric form; row col, 0–14. |
-| `play 7 7` | `Play(Move { row: 7, col: 7 })` | Explicit verb form. |
+| `h8` | `Play(Move { row: 7, col: 7 })` | Bare algebraic form; column letter a–o, row 1–15. |
+| `play h8` | `Play(Move { row: 7, col: 7 })` | Explicit verb form. |
 | `step` | `Step` | AI seat search/play (Task 3). |
 | `back` | `Back { n: 1 }` | Default `n = 1`. |
 | `back 3` | `Back { n: 3 }` | Move cursor toward root by `n` plies. |
@@ -298,132 +298,163 @@ after you have finished the chapter and want to compare.
 ## Capstone: `sessiondemo` plays a scripted hotseat game
 
 The chapter-02 binary is `sessiondemo`. Save this script as
-`t2_hotseat.txt`:
+`demo_script.txt`:
 
 ```text
-7 7
-6 7
-7 8
-6 8
-7 9
-back 3
-8 7
-back 1
-forward 1
-var 1
-new
-q
+h8
+a1
+h7
+b1
+i8
+c1
+info
 ```
 
 Run it from `gomoku/`:
 
 ```text
-cargo run -q -p cli --bin sessiondemo -- --script t2_hotseat.txt
+cargo run -q -p cli --bin sessiondemo -- --script demo_script.txt
 ```
 
-Excerpt of the output (repeated identical board states are elided with
-`[...]`):
+The real output is:
 
 ```text
 Session started. Type 'h' for help.
 ply 0  status Ongoing  black Human  white Human
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Moved (7, 7) by Human
-  Moved (6, 7) by Human
-  Moved (7, 8) by Human
-  Moved (6, 8) by Human
-  Moved (7, 9) by Human
-ply 5  status Ongoing  black Human  white Human
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 6  .  .  .  .  .  .  .  O  O  .  .  .  .  .  .
- 7  .  .  .  .  .  .  .  X  X  x  .  .  .  .  .
- 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+  Moved h8 by Human
+ply 1  status Ongoing  black Human  white Human
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  x  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Cursor moved to ply 2
+  Moved a1 by Human
 ply 2  status Ongoing  black Human  white Human
-branches: 0:(7, 8)
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 6  .  .  .  .  .  .  .  o  .  .  .  .  .  .  .
- 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .
- 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  o  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Moved (8, 7) by Human
-  Branched: (7, 8) (8, 7)
+  Moved h7 by Human
 ply 3  status Ongoing  black Human  white Human
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
- 6  .  .  .  .  .  .  .  O  .  .  .  .  .  .  .
- 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .
- 8  .  .  .  .  .  .  .  x  .  .  .  .  .  .  .
- 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
-14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  O  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  x  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Cursor moved to ply 2
-[... same ply-2 board as above ...]
+  Moved b1 by Human
+ply 4  status Ongoing  black Human  white Human
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  O  o  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Branch point: 0: (7, 8) 1: (8, 7)
-[... same ply-2 board as above ...]
+  Moved i8 by Human
+ply 5  status Ongoing  black Human  white Human
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  O  O  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  x  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Cursor moved to ply 3
-[... same ply-3 branch board as above ...]
+  Moved c1 by Human
+ply 6  status Ongoing  black Human  white Human
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  O  O  o  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  X  X  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-  Reset
-[... empty board, same as initial ...]
+No search info at the cursor.
+
 ```
-
-The script plays five moves, rewinds three plies, plays a branch move at
-(8, 7), navigates back to the branch point, chooses the new branch with
-`var 1`, and finally resets to a fresh board. The terminal prints nothing
-that the core did not emit as an `Event`.
 
 ## TDD checklist
 

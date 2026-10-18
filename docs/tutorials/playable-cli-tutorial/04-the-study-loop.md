@@ -195,11 +195,11 @@ which is what tests assert.
 
 ### Files changed vs chapter 03
 
-The diff from chapter 03 (`38cc986`) to this chapter (`ce6c4dd`) is
+The diff from chapter 03 (`baa2c1a`) to this chapter (`f71de2f`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 38cc986..ce6c4dd --stat -- gomoku/crates/cli
+$ git diff baa2c1a..f71de2f --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/actor.rs           |  21 +++
  gomoku/crates/cli/src/bin/sessiondemo.rs |  12 +-
  gomoku/crates/cli/src/session.rs         |  93 +++++++++--
@@ -345,7 +345,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/study.rs`
 
-Exact `#[test]` function names from commit `ce6c4dd`:
+Exact `#[test]` function names from commit `f71de2f`:
 
 1. `scripted_study_transcript`
 2. `opening_schedule_changes_ai_vs_ai_play`
@@ -386,7 +386,7 @@ cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --seed 7 --script crates/cli/study_demo.txt
 ```
 
-Key frames from the measured output (commit `ce6c4dd`):
+Key frames from the measured output (commit `f71de2f`):
 
 Releasing both seats:
 
@@ -394,31 +394,70 @@ Releasing both seats:
   Black seat is now Ai
   White seat is now Ai
 ply 0  status Ongoing  black Ai  white Ai
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 ```
 
 The first AI move is no longer the deterministic corner from chapter 03;
 the schedule has sampled it:
 
 ```text
-  Moved (9, 8) by Ai
+  Moved l2 by Ai
 ply 1  status Ongoing  black Ai  white Ai
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- ...
- 9  .  .  .  .  .  .  .  .  x  .  .  .  .  .  .
- ...
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  x  .  .  .  
+ 3  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 ```
 
 After ten scheduled plies the next move falls back to argmax on the flat
 tactics prior, which is why move eleven is the corner:
 
 ```text
-ply 10  status Ongoing  black Ai  white Ai
- ...
-  Moved (0, 0) by Ai
+  Moved a1 by Ai
 ply 11  status Ongoing  black Ai  white Ai
-    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
- 0  x  .  X  .  .  .  .  .  .  .  .  .  .  .  .
- ...
+    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+ 1  x  .  .  .  O  .  .  .  O  O  .  .  .  X  .  
+ 2  .  .  .  .  .  .  .  .  .  .  .  X  .  .  .  
+ 3  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  
+ 4  .  .  .  .  .  .  .  .  .  .  .  X  .  .  .  
+ 5  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 6  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 7  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 8  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+ 9  .  .  .  .  .  .  .  .  .  .  .  .  .  X  .  
+10  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+11  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+12  .  O  .  .  .  .  O  .  .  .  .  .  .  .  .  
+13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 ```
 
 The full run ends at ply 12. Because the first 10 plies were sampled,
@@ -437,7 +476,7 @@ step
 step
 take black
 back 1
-play 0 0
+play a1
 back 1
 var 1
 release black
@@ -455,20 +494,20 @@ Measured frames:
 Three AI-vs-AI moves, then taking Black's seat:
 
 ```text
-  Moved (8, 0) by Ai
+  Moved i1 by Ai
 ply 3  status Ongoing  black Ai  white Ai
  ...
   Black seat is now Human
 ply 3  status Ongoing  black Human  white Ai
 ```
 
-Going back one ply and playing `(0, 0)` creates a sibling branch:
+Going back one ply and playing `a1` creates a sibling branch:
 
 ```text
   Cursor moved to ply 2
  ...
-  Moved (0, 0) by Human
-  Branched: (8, 0) (0, 0)
+  Moved a1 by Human
+  Branched: i1 a1
 ply 3  status Ongoing  black Human  white Ai
 ```
 
@@ -477,7 +516,7 @@ Going back to the branch point and choosing the new variation with `var 1`:
 ```text
   Cursor moved to ply 2
  ...
-branches: 0:(8, 0)  1:(0, 0)
+branches: 0:i1  1:a1
  ...
   Cursor moved to ply 3
 ply 3  status Ongoing  black Human  white Ai
@@ -488,14 +527,13 @@ Releasing Black and letting the AI continue from the human's variation:
 ```text
   Black seat is now Ai
  ...
-  Moved (9, 12) by Ai
+  Moved j12 by Ai
 ply 4  status Ongoing  black Ai  white Ai
 ```
 
 That is the whole workflow: the AI played, you took its seat, you
 branched, you returned to the branch, and you handed the seat back. The
 tree remembers both variations; neither is lost.
-
 ## Done when
 
 * `cargo test -p cli` passes from `gomoku/` (including all chapter-03

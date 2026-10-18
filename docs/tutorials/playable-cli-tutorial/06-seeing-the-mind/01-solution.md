@@ -1,17 +1,17 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the four files that changed at commit `a377237`:
+> This file quotes the four files that changed at commit `ee4a66a`:
 > `src/tui/overlay.rs` (new), `src/tui/study.rs`, `src/tui/render.rs`,
 > and `src/tui/mod.rs`. All other files are unchanged from chapter 05.
 > The quoted text was verified byte-for-byte against the reference
-> worktree with `git show a377237:<path>`.
+> worktree with `git show ee4a66a:<path>`.
 
 # Chapter 06 — opt-in solution
 
 ## Unchanged files
 
 The following files are identical to their chapter-05 versions at
-`a2e5373`:
+`8ad0061`:
 
 * `gomoku/crates/cli/src/lib.rs`
 * `gomoku/crates/cli/src/main.rs`
@@ -252,10 +252,9 @@ pub fn value_strip(
             0.0
         };
         lines.push(format!(
-            "  {}. ({}, {}) {:>5.1}%",
+            "  {}. {} {:>5.1}%",
             i + 1,
-            mv.row(),
-            mv.col(),
+            crate::fmt::format_move(*mv),
             share * 100.0
         ));
     }
@@ -484,7 +483,7 @@ use crate::tui::overlay::PolicyOverlay;
 use crate::tui::render::{overlay_verdict, render_study_with_overlays};
 
 const HELP: &str = r#"Commands:
-  ROW COL or play ROW COL   play a move
+  SQUARE or play SQUARE     play a move
   step                      let the AI play
   back [N]                  go back N plies
   forward [N]               go forward N plies
@@ -700,6 +699,35 @@ fn run_line(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
 
 // ------------------------------------------------------------------ Swap2 opening ceremony
 
+fn parse_algebraic(token: &str) -> Result<(u8, u8), String> {
+    let text = token.trim().to_ascii_lowercase();
+    if text.len() < 2 {
+        return Err(format!(
+            "expected algebraic square like 'h8', got '{}'",
+            token
+        ));
+    }
+    let col_letter = text.chars().next().unwrap();
+    if !('a'..='o').contains(&col_letter) {
+        return Err(format!(
+            "expected column letter a-o, got '{}' in '{}'",
+            col_letter, token
+        ));
+    }
+    let row_digits = &text[1..];
+    let row = row_digits.parse::<u8>().map_err(|_| {
+        format!(
+            "expected row number 1-15, got '{}' in '{}'",
+            row_digits, token
+        )
+    })?;
+    let col = col_letter as u8 - b'a';
+    if !(1..=15).contains(&row) || col > 14 {
+        return Err(format!("{} is off the board — squares are a1-o15", token));
+    }
+    Ok((row - 1, col))
+}
+
 fn run_swap2() -> io::Result<Board> {
     if io::stdout().is_terminal() {
         run_swap2_alt()
@@ -815,26 +843,20 @@ fn dispatch_opening(opening: &mut OpeningState, input: &str) -> OpeningCmd {
             let parts: Vec<&str> = text.split([',', ' ']).filter(|s| !s.is_empty()).collect();
             if parts.len() != 2 {
                 return OpeningCmd::Continue(
-                    "enter <row> <col> to place · 'd' done · 'b'/'w' choose · 'a' add two · 'u' undo · 'q' quit".to_string(),
+                    "enter <square> to place · 'd' done · 'b'/'w' choose · 'a' add two · 'u' undo · 'q' quit".to_string(),
                 );
             }
-            let row: u8 = match parts[0].parse() {
+            let token = parts[0];
+            let (row, col) = match parse_algebraic(token) {
                 Ok(v) => v,
-                Err(_) => {
-                    return OpeningCmd::Continue(format!("'{}' is not a row number", parts[0]));
-                }
-            };
-            let col: u8 = match parts[1].parse() {
-                Ok(v) => v,
-                Err(_) => {
-                    return OpeningCmd::Continue(format!("'{}' is not a column number", parts[1]));
-                }
+                Err(e) => return OpeningCmd::Continue(e),
             };
             let mv = match Move::new(row, col) {
                 Some(m) => m,
                 None => {
                     return OpeningCmd::Continue(format!(
-                        "({row}, {col}) is off the board — coordinates are 0-14"
+                        "{} is off the board — squares are a1-o15",
+                        token
                     ));
                 }
             };
@@ -867,7 +889,7 @@ fn opening_status(opening: &OpeningState) -> String {
             } else {
                 let color = opening.current_color().unwrap();
                 let remaining = opening.remaining(color);
-                format!("{party}: place {color:?} ({remaining} remain) — row col · [u] undo")
+                format!("{party}: place {color:?} ({remaining} remain) — square · [u] undo")
             }
         }
         OpeningPhase::FirstChoice => {
@@ -879,7 +901,7 @@ fn opening_status(opening: &OpeningState) -> String {
             } else {
                 let color = opening.current_color().unwrap();
                 let remaining = opening.remaining(color);
-                format!("{party}: place {color:?} ({remaining} remain) — row col · [u] undo")
+                format!("{party}: place {color:?} ({remaining} remain) — square · [u] undo")
             }
         }
         OpeningPhase::FinalChoice => {
@@ -1051,7 +1073,9 @@ fn render_with(
     cell_width: usize,
     paint: impl Fn(char, bool, Move) -> String,
 ) -> Vec<String> {
-    let ruler: String = (0..15).map(|c| format!("{c:^cell_width$}")).collect();
+    let ruler: String = (0..15u8)
+        .map(|c| format!("{:^cell_width$}", (b'a' + c) as char))
+        .collect();
     let ruler = format!("    {ruler}    ");
     let border = format!("   +{}+   ", "-".repeat(cell_width * 15));
     let last = board.moves().last().copied();
@@ -1060,12 +1084,12 @@ fn render_with(
     lines.push(ruler.clone());
     lines.push(border.clone());
     for row in 0..15u8 {
-        let mut line = format!("{row:>2} |");
+        let mut line = format!("{:>2} |", row + 1);
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
             line.push_str(&paint(glyph(board.stone_at(mv)), Some(mv) == last, mv));
         }
-        line.push_str(&format!("| {row:<2}"));
+        line.push_str(&format!("| {:<2}", row + 1));
         lines.push(line);
     }
     lines.push(border);
@@ -1387,8 +1411,8 @@ fn study_board_lines(board: &Board, last: Option<Move>, styled: bool) -> Vec<Str
     lines.push(style_gutter(&ruler_plain, styled));
     lines.push(style_gutter(&border_plain, styled));
     for row in 0..15u8 {
-        let label = style_gutter(&format!("{row:>2}"), styled);
-        let rlabel = style_gutter(&format!("{row:<2}"), styled);
+        let label = style_gutter(&format!("{:>2}", row + 1), styled);
+        let rlabel = style_gutter(&format!("{:<2}", row + 1), styled);
         let mut line = format!("{label} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
@@ -1406,7 +1430,7 @@ fn build_ruler() -> String {
     let mut s = String::with_capacity(53);
     s.push_str("    ");
     for c in 0..15u8 {
-        s.push_str(&format!("{c:^3}"));
+        s.push_str(&format!("{:^3}", (b'a' + c) as char));
     }
     s.push_str("    ");
     s
@@ -1467,8 +1491,8 @@ fn study_board_lines_with_policy(
     lines.push(style_gutter(&ruler_plain, styled));
     lines.push(style_gutter(&border_plain, styled));
     for row in 0..15u8 {
-        let label = style_gutter(&format!("{row:>2}"), styled);
-        let rlabel = style_gutter(&format!("{row:<2}"), styled);
+        let label = style_gutter(&format!("{:>2}", row + 1), styled);
+        let rlabel = style_gutter(&format!("{:<2}", row + 1), styled);
         let mut line = format!("{label} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
@@ -1540,8 +1564,8 @@ fn study_board_lines_with_tss(
     lines.push(style_gutter(&ruler_plain, styled));
     lines.push(style_gutter(&border_plain, styled));
     for row in 0..15u8 {
-        let label = style_gutter(&format!("{row:>2}"), styled);
-        let rlabel = style_gutter(&format!("{row:<2}"), styled);
+        let label = style_gutter(&format!("{:>2}", row + 1), styled);
+        let rlabel = style_gutter(&format!("{:<2}", row + 1), styled);
         let mut line = format!("{label} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
@@ -1600,7 +1624,7 @@ fn render_side_panel_with_value_strip(
         let opts: Vec<String> = snap
             .branch_options
             .iter()
-            .map(|(i, m)| format!("[{}] ({}, {})", i + 1, m.row(), m.col()))
+            .map(|(i, m)| format!("[{}] {}", i + 1, crate::fmt::format_move(*m)))
             .collect();
         lines.push(format!(
             "{} variations: {}",
@@ -1668,7 +1692,7 @@ fn path_tail_string(core: &SessionCore) -> String {
         .rev()
         .take(8)
         .rev()
-        .map(|m| format!("({}, {})", m.row(), m.col()))
+        .map(|m| crate::fmt::format_move(*m))
         .collect();
     if moves.len() > tail.len() {
         format!("... {}", tail.join(" "))
@@ -1703,7 +1727,7 @@ mod tests {
         assert_eq!(lines.len(), 19);
         assert!(lines.iter().all(|l| l.chars().count() == 53));
 
-        let ruler = "     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14     ";
+        let ruler = "     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o     ";
         let border = "   +---------------------------------------------+   ";
         assert_eq!(lines[0], ruler);
         assert_eq!(lines[1], border);
@@ -1711,7 +1735,10 @@ mod tests {
         assert_eq!(lines[18], ruler);
 
         for (row, line) in lines[2..17].iter().enumerate() {
-            assert_eq!(line, &format!("{row:>2} |{}| {row:<2}", " . ".repeat(15)));
+            assert_eq!(
+                line,
+                &format!("{:>2} |{}| {:<2}", row + 1, " . ".repeat(15), row + 1)
+            );
         }
     }
 
@@ -1865,7 +1892,7 @@ mod tests {
         let lines = render_study(&core, &[], false);
         let output = lines.join("\n");
         assert!(output.contains("Ply: 1"), "panel updates ply");
-        assert!(output.contains("(7, 7)"), "panel shows path tail");
+        assert!(output.contains("h8"), "panel shows path tail");
     }
 
     #[test]
@@ -1890,8 +1917,8 @@ mod tests {
             output.contains("variations:"),
             "panel should list branch options, got: {output}"
         );
-        assert!(output.contains("[1] (6, 7)"), "panel shows first branch");
-        assert!(output.contains("[2] (7, 8)"), "panel shows second branch");
+        assert!(output.contains("[1] h7"), "panel shows first branch");
+        assert!(output.contains("[2] i8"), "panel shows second branch");
     }
 
     #[test]

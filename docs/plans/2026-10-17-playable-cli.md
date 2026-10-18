@@ -8,6 +8,12 @@ a **felt capstone** — a visible, runnable reward ("now you can branch
 off and navigate back", "now you can see what the AI thinks") — and every
 chapter ships a complete opt-in solution.
 
+**Amendment 2026-10-17 (algebraic notation):** the study table now accepts
+and displays moves in algebraic notation (`h8`, `a1`) rather than numeric
+`(row, col)`. The internal `engine::Move` representation (`row`, `col`,
+0–14) and all `Event` fields are unchanged; the parser and rendering
+layers perform display/input mapping only.
+
 ## Context
 
 The `cli` crate (binary `gomoku`) grows from human-vs-human into the
@@ -46,8 +52,9 @@ Swap2, TSS overlay, puzzle mode) keeps working at every task boundary.
 - Subagent pipeline per slice: implement (TDD, red-green-refactor) →
   controller verifies gates → spec-compliance review pass → bounded
   amendments. Controller triages all findings.
-- Coordinate format stays numeric `7 7` (continuity with the existing
-  `input.rs`); the command language also accepts `play 7 7`.
+- Coordinate format uses algebraic notation `h8` (column a–o, row 1–15);
+  the command language also accepts `play h8`. Internal `Move { row, col }`
+  representation is unchanged — this is a display/input mapping only.
 
 ## Chapter map — small steps, felt capstones
 
@@ -156,7 +163,7 @@ impl SessionCore {
 pub fn parse(input: &str) -> Result<Command, CommandError>;
 ```
 
-- `parse` line forms: `7 7` / `play 7 7`, `step`, `back [n]`,
+- `parse` line forms: `h8` / `play h8`, `step`, `back [n]`,
   `forward [n]`, `var N`, `take black|white|both`,
   `release black|white|both`, `sims black|white N`, `new`, `h`,
   `q`. Table-driven parser tests; every documented form round-trips.

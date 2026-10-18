@@ -153,11 +153,11 @@ hidden.
 
 ### Files changed vs chapter 05
 
-The diff from chapter 05 (`a2e5373`) to this chapter (`a377237`) is
+The diff from chapter 05 (`8ad0061`) to this chapter (`ee4a66a`) is
 confined to four files under `src/tui/`:
 
 ```text
-$ git diff a2e5373..a377237 --stat -- gomoku/crates/cli
+$ git diff 8ad0061..ee4a66a --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/tui/mod.rs     |   1 +
  gomoku/crates/cli/src/tui/overlay.rs | 409 +++++++++++++++++++++++++++++++++++
  gomoku/crates/cli/src/tui/render.rs  | 241 ++++++++++++++++++++-
@@ -245,7 +245,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/overlay.rs`
 
-Exact `#[test]` function names from commit `a377237`:
+Exact `#[test]` function names from commit `ee4a66a`:
 
 1. `cycle_order_is_off_visits_prior_off`
 2. `overlay_off_returns_none`
@@ -265,7 +265,7 @@ Exact `#[test]` function names from commit `a377237`:
 
 ### `src/tui/render.rs`
 
-Exact `#[test]` function name added at `a377237`:
+Exact `#[test]` function name added at `ee4a66a`:
 
 1. `policy_overlay_snapshot_with_fake_search_info`
 
@@ -297,7 +297,7 @@ printf '7 7\nstep\n7 8\nstep\n7 9\nstep\n7 10\nstep\np\np\nv\nq\n' | \
 ```
 
 The human builds an open four on row 7. After `step`, the AI blocks at
-(7, 6). The cursor is now at ply 8, Black to move, and the stored
+`g8`. The cursor is now at ply 8, Black to move, and the stored
 `SearchInfo` is White's search from ply 7.
 
 ### Visits overlay
@@ -306,30 +306,30 @@ After the first `p`:
 
 ```text
 policy overlay: visits
->      0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+>      a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: Human
  0 | o  o  o  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: AI(800)
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1
  2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   Ply: 8
- 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: (7, 7) (0, 0) (7, 8) (0, 1) (7, 9) (0, 2) (7, 10) (7, 6)
+ 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: h8 a1 i8 b1 j8 c1 k8 g8
  4 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 4
  5 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 5   Last events:
- 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved (0, 1) by Ai
- 7 | .  .  .  +  .  . [o] x  x  x  x  7% .  .  . | 7     Moved (7, 9) by Human
- 8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8     Moved (0, 2) by Ai
- 9 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 9     Moved (7, 10) by Human
-10 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 10    Moved (7, 6) by Ai
+ 6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6     Moved b1 by Ai
+ 7 | .  .  .  +  .  . [o] x  x  x  x  7% .  .  . | 7     Moved j8 by Human
+ 8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8     Moved c1 by Ai
+ 9 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 9     Moved k8 by Human
+10 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 10    Moved g8 by Ai
 11 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 11
 12 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 12  h help · q quit
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  p policy overlay (ch.06)
 14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  v value strip (ch.06)
    +---------------------------------------------+
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
 ply 8 · Black to move · status ongoing
 ```
 
 The search spent its budget on the two cells that stop Black's open
-four: (7, 6) — already played by White — and (7, 11). The occupied cell
+four: `g8` — already played by White — and `l8`. The occupied cell
 shows the stone glyph; the empty block cell is highlighted. In a colour
 terminal the hot cells glow red/orange on an ANSI-256 background; the
 non-tty capture above uses the plain-cell convention.
@@ -340,27 +340,27 @@ After the second `p`:
 
 ```text
 policy overlay: prior
->      0  1  2  3  4  5  6  7  8  9 10 11 12 13 14       -- Study table --
+>      a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
    +---------------------------------------------+     Black: Human
  0 | o  o  o  .  .  .  .  .  .  .  .  .  .  .  . | 0   White: AI(800)
  1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1
  2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   Ply: 8
- 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: (7, 7) (0, 0) (7, 8) (0, 1) (7, 9) (0, 2) (7, 10) (7, 6)
+ 3 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 3   Path: h8 a1 i8 b1 j8 c1 k8 g8
  4 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 4
  5 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 5   Value strip:
  6 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 6   value -0.99 for White
  7 | .  .  .  +  .  . [o] x  x  x  x  7% .  .  . | 7   total visits: 800
  8 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 8   top moves:
- 9 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 9     1. (7, 6)   6.0%
-10 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 10    2. (7, 11)   6.0%
-11 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 11    3. (0, 3)   0.5%
+ 9 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 9     1. g8   6.0%
+10 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 10    2. l8   6.0%
+11 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 11    3. d1   0.5%
 12 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 12
 13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13  Last events:
-14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14    Moved (0, 1) by Ai
-   +---------------------------------------------+       Moved (7, 9) by Human
-     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14         Moved (0, 2) by Ai
-    Moved (7, 10) by Human
-    Moved (7, 6) by Ai
+14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14    Moved b1 by Ai
+   +---------------------------------------------+       Moved j8 by Human
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o         Moved c1 by Ai
+    Moved k8 by Human
+    Moved g8 by Ai
 
   h help · q quit
   p policy overlay (ch.06)
@@ -390,9 +390,9 @@ composes with the overlay. It reads:
 value -0.99 for White
 total visits: 800
 top moves:
-  1. (7, 6)   6.0%
-  2. (7, 11)   6.0%
-  3. (0, 3)   0.5%
+  1. g8   6.0%
+  2. l8   6.0%
+  3. d1   0.5%
 ```
 
 The value is from White's perspective (the searching side), and it is

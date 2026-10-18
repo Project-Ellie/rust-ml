@@ -57,7 +57,7 @@ terminal, never knows crossterm exists. This buys three things:
    feeding command sequences to the core and asserting event streams.
    No terminal mocking, ever.
 2. **A shared vocabulary.** `command::parse` turns text lines
-   (`play 7 7`, `back 3`, `var 2`, `take black`) into `Command`s. The
+   (`play h8`, `back 3`, `var 2`, `take black`) into `Command`s. The
    terminal front-end feeds it lines today; a REST server would build
    `Command`s from JSON tomorrow. The core doesn't care.
 3. **A thin shell.** The front-end renders `Snapshot`s and `Event`s.
@@ -145,7 +145,11 @@ Chapter 6's payoffs, all sourced from the cursor node's `SearchInfo`:
 
 ## Conventions
 
-- Coordinates stay **numeric**: `7 7` or `play 7 7` (row, col, 0–14).
+- Coordinates use **algebraic notation**: `h8` or `play h8` (column
+  letter a–o, row number 1–15; the center is `h8`). Input is
+  case-insensitive. The internal engine representation is still
+  `Move { row, col }`; algebraic notation is a display and input
+  mapping only.
 - The Swap2 ceremony is unchanged and default-on for `play`; its
   result becomes the tree's root. `selfplay` skips it (the schedule
   provides variety instead).

@@ -1,11 +1,11 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the verified reference implementation for chapter 02.
-> The source files below are byte-for-byte copies from commit `5a5a5f6`
+> The source files below are byte-for-byte copies from commit `161c49b`
 > of the reference worktree (`rust-ml-ref-playable-cli`).
 >
 > `src/history.rs` from chapter 01 is **unchanged** in this chapter.
-> The diff from chapter 01 (`ad1aa26`) to this chapter (`5a5a5f6`)
+> The diff from chapter 01 (`0782500`) to this chapter (`161c49b`)
 > touches:
 > ```
 >  Cargo.toml                              |   5 +
@@ -189,7 +189,7 @@ impl fmt::Display for Event {
 }
 
 fn fmt_move(mv: Move) -> String {
-    format!("({}, {})", mv.row(), mv.col())
+    crate::fmt::format_move(mv)
 }
 
 /// Errors returned by the command parser and by `SessionCore::execute`.
@@ -246,7 +246,7 @@ impl From<HistoryError> for CommandError {
 /// Parsing is case-insensitive. Whitespace separates tokens. Documented
 /// forms:
 ///
-/// * `7 7` or `play 7 7` → `Play`
+/// * `h8` or `play h8` → `Play`
 /// * `step`
 /// * `back [n]` (default 1)
 /// * `forward [n]` (default 1)
@@ -316,23 +316,19 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             Ok(Command::Quit)
         }
         "play" => {
-            let (row, col) = parse_move_pair(&mut tokens, "play")?;
+            let token = parse_required_token(&mut tokens, "square")?;
+            let (row, col) = parse_algebraic(&token).map_err(CommandError::Parse)?;
+            ensure_no_more(&mut tokens, "play")?;
             Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("move out of bounds: ({row}, {col})"))
+                CommandError::Parse(format!("move out of bounds: {}", token))
             })?))
         }
         _ => {
-            // Try parsing `7 7` form: first token is a row number.
-            let row = first
-                .parse::<u8>()
-                .map_err(|_| CommandError::Parse(format!("unknown command: {first}")))?;
-            let col = parse_required_token(&mut tokens, "column")?;
-            let col = col
-                .parse::<u8>()
-                .map_err(|_| CommandError::Parse(format!("expected column number, got '{col}'")))?;
+            // Try parsing a single algebraic token like `h8`.
+            let (row, col) = parse_algebraic(first).map_err(CommandError::Parse)?;
             ensure_no_more(&mut tokens, "play")?;
             Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("move out of bounds: ({row}, {col})"))
+                CommandError::Parse(format!("move out of bounds: {}", first))
             })?))
         }
     }
@@ -422,20 +418,33 @@ fn parse_required_seat<'a>(
     }
 }
 
-fn parse_move_pair<'a>(
-    tokens: &mut impl Iterator<Item = &'a str>,
-    cmd: &str,
-) -> Result<(u8, u8), CommandError> {
-    let row = parse_required_token(tokens, "row")?;
-    let row = row
-        .parse::<u8>()
-        .map_err(|_| CommandError::Parse(format!("{cmd} expects row number, got '{row}'")))?;
-    let col = parse_required_token(tokens, "column")?;
-    let col = col
-        .parse::<u8>()
-        .map_err(|_| CommandError::Parse(format!("{cmd} expects column number, got '{col}'")))?;
-    ensure_no_more(tokens, cmd)?;
-    Ok((row, col))
+fn parse_algebraic(token: &str) -> Result<(u8, u8), String> {
+    let text = token.trim().to_ascii_lowercase();
+    if text.len() < 2 {
+        return Err(format!(
+            "expected algebraic square like 'h8', got '{}'",
+            token
+        ));
+    }
+    let col_letter = text.chars().next().unwrap();
+    if !('a'..='o').contains(&col_letter) {
+        return Err(format!(
+            "expected column letter a-o, got '{}' in '{}'",
+            col_letter, token
+        ));
+    }
+    let row_digits = &text[1..];
+    let row = row_digits.parse::<u8>().map_err(|_| {
+        format!(
+            "expected row number 1-15, got '{}' in '{}'",
+            row_digits, token
+        )
+    })?;
+    let col = col_letter as u8 - b'a';
+    if !(1..=15).contains(&row) || col > 14 {
+        return Err(format!("square '{}' is off the board", token));
+    }
+    Ok((row - 1, col))
 }
 
 #[cfg(test)]
@@ -448,15 +457,15 @@ mod tests {
 
     #[test]
     fn parse_play_bare_numbers() {
-        assert_eq!(parse("7 7"), Ok(Command::Play(mv(7, 7))));
-        assert_eq!(parse("0 14"), Ok(Command::Play(mv(0, 14))));
-        assert_eq!(parse("14 0"), Ok(Command::Play(mv(14, 0))));
+        assert_eq!(parse("h8"), Ok(Command::Play(mv(7, 7))));
+        assert_eq!(parse("o1"), Ok(Command::Play(mv(0, 14))));
+        assert_eq!(parse("a15"), Ok(Command::Play(mv(14, 0))));
     }
 
     #[test]
     fn parse_play_explicit() {
-        assert_eq!(parse("play 7 7"), Ok(Command::Play(mv(7, 7))));
-        assert_eq!(parse("PLAY 0 14"), Ok(Command::Play(mv(0, 14))));
+        assert_eq!(parse("play h8"), Ok(Command::Play(mv(7, 7))));
+        assert_eq!(parse("PLAY O1"), Ok(Command::Play(mv(0, 14))));
     }
 
     #[test]
@@ -550,9 +559,9 @@ mod tests {
     #[test]
     fn parse_errors() {
         assert!(parse("").is_err());
-        assert!(parse("7").is_err());
-        assert!(parse("7 7 7").is_err());
-        assert!(parse("play 7").is_err());
+        assert!(parse("a").is_err());
+        assert!(parse("h8h").is_err());
+        assert!(parse("play a").is_err());
         assert!(parse("back x").is_err());
         assert!(parse("var").is_err());
         assert!(parse("take red").is_err());
@@ -564,8 +573,8 @@ mod tests {
 
     #[test]
     fn parse_out_of_bounds_move_is_error() {
-        assert!(parse("15 7").is_err());
-        assert!(parse("7 15").is_err());
+        assert!(parse("h16").is_err());
+        assert!(parse("p8").is_err());
     }
 }
 ````
@@ -1258,9 +1267,9 @@ use engine::{Board, Color, Move};
 #[must_use]
 pub fn render_board(board: &Board, last_move: Option<Move>) -> String {
     let mut lines = Vec::new();
-    lines.push("    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14".to_string());
+    lines.push("    a  b  c  d  e  f  g  h  i  j  k  l  m  n  o".to_string());
     for r in 0..15u8 {
-        let mut row = format!("{:2}  ", r);
+        let mut row = format!("{:2}  ", r + 1);
         for c in 0..15u8 {
             let mv = Move::new(r, c).expect("board coordinates are valid");
             let is_last = last_move == Some(mv);
@@ -1279,10 +1288,10 @@ pub fn render_board(board: &Board, last_move: Option<Move>) -> String {
     lines.join("\n")
 }
 
-/// Format a move as a numeric `(row, col)` pair.
+/// Format a move as algebraic notation (`h8`).
 #[must_use]
 pub fn format_move(mv: Move) -> String {
-    format!("({}, {})", mv.row(), mv.col())
+    format!("{}{}", (b'a' + mv.col()) as char, mv.row() + 1)
 }
 ````
 
@@ -1316,8 +1325,8 @@ use cli::fmt::render_board;
 use cli::session::{SessionCore, SessionInit};
 
 const HELP: &str = r#"Commands (case-insensitive):
-  ROW COL          play a move, e.g. "7 7"
-  play ROW COL     same as above
+  SQUARE           play a move, e.g. "h8"
+  play SQUARE      same as above
   step             let the AI play (Task 3)
   back [N]         go back N plies (default 1)
   forward [N]      go forward N plies (default 1)
@@ -1428,7 +1437,7 @@ fn print_state(core: &SessionCore, header: &str) {
         let opts: Vec<String> = snap
             .branch_options
             .iter()
-            .map(|(i, m)| format!("{i}:({}, {})", m.row(), m.col()))
+            .map(|(i, m)| format!("{i}:{}", cli::fmt::format_move(*m)))
             .collect();
         println!("branches: {}", opts.join("  "));
     }

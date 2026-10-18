@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the reference files for chapter 04, verified green at
-> commit `ce6c4dd` against main's `cli` crate with chapters 01–03 in
+> commit `f71de2f` against main's `cli` crate with chapters 01–03 in
 > place. Files unchanged from chapter 03 are not quoted; they are listed
 > at the end.
 
@@ -1025,8 +1025,8 @@ use cli::fmt::render_board;
 use cli::session::{SessionCore, SessionInit};
 
 const HELP: &str = r#"Commands (case-insensitive):
-  ROW COL          play a move, e.g. "7 7"
-  play ROW COL     same as above
+  SQUARE           play a move, e.g. "h8"
+  play SQUARE      same as above
   step             let the AI play
   back [N]         go back N plies (default 1)
   forward [N]      go forward N plies (default 1)
@@ -1180,7 +1180,7 @@ fn print_state(core: &SessionCore, header: &str) {
         let opts: Vec<String> = snap
             .branch_options
             .iter()
-            .map(|(i, m)| format!("{i}:({}, {})", m.row(), m.col()))
+            .map(|(i, m)| format!("{i}:{}", cli::fmt::format_move(*m)))
             .collect();
         println!("branches: {}", opts.join("  "));
     }
@@ -1760,7 +1760,7 @@ step
 ## Files unchanged from chapter 03
 
 The following files are identical to their chapter-03 versions at
-`38cc986` and are not quoted above:
+`baa2c1a` and are not quoted above:
 
 * `gomoku/crates/cli/src/command.rs`
 * `gomoku/crates/cli/src/history.rs`
@@ -1771,14 +1771,14 @@ The following files are identical to their chapter-03 versions at
 
 ## Verification
 
-The quoted files were extracted from commit `ce6c4dd` of the reference
+The quoted files were extracted from commit `f71de2f` of the reference
 worktree. To verify them yourself:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 REPO=/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli
-COMMIT=ce6c4dd
+COMMIT=f71de2f
 SOLUTION=/Users/wgiersche/workspace/Project-Ellie/rust-ml/docs/tutorials/playable-cli-tutorial/04-the-study-loop/01-solution.md
 
 python3 - "$REPO" "$COMMIT" "$SOLUTION" <<'PY'
