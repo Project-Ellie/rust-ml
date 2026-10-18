@@ -22,9 +22,9 @@ The [mcts tutorial](../mcts-tutorial/README.md) is complete (the
 `Evaluator` seam, `search`, `SearchConfig`, `visit_distribution`,
 `select_move`, `add_dirichlet_noise`, `TacticsEvaluator`). The
 convolutions and baseline tutorials are *not* required — this tutorial
-is deliberately decoupled from them (spec Q1). It helps to know the
-existing `cli` crate's hotseat flow, but every chapter quotes what you
-need.
+is deliberately decoupled from them (spec Q1). Chapter 01 deletes the
+old `cli` crate's hotseat/puzzle UI (owner decision: the study table
+is the single CLI); every chapter quotes what you need.
 
 ## How this tutorial works
 
@@ -59,13 +59,18 @@ tutorials:
 | 04 | [The study loop](04-the-study-loop.md) | Take/release mid-game, per-seat sims, the opening schedule: **steal the AI's seat, explore, hand it back.** |
 | 05 | [The real table](05-the-real-table.md) | `gomoku play --ai tactics` on the rendered board: **the study table gets its wood.** |
 | 06 | [Seeing the mind](06-seeing-the-mind.md) | `p` cycles visits/prior heatmaps, `v` the value strip: **now you can see what the AI thinks.** |
-| 07 | [Acceptance](07-acceptance.md) | Golden transcripts, a scripted game, a measured sims table: **proof, not vibes.** |
+| 07 | [Positions from files: puzzles](07-positions-from-files-puzzles.md) | `--puzzle pack.json` enrolls a puzzle into the table: **hint, try, take back, reveal, next.** |
+| 08 | [Positions from files: game records](08-positions-from-files-game-records.md) | `--game file.psq` replays a recorded game as the main line: **walk back, branch off, let the AI show what it thinks.** |
+| 09 | [Acceptance](09-acceptance.md) | Golden transcripts, a scripted game, a measured sims table: **proof, not vibes.** |
 
 ## Status
 
-Written 2026-10-17 against the approved spec. The reference
-implementation was built TDD-first in a disposable worktree
+Written 2026-10-17 against the approved spec (as amended: algebraic
+notation, single CLI, positions from files); chapters 07–08 (positions
+from files) landed 2026-10-18. The reference implementation was built
+TDD-first in a disposable worktree
 (`../rust-ml-ref-playable-cli`, branch `reference/playable-cli`), kept
-for inspection until chapter 07 is worked; solution files quote it
-byte-for-byte. Reference verification: 122 tests green in the crate
-(one ignored measurement), workspace green, gates clean.
+for inspection until the tutorial is worked; solution files quote it
+byte-for-byte. Reference verification at the chapter-09 state (tip
+`3bf0544`): 136 tests green in the crate (one ignored measurement),
+workspace green, gates clean.

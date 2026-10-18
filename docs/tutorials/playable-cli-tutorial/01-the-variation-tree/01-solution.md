@@ -4,10 +4,10 @@
 > This file quotes the verified reference implementation for both
 > slices of Chapter 01. The files come from the disposable worktree
 > `/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli`
-> (branch `reference/playable-cli`): slice 0 at commit `28d3697`,
-> slice 1 at commit `0782500`.
+> (branch `reference/playable-cli`): slice 0 at commit `664cc40`,
+> slice 1 at commit `22f1fa9`.
 
-# Slice 0 — `refactor(cli): lib/bin split + clap subcommands`
+# Slice 0 (commit `664cc40`) — `refactor(cli): lib/bin split + clap skeleton; legacy UI removed`
 
 ## `gomoku/crates/cli/Cargo.toml`
 
@@ -27,24 +27,10 @@ path = "src/lib.rs"
 name = "gomoku"
 path = "src/main.rs"
 
-[[bin]]
-name = "historydemo"
-path = "src/bin/historydemo.rs"
-
-[features]
-default = ["naive-engine"]
-naive-engine = ["engine/testutil"]
-
 [dependencies]
 crossterm.workspace = true
 engine = { path = "../engine" }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-thiserror.workspace = true
 clap = { workspace = true, features = ["derive"] }
-
-[dev-dependencies]
-proptest.workspace = true
 ```
 
 ## `gomoku/Cargo.toml` (workspace dependency line in context)
@@ -92,19 +78,14 @@ pub mod tui;
 ## `gomoku/crates/cli/src/main.rs`
 
 ```rust
-use std::path::PathBuf;
+//! The `gomoku` binary — a clap skeleton over the headless `cli` library.
+//!
+//! The legacy hotseat/puzzle UI is deleted (owner decision, 2026-10-17:
+//! the study table will be the single CLI). The `play` and `selfplay`
+//! subcommands parse their arguments, but there is no terminal front-end
+//! to dispatch to until the study-table chapter lands.
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-
-use cli::tui::board::{EngineKind, board_for};
-use cli::tui::puzzle;
-use cli::tui::ui;
-
-const PLAY_USAGE: &str = if cfg!(feature = "naive-engine") {
-    "usage: gomoku play [--engine naive|fast] [--plain] [--no-swap2] [--puzzle <path> [--index N]]\n\nSwap2 opening is only available with the fast engine; use --no-swap2 to start from an empty board with any engine. Puzzle mode skips the opening entirely."
-} else {
-    "usage: gomoku play [--engine fast] [--plain] [--no-swap2] [--puzzle <path> [--index N]]\n\nThis build was compiled without the naive-engine feature; only the fast engine is available. Puzzle mode skips the opening entirely."
-};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -114,17 +95,13 @@ const PLAY_USAGE: &str = if cfg!(feature = "naive-engine") {
     arg_required_else_help = false
 )]
 struct CliArgs {
-    /// Legacy `play` flags used when no subcommand is given.
-    #[command(flatten)]
-    play: PlayArgs,
-
     #[command(subcommand)]
     cmd: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
-    /// Play a human game or puzzle (legacy default).
+    /// Play at the study table (not yet implemented).
     Play(PlayArgs),
     /// AI-vs-AI self-play (not yet implemented).
     Selfplay(SearchArgs),
@@ -135,25 +112,9 @@ struct PlayArgs {
     #[command(flatten)]
     search: SearchArgs,
 
-    /// Engine board to use.
-    #[arg(long, value_name = "ENGINE")]
-    engine: Option<String>,
-
-    /// Use the scrolling plain-text UI.
-    #[arg(long)]
-    plain: bool,
-
     /// Skip the Swap2 opening and start from an empty board.
     #[arg(long)]
     no_swap2: bool,
-
-    /// Load a puzzle file instead of playing a game.
-    #[arg(long, value_name = "PATH")]
-    puzzle: Option<PathBuf>,
-
-    /// Puzzle index to start from.
-    #[arg(long, value_name = "N")]
-    index: Option<usize>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -211,201 +172,103 @@ enum PlayerColor {
 fn main() {
     let args = CliArgs::parse();
 
-    let (mode, play_args, selfplay_args) = match args.cmd {
-        None => (Mode::Play, Some(args.play), None),
-        Some(Commands::Play(p)) => (Mode::Play, Some(p), None),
-        Some(Commands::Selfplay(s)) => {
-            // Reject legacy `play` flags placed before the subcommand.
-            if args.play.engine.is_some()
-                || args.play.plain
-                || args.play.no_swap2
-                || args.play.puzzle.is_some()
-                || args.play.index.is_some()
-            {
-                eprintln!(
-                    "error: --engine, --plain, --no-swap2, --puzzle, and --index are only valid with the 'play' subcommand"
-                );
-                eprintln!("{PLAY_USAGE}");
-                std::process::exit(2);
-            }
-            (Mode::Selfplay, None, Some(s))
-        }
-    };
-
-    let result = match mode {
-        Mode::Play => {
-            let play = play_args.expect("play mode has play args");
-            run_play(&play)
-        }
-        Mode::Selfplay => {
-            let search = selfplay_args.expect("selfplay mode has search args");
-            run_selfplay(&search)
-        }
-    };
-
-    if let Err(e) = result {
-        eprintln!("terminal error: {e}");
-        std::process::exit(1);
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    Play,
-    Selfplay,
-}
-
-fn run_play(play: &PlayArgs) -> std::io::Result<()> {
-    let kind = parse_engine(play.engine.as_deref())?;
-    let plain = play.plain;
-    let swap2 = !play.no_swap2;
-
-    if let Some(puzzle_path) = &play.puzzle {
-        let index = play.index.unwrap_or(0);
-        run_puzzle_mode(puzzle_path.clone(), index, plain)
-    } else {
-        validate_search_args(&play.search, kind, false)?;
-
-        #[cfg(feature = "naive-engine")]
-        if swap2 && kind == EngineKind::Naive {
-            eprintln!("error: the Swap2 opening requires the fast engine");
-            eprintln!("       use --no-swap2 to start from an empty board with the naive engine");
-            std::process::exit(2);
-        }
-
-        if play.search.ai.is_some() {
-            eprintln!("note: --ai is parsed but not yet wired (coming in T3+)");
-        }
-
-        let board = board_for(kind);
-        if plain {
-            ui::run_plain(board, kind, swap2)
-        } else {
-            ui::run_ui(board, kind, swap2)
+    match args.cmd {
+        None | Some(Commands::Play(_) | Commands::Selfplay(_)) => {
+            eprintln!("the study table lands in chapter 05 — nothing runnable yet");
         }
     }
-}
-
-fn run_selfplay(search: &SearchArgs) -> std::io::Result<()> {
-    validate_search_args(search, EngineKind::Fast, true)?;
-    println!("not yet implemented");
-    Ok(())
-}
-
-fn run_puzzle_mode(path: PathBuf, index: usize, plain: bool) -> std::io::Result<()> {
-    let puzzles = puzzle::load(&path)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-    if puzzles.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "puzzle file contains no puzzles",
-        ));
-    }
-    if index >= puzzles.len() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("--index {index} is out of range (0..{})", puzzles.len()),
-        ));
-    }
-    if plain {
-        ui::run_plain_puzzle(puzzles, index)
-    } else {
-        ui::run_ui_puzzle(puzzles, index)
-    }
-}
-
-fn parse_engine(value: Option<&str>) -> std::io::Result<EngineKind> {
-    match value {
-        None => Ok(EngineKind::Fast),
-        Some("fast") => Ok(EngineKind::Fast),
-        #[cfg(feature = "naive-engine")]
-        Some("naive") => Ok(EngineKind::Naive),
-        #[cfg(not(feature = "naive-engine"))]
-        Some("naive") => {
-            eprintln!("error: built without the naive-engine feature");
-            eprintln!("{PLAY_USAGE}");
-            std::process::exit(2);
-        }
-        Some(other) => {
-            eprintln!("error: unknown engine '{other}'");
-            eprintln!("{PLAY_USAGE}");
-            std::process::exit(2);
-        }
-    }
-}
-
-fn validate_search_args(
-    search: &SearchArgs,
-    kind: EngineKind,
-    is_selfplay: bool,
-) -> std::io::Result<()> {
-    let _ = search.ai;
-    let _ = search.color;
-
-    if kind == EngineKind::Naive && (search.ai.is_some() || is_selfplay) {
-        eprintln!("error: --engine naive cannot be used with --ai or selfplay");
-        eprintln!("{PLAY_USAGE}");
-        std::process::exit(2);
-    }
-
-    Ok(())
 }
 ```
 
-## Moved TUI modules (unchanged)
+## The legacy UI is deleted, not moved
 
-The existing UI files were moved from `src/` to `src/tui/`:
+The old hotseat/puzzle front-end — `src/ui.rs`, `src/input.rs`,
+`src/board.rs`, `src/puzzle.rs`, and the `dyn GameBoard` abstraction
+they were built on — is deleted at this commit (owner decision,
+2026-10-17: the study table will be the single CLI). There is no
+runnable `gomoku play` UI until chapter 05 lands the study table.
 
-* `src/tui/board.rs`
-* `src/tui/input.rs`
-* `src/tui/opening.rs`
-* `src/tui/puzzle.rs`
-* `src/tui/render.rs`
-* `src/tui/ui.rs`
+Only the pure rendering pieces survive, moved under `src/tui/`:
+
+* `src/tui/opening.rs` (the Swap2 ceremony state machine)
+* `src/tui/render.rs` (board rendering, now on `&engine::Board`
+  directly — the `GameBoard` indirection is gone)
 
 ### `gomoku/crates/cli/src/tui/mod.rs`
 
 ```rust
-//! Existing terminal UI modules.
+//! Terminal rendering helpers — pure functions, no input handling.
 //!
-//! Moved under `tui/` during the lib/bin split; their behavior is
-//! unchanged.
+//! The legacy hotseat/puzzle UI (and the `dyn GameBoard` abstraction it
+//! needed) is deleted; the study-table front-end will build on these
+//! rendering pieces.
 
-pub mod board;
-pub mod input;
 pub mod opening;
-pub mod puzzle;
 pub mod render;
-pub mod ui;
 ```
 
 ## Stub core modules
 
-`actor.rs`:
+### `gomoku/crates/cli/src/actor.rs`
 
 ```rust
 //! Seat occupants and AI configuration.
 ```
 
-`command.rs`:
+### `gomoku/crates/cli/src/command.rs`
 
 ```rust
 //! Command language and events.
 ```
 
-`history.rs`:
+### `gomoku/crates/cli/src/history.rs`
 
 ```rust
 //! Variation tree, stored as a flat node vector (the mcts::Tree idiom).
 ```
 
-`session.rs`:
+### `gomoku/crates/cli/src/session.rs`
 
 ```rust
 //! Session core — headless state machine.
 ```
 
-# Slice 1 — `feat(cli): variation-tree history + historydemo`
+# Slice 1 (commit `22f1fa9`) — `feat(cli): variation-tree history + historydemo`
+
+## `gomoku/crates/cli/Cargo.toml`
+
+Slice 1 adds the `historydemo` binary, the `thiserror` dependency, and
+the `proptest` dev-dependency to the slice-0 manifest:
+
+```toml
+[package]
+name = "cli"
+description = "Terminal frontend: play Gomoku on either engine board"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gomoku"
+path = "src/main.rs"
+
+[[bin]]
+name = "historydemo"
+path = "src/bin/historydemo.rs"
+
+[dependencies]
+crossterm.workspace = true
+engine = { path = "../engine" }
+thiserror.workspace = true
+clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest.workspace = true
+```
 
 ## `gomoku/crates/cli/src/history.rs`
 

@@ -6,11 +6,14 @@ This chapter turns the `cli` crate into a library-plus-binary and
 implements the persistent variation tree that underlies the study
 table. It is delivered in two slices:
 
-* **Slice 0** refactors the crate: add a `[lib]` target, move the
-  existing terminal UI modules under [`src/tui/`](../../../gomoku/crates/cli/src/tui/),
+* **Slice 0** refactors the crate: add a `[lib]` target, **delete the
+  legacy hotseat/puzzle UI** (`ui.rs`, `input.rs`, `board.rs`,
+  `puzzle.rs`, and the `dyn GameBoard` abstraction — owner decision:
+  the study table will be the single CLI), keep only the pure rendering
+  pieces under [`src/tui/`](../../../gomoku/crates/cli/src/tui/),
   add stub modules for `history`, `command`, `session`, and `actor`,
-  and install a `clap` subcommand skeleton (`play` / `selfplay`) that
-  keeps every legacy invocation working.
+  and install a `clap` subcommand skeleton (`play` / `selfplay`) whose
+  handlers report that the study table lands in chapter 05.
 * **Slice 1** builds [`History`](../../../gomoku/crates/cli/src/history.rs):
   a persistent variation tree that silently branches on new moves and
   replays `root → cursor` to produce a board.
@@ -42,8 +45,10 @@ module.
 Before this chapter, the `cli` crate is a binary-only hotseat client.
 Task 0 of the implementation plan
 ([`docs/plans/2026-10-17-playable-cli.md`](../../plans/2026-10-17-playable-cli.md))
-adds the library target and the `clap` front-end that later chapters
-will use. Task 1 implements the tree itself
+deletes that legacy UI (the study table will be the single CLI — the
+owner accepted having no runnable `gomoku play` UI until chapter 05),
+adds the library target, and installs the `clap` skeleton that later
+chapters will wire up. Task 1 implements the tree itself
 ([`docs/specs/2026-10-17-playable-cli-design.md`](../../specs/2026-10-17-playable-cli-design.md)
 §7).
 
@@ -83,7 +88,7 @@ means pushing one `Node { parent, mv, children: [] }` and one index.
 
 `History::board()` rebuilds the position by replaying the path from
 the root to the cursor. The cost is bounded by the maximum game
-length: 225 plies on a 15×15 board. The existing CLI already replays
+length: 225 plies on a 15×15 board. The old CLI replayed
 from a log for undo, so this is not a new cost model; it is a new
 correctness model. The board at the cursor is *exactly* the board the
 engine would have after those moves, with no separate state to drift
@@ -106,22 +111,31 @@ matters.
 
 ### Slice 0 — crate split and clap skeleton
 
-Files touched at commit `28d3697`:
+Files touched at commit `664cc40`:
 
 * [`gomoku/crates/cli/Cargo.toml`](../../../gomoku/crates/cli/Cargo.toml)
-  — add `[lib]`, keep `[[bin]]`, add `clap`.
+  — add `[lib]`, keep `[[bin]]`, add `clap`; the `naive-engine`
+  feature is gone with the legacy UI.
 * [`gomoku/Cargo.toml`](../../../gomoku/Cargo.toml) — add `clap` to
   workspace dependencies.
 * [`gomoku/crates/cli/src/lib.rs`](../../../gomoku/crates/cli/src/lib.rs)
   — new library root exposing `actor`, `command`, `history`, `session`,
   and `tui`.
 * [`gomoku/crates/cli/src/main.rs`](../../../gomoku/crates/cli/src/main.rs)
-  — clap parser with `play` and `selfplay` subcommands; legacy flags
-  kept working when no subcommand is given.
+  — clap skeleton with `play` and `selfplay` subcommands; both handlers
+  print "the study table lands in chapter 05 — nothing runnable yet".
 * [`gomoku/crates/cli/src/tui/mod.rs`](../../../gomoku/crates/cli/src/tui/mod.rs)
-  — existing UI modules moved under `src/tui/` unchanged.
+  — `tui/` keeps only the pure rendering pieces (`opening.rs`,
+  `render.rs`); `render.rs` now works on `&engine::Board` directly.
+  The study shell (`study.rs`) and overlays land in chapters 05–06.
 * `actor.rs`, `command.rs`, `history.rs`, `session.rs` — stub modules
   with module docs.
+
+Deleted at this commit: `src/ui.rs`, `src/input.rs`, `src/board.rs`,
+`src/puzzle.rs`, and the `dyn GameBoard` trait they implemented. The
+naive engine stays in the `engine` crate as the test oracle; *playing*
+on it was curriculum scaffolding, and that scaffolding is what is being
+deleted.
 
 Why split the crate now? The core/shell split is the load-bearing
 structure of the whole tutorial. A headless library lets every
@@ -131,16 +145,19 @@ server or GUI could drive the same core. The `clap` skeleton is added
 now so that later chapters only wire subcommands, not redesign the
 front-end.
 
-Legacy compatibility is a hard constraint: `gomoku --engine fast`,
-`gomoku --puzzle file.json`, and the other existing flags must behave
-exactly as before. The clap parser achieves this by flattening
-`PlayArgs` at the top level and making the subcommand optional; when no
-subcommand is given, the top-level `play` flags dispatch to the old
-flow.
+Why delete the old UI instead of preserving it behind flags? Because
+two UIs means two of everything: two input paths, two rendering stacks,
+two test matrices. The design spec records the owner decision
+(2026-10-17): there is exactly one UI, and it is the study table.
+`--plain` is subsumed by the non-tty line-mode fallback (chapter 05),
+naive-engine play is deleted, and the old puzzle mode is replaced by
+puzzle *positions* enrolling into the study table (chapter 07). The
+cost is real — nothing runnable until chapter 05 — and the owner
+accepted it explicitly.
 
 ### Slice 1 — the variation tree
 
-Files created or modified at commit `0782500`:
+Files created or modified at commit `22f1fa9`:
 
 * [`gomoku/crates/cli/src/history.rs`](../../../gomoku/crates/cli/src/history.rs)
   — the variation tree.
@@ -151,7 +168,7 @@ Files created or modified at commit `0782500`:
 
 #### Exact `History` API
 
-The public contract from the verified reference (`0782500`) is:
+The public contract from the verified reference (`22f1fa9`) is:
 
 ```rust
 pub type NodeId = u32;
@@ -461,8 +478,9 @@ Follow the red-green-refactor rhythm:
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
    formatting issues.
 
-All existing tests in the `cli` crate continue to pass; the old hotseat
-and puzzle flows are untouched.
+All tests that survive the slice-0 deletion continue to pass; the
+deleted hotseat and puzzle flows take their tests with them. The
+`engine` and `mcts` crates are untouched.
 
 ## Done when
 
@@ -474,7 +492,7 @@ and puzzle flows are untouched.
 * `cargo clippy --all-targets -- -D warnings` passes from `gomoku/`.
 * `cargo fmt --all -- --check` makes no changes from `gomoku/`.
 * Commit slice 0:
-  `refactor(cli): lib/bin split + clap subcommands`.
+  `refactor(cli): lib/bin split + clap skeleton; legacy UI removed`.
 * Commit slice 1:
   `feat(cli): variation-tree history + historydemo`.
 

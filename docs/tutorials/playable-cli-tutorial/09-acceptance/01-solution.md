@@ -1,15 +1,15 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the two files that changed for chapter 07:
+> This file quotes the two files that changed for chapter 09:
 > `gomoku/crates/cli/tests/acceptance.rs` and
 > `gomoku/crates/cli/src/lib.rs`. The acceptance test file was
-> introduced at commit `b6f5aab`, amended at commit `e06a692` to use
-> a uniform-random baseline, and cleaned up at commit `fe0105f` (an
+> introduced at commit `355a77a`, amended at commit `d908cd3` to use
+> a uniform-random baseline, and cleaned up at commit `7d7ff13` (an
 > unused import the clippy gate caught); the text below is the final
-> `fe0105f` state. The quoted text was verified byte-for-byte against
-> the reference worktree with `git show fe0105f:<path>`.
+> `7d7ff13` state. The quoted text was verified byte-for-byte against
+> the reference worktree with `git show 7d7ff13:<path>`.
 
-# Chapter 07 — opt-in solution
+# Chapter 09 — opt-in solution
 
 ## `gomoku/crates/cli/tests/acceptance.rs`
 

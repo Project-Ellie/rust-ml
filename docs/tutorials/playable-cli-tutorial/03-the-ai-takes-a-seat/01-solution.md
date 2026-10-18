@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the verified reference files for chapter 03. The
-> source was commit `baa2c1a` in the disposable reference worktree.
+> source was commit `251246c` in the disposable reference worktree.
 > `src/history.rs` and `src/fmt.rs` are unchanged from chapter 02 and
 > are not repeated.
 
@@ -9,8 +9,8 @@
 
 ## `gomoku/crates/cli/Cargo.toml`
 
-The only change from chapter 02 is the addition of the `mcts`
-dependency:
+The changes from chapter 02 are the `mcts` dependency and the `engine`
+dev-dependency with the `testutil` feature:
 
 ```toml
 [package]
@@ -36,25 +36,21 @@ path = "src/bin/historydemo.rs"
 name = "sessiondemo"
 path = "src/bin/sessiondemo.rs"
 
-[features]
-default = ["naive-engine"]
-naive-engine = ["engine/testutil"]
-
 [dependencies]
 crossterm.workspace = true
 engine = { path = "../engine" }
 mcts = { path = "../mcts" }
 rand = "0.10.3"
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 thiserror.workspace = true
 clap = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+engine = { path = "../engine", features = ["testutil"] }
 proptest.workspace = true
 ```
 
-(The full `Cargo.toml` is unchanged except for this line.)
+(The full `Cargo.toml` is unchanged except for these two entries.)
 
 ## `gomoku/crates/cli/src/actor.rs`
 

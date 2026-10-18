@@ -11,6 +11,45 @@ displays moves in algebraic notation (`h8`, `a1`). The internal
 remain unchanged; the parser and rendering layers map between algebraic
 input/display and internal coordinates.
 
+**Amendment 2026-10-17 (single CLI, owner decision):** there is exactly one
+UI. The legacy flows are deleted, not preserved: `--plain` is subsumed by
+the non-tty line-mode fallback, `--engine naive` play mode is deleted (the
+naive engine stays in the `engine` crate as the test oracle; playing on it
+was curriculum scaffolding), and the `dyn GameBoard` abstraction leaves the
+`cli` crate with them. The owner accepts having no runnable `gomoku play`
+UI until the tutorial's table chapter lands. This supersedes the §8
+legacy-dispatch design and the "keep every legacy test green" gate.
+
+**Amendment 2026-10-17 (positions from files, owner decision):** the study
+table loads external positions for study, in two chapters after overlays:
+
+1. **Puzzle packs** (`--puzzle <pack.json> [--index N]`). Puzzles are not a
+   game mode; they are *positions with a claimed solution line*. The pack
+   format is the existing `data/puzzles/files/*.json` (`{v, count, items:
+   [{i, a, d, b, w, l}]}`; `a` = attacker to move, `l` = claimed forced-win
+   line as `[x, y, side]` triples, coordinates 0-based `x,y`). Loading a
+   puzzle seeds the variation tree root with the position, attacker to
+   move. New commands: `hint` (show the first move of `l`), `reveal` (show
+   the full claimed line), `next` / `prev` (navigate the pack; each is a
+   fresh root). The old half-hearted puzzle UI is deleted; studying a
+   puzzle means the full table: take/release, AI seats, branching,
+   overlays.
+2. **Game records** (`--game <file.psq>`). Piskvork `.psq` files (see
+   `data/gomocup-games/`): a header line (`Piskvorky 15x15, …`) followed by
+   `x,y,time-ms` move lines, 1-based, Black first. Loading replays the game
+   as the variation tree's main line with the cursor at the **end
+   position**; the engine adjudicates status. Navigation, take/release,
+   and chapter-06 policy overlays work at any cursor position by
+   construction.
+
+Both loaders live behind the command/startup surface only — `SessionInit`
+grows `Puzzle` and `GameRecord` variants; the core/shell doctrine is
+unchanged. Missing data files (git-ignored corpora) produce an error
+pointing at the corpus's `fetch.sh`. Tests use tiny committed fixtures
+under `crates/cli/tests/fixtures/`, never the corpora. The tutorial gains
+two lean chapters (puzzles, game records) inserted after overlays;
+acceptance becomes the final chapter.
+
 ## Abstract
 
 The terminal client grows from a human-vs-human board into a **study

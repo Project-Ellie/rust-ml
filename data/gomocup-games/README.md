@@ -23,9 +23,15 @@ Piskvorky 15x15, 11:11, 0     <- header: board, tournament time, ?
 ...
 ```
 
-Coordinates are 0-based `x,y` (column,row) — note the order differs
+Coordinates are **1-based** `x,y` (column,row) — note the order differs
 from our engine's `Move::new(row, col)`. Move order alternates,
 Black first; Swap2 openings appear as their first 3–5 moves.
+(Verified 2026-10-18 against all 11,400 records by the cli's
+`GameRecord::from_psq` parser: every coordinate is in 1..=15. After
+the last move, records carry a metadata tail — two player-name lines,
+a result marker, and a tournament line — which loaders should ignore.
+6 records end with a duplicated earlier move: Piskvork records a
+loss-by-illegal-move as the offending final line.)
 
 ## Regenerating / more years
 

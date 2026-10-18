@@ -1,4 +1,4 @@
-# Chapter 07 — Acceptance: proof, not vibes
+# Chapter 09 — Acceptance: proof, not vibes
 
 ## Abstract
 
@@ -27,11 +27,13 @@ weak baseline is not a strength claim — it is a warning about what
 
 ## Context
 
-Chapters 01–06 built the study table: the variation tree, the command
+Chapters 01–08 built the study table: the variation tree, the command
 language, the `SessionCore` state machine, human and AI seats, the
-rendered board, and the overlays that show what the AI thinks.
-Everything works in isolation; every behavior is reachable through the
-public `execute(Command) -> Result<Vec<Event>, CommandError>` contract.
+rendered board, the overlays that show what the AI thinks, and the
+puzzle and game-record positions that enroll into the table from
+files. Everything works in isolation; every behavior is reachable
+through the public `execute(Command) -> Result<Vec<Event>, CommandError>`
+contract.
 
 What remains is the proof that the whole thing hangs together under
 three different lenses:
@@ -75,23 +77,21 @@ reproduces the table quoted below.
 ## The three acceptance artifacts
 
 The reference implementation contains exactly these three tests,
-landed across three commits: `b6f5aab` introduced them, `e06a692`
+landed across three commits: `355a77a` introduced them, `d908cd3`
 amended the measurement to a uniform-random baseline (the story
-below), and `fe0105f` dropped an unused import the clippy gate
-caught. The diff from chapter 06 (`ee4a66a`) is small and confined:
+below), and `7d7ff13` dropped an unused import the clippy gate
+caught. The diff from chapter 06 (`c41d339`) is small and confined:
 
 ```text
-$ git diff ee4a66a..fe0105f --stat -- gomoku/crates/cli
+$ git diff c41d339..7d7ff13 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/lib.rs          |   2 +
- gomoku/crates/cli/src/tui/board.rs    |  11 +
- gomoku/crates/cli/src/tui/input.rs    |   7 +
  gomoku/crates/cli/src/tui/render.rs   |   1 +
  gomoku/crates/cli/tests/acceptance.rs | 335 ++++++++++++++++++++++++++++++++++
- 5 files changed, 356 insertions(+)
+ 3 files changed, 338 insertions(+)
 ```
 
-The four `src/tui/` changes are minor clean-ups that came along with
-the final gate pass; the acceptance story lives in
+The `src/tui/render.rs` one-liner is a minor clean-up that came along
+with the final gate pass; the acceptance story lives in
 `tests/acceptance.rs` and the `#![deny(missing_docs)]` line in
 `src/lib.rs`.
 
@@ -288,13 +288,13 @@ baseline tutorial's evaluator (spec §13), which becomes
 same seat abstraction with zero redesign.
 
 **There is a second, subtler lesson in the commit history.** The first
-version of this measurement, at commit `b6f5aab`, used a "near-random"
+version of this measurement, at commit `355a77a`, used a "near-random"
 opponent defined as 1 simulation with temperature 1.0. That sounds
 like randomness, but 1 simulation of PUCT collapses to a deterministic
 top-prior greed: the evaluator's highest prior is always selected. The
 result was an unexplained cliff at 50 and 200 simulations — some
 losses that disappeared at 800 — and the table was hard to interpret.
-The amendment at `e06a692` replaced that opponent with a truly
+The amendment at `d908cd3` replaced that opponent with a truly
 uniform-random driver, which yielded the clean 100% table above.
 
 The meta-lesson of the chapter is that **acceptance criteria are
@@ -332,26 +332,26 @@ Run from `gomoku/`:
 
 1. **Default suite.** `cargo test -p cli`:
    ```text
-   test result: ok. 90 passed; 0 failed; 0 ignored
+   test result: ok. 58 passed; 0 failed; 0 ignored
    test result: ok. 2 passed; 0 failed; 1 ignored
    test result: ok. 7 passed; 0 failed; 0 ignored
    test result: ok. 9 passed; 0 failed; 0 ignored
    test result: ok. 10 passed; 0 failed; 0 ignored
    test result: ok. 4 passed; 0 failed; 0 ignored
    ```
-   Total: **122 passed, 1 ignored** (the ignored measurement).
+   Total: **90 passed, 1 ignored** (the ignored measurement).
 
 2. **Workspace suite.** `cargo test --workspace`:
    All crate test suites pass. The `cli` acceptance suite contributes
-   the same 122 passed / 1 ignored; other crates add their own green
+   the same 90 passed / 1 ignored; other crates add their own green
    suites. The full run finishes in roughly 70 s on the reference
    machine, dominated by the `mcts` and `patterns` proof suites.
 
 3. **Clippy.** `cargo clippy --all-targets -- -D warnings`: green.
    Getting there was the gate doing its job: the amendment at
-   `e06a692` replaced a hand-rolled `Board::new()` with
+   `d908cd3` replaced a hand-rolled `Board::new()` with
    `SessionInit::ai_vs_ai` and left `use engine::{Board, ...}` behind,
-   which `-D warnings` refused to pass. The fix (`fe0105f`) is the
+   which `-D warnings` refused to pass. The fix (`7d7ff13`) is the
    one-line import cleanup. Run the gate; it must pass clean, not
    "clean except".
 
@@ -363,19 +363,21 @@ Run from `gomoku/`:
    reference machine because the uniform-random baseline resigns
    quickly.
 
-The final state (`fe0105f`) is the one worth committing.
+The final state (`7d7ff13`) is the one worth committing.
 
 ## Solution (opt-in)
 
 The complete reference files for this chapter are quoted verbatim in
-[07-acceptance/01-solution.md](07-acceptance/01-solution.md). Open it
+[09-acceptance/01-solution.md](09-acceptance/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after you
 have finished the chapter and want to compare your work.
 
-The solution file quotes two commits: `b6f5aab` introduced the three
-acceptance tests, and `e06a692` amended the measurement to use a
-uniform-random baseline. The quoted text was verified byte-for-byte
-against the reference worktree with `git show <commit>:<path>`.
+The solution file spans three commits: `355a77a` introduced the three
+acceptance tests, `d908cd3` amended the measurement to use a
+uniform-random baseline, and `7d7ff13` dropped the unused import the
+clippy gate caught. The quoted text is the final `7d7ff13` state,
+verified byte-for-byte against the reference worktree with
+`git show <commit>:<path>`.
 
 ## TDD checklist
 
@@ -441,24 +443,29 @@ tested, and it is honest about what it has and has not proven.
 * `sims_vs_strength_measured` reproduces the measured table when run
   with `--ignored --nocapture`.
 * `src/lib.rs` has `#![deny(missing_docs)]` and the crate compiles.
-* `cargo test -p cli` is green (122 passed / 1 ignored on the
+* `cargo test -p cli` is green (90 passed / 1 ignored on the
   reference machine).
 * `cargo test --workspace` is green.
 * `cargo clippy --all-targets -- -D warnings` is green.
 * `cargo fmt --all -- --check` makes no changes.
-* Commit message: `test(cli): acceptance — transcripts, scripted game, measured strength`.
+* Commit messages (three commits):
+  `test(cli): acceptance — transcripts, scripted game, measured strength`,
+  `test(cli): sims-vs-strength vs uniform-random baseline, W/L/D breakdown`,
+  `test(cli): drop unused Board import from acceptance tests`.
 
 ## What was built
 
-In seven chapters the `cli` crate grew from a human-vs-human board
+In nine chapters the `cli` crate grew from a human-vs-human board
 into a study table. Chapter 01 gave it a persistent variation tree;
 chapter 02 a command language and a headless `SessionCore`; chapter 03
 seats for humans and the tactics AI; chapter 04 take/release, per-seat
 sims, and the opening schedule; chapter 05 the rendered board and side
-panel; chapter 06 the policy overlay and value strip; and chapter 07
-the acceptance proof that pins it all. The result is playable today:
-you can sit down against the search, watch it play itself, branch into
-a variation, and see what the search believed at every node.
+panel; chapter 06 the policy overlay and value strip; chapters 07 and
+08 puzzle packs and game records enrolling into the table from files;
+and chapter 09 the acceptance proof that pins it all. The result is
+playable today: you can sit down against the search, watch it play
+itself, branch into a variation, study a puzzle or a recorded game,
+and see what the search believed at every node.
 
 ## What enrolls next
 
@@ -482,7 +489,7 @@ the milestone status when the owner signs off.
 * `gomoku/crates/cli/src/lib.rs` — crate entry point and
   `#![deny(missing_docs)]`.
 * `gomoku/crates/cli/tests/acceptance.rs` — the three acceptance tests
-  (reference commits `b6f5aab`, `e06a692`, and `fe0105f`).
+  (reference commits `355a77a`, `d908cd3`, and `7d7ff13`).
 * Christopher D. Rosin (2011). *Multi-armed bandits with episode
   context*. Annals of Mathematics and Artificial Intelligence 61(3),
   203–230. [`https://doi.org/10.1007/s10472-011-9258-6`](https://doi.org/10.1007/s10472-011-9258-6)

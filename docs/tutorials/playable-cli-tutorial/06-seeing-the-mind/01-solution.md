@@ -1,17 +1,17 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the four files that changed at commit `ee4a66a`:
+> This file quotes the four files that changed at commit `c41d339`:
 > `src/tui/overlay.rs` (new), `src/tui/study.rs`, `src/tui/render.rs`,
 > and `src/tui/mod.rs`. All other files are unchanged from chapter 05.
 > The quoted text was verified byte-for-byte against the reference
-> worktree with `git show ee4a66a:<path>`.
+> worktree with `git show c41d339:<path>`.
 
 # Chapter 06 — opt-in solution
 
 ## Unchanged files
 
 The following files are identical to their chapter-05 versions at
-`8ad0061`:
+`8847c4a`:
 
 * `gomoku/crates/cli/src/lib.rs`
 * `gomoku/crates/cli/src/main.rs`
@@ -20,28 +20,24 @@ The following files are identical to their chapter-05 versions at
 * `gomoku/crates/cli/src/session.rs`
 * `gomoku/crates/cli/src/actor.rs`
 * `gomoku/crates/cli/src/fmt.rs`
-* `gomoku/crates/cli/src/tui/board.rs`
-* `gomoku/crates/cli/src/tui/input.rs`
 * `gomoku/crates/cli/src/tui/opening.rs`
-* `gomoku/crates/cli/src/tui/puzzle.rs`
-* `gomoku/crates/cli/src/tui/ui.rs`
+
+(`src/tui/` holds nothing else — the legacy `board.rs`, `input.rs`,
+`puzzle.rs`, and `ui.rs` modules were deleted in chapter 01.)
 
 ## `gomoku/crates/cli/src/tui/mod.rs`
 
 ```rust
-//! Existing terminal UI modules.
+//! Terminal rendering helpers and the study-table front-end.
 //!
-//! Moved under `tui/` during the lib/bin split; their behavior is
-//! unchanged.
+//! The legacy hotseat/puzzle UI (and the `dyn GameBoard` abstraction it
+//! needed) is deleted; the study table is the single terminal front-end,
+//! built on these rendering pieces.
 
-pub mod board;
-pub mod input;
 pub mod opening;
 pub mod overlay;
-pub mod puzzle;
 pub mod render;
 pub mod study;
-pub mod ui;
 ```
 
 ## `gomoku/crates/cli/src/tui/overlay.rs`
@@ -1049,13 +1045,12 @@ mod tests {
 use crate::actor::{Occupant, SearchInfo};
 use crate::command::Event;
 use crate::session::SessionCore;
-use crate::tui::board::GameBoard;
 use crate::tui::opening::OpeningState;
 use crate::tui::overlay::{
     PolicyOverlay, overlay_cell, render_overlay_cell_plain, render_overlay_cell_styled, value_strip,
 };
 use crossterm::style::Stylize;
-use engine::{Board, Color, Move, PlayError, Proof, Status};
+use engine::{Board, Color, Move, Proof, Status};
 
 fn glyph(stone: Option<Color>) -> char {
     match stone {
@@ -1068,8 +1063,11 @@ fn glyph(stone: Option<Color>) -> char {
 /// Shared layout: row label, bar, 15 cells, bar, row label — inside a
 /// ruler/border frame. `paint(glyph, is_last_move, move)` produces one
 /// cell's visible characters; `cell_width` is used for the ruler and frame.
+/// The board is passed as its move list plus a stone lookup, so render-only
+/// views (such as the Swap2 opening) can share the layout.
 fn render_with(
-    board: &dyn GameBoard,
+    moves: &[Move],
+    stone_at: impl Fn(Move) -> Option<Color>,
     cell_width: usize,
     paint: impl Fn(char, bool, Move) -> String,
 ) -> Vec<String> {
@@ -1078,7 +1076,7 @@ fn render_with(
         .collect();
     let ruler = format!("    {ruler}    ");
     let border = format!("   +{}+   ", "-".repeat(cell_width * 15));
-    let last = board.moves().last().copied();
+    let last = moves.last().copied();
 
     let mut lines = Vec::with_capacity(19);
     lines.push(ruler.clone());
@@ -1087,7 +1085,7 @@ fn render_with(
         let mut line = format!("{:>2} |", row + 1);
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
-            line.push_str(&paint(glyph(board.stone_at(mv)), Some(mv) == last, mv));
+            line.push_str(&paint(glyph(stone_at(mv)), Some(mv) == last, mv));
         }
         line.push_str(&format!("| {:<2}", row + 1));
         lines.push(line);
@@ -1097,40 +1095,49 @@ fn render_with(
     lines
 }
 
-/// Plain ASCII: tests, `--plain`, piping into a file.
-pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
-    render_with(board, 3, |g, is_last, _mv| {
-        if is_last {
-            format!("[{g}]")
-        } else {
-            format!(" {g} ")
-        }
-    })
+/// Plain ASCII: tests and piping into a file.
+pub fn render_lines(board: &Board) -> Vec<String> {
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |g, is_last, _mv| {
+            if is_last {
+                format!("[{g}]")
+            } else {
+                format!(" {g} ")
+            }
+        },
+    )
 }
 
-/// ANSI-coloured: the alternate-screen UI.
-pub fn render_styled(board: &dyn GameBoard) -> Vec<String> {
-    render_with(board, 3, |g, is_last, _mv| {
-        let styled = match g {
-            '.' => ".".dark_grey(),
-            'x' => "x".cyan().bold(),
-            'o' => "o".yellow(),
-            _ => unreachable!("glyph is one of . x o"),
-        };
-        if is_last {
-            format!("[{styled}]")
-        } else {
-            format!(" {styled} ")
-        }
-    })
+/// ANSI-coloured: the alternate-screen front-end.
+pub fn render_styled(board: &Board) -> Vec<String> {
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |g, is_last, _mv| {
+            let styled = match g {
+                '.' => ".".dark_grey(),
+                'x' => "x".cyan().bold(),
+                'o' => "o".yellow(),
+                _ => unreachable!("glyph is one of . x o"),
+            };
+            if is_last {
+                format!("[{styled}]")
+            } else {
+                format!(" {styled} ")
+            }
+        },
+    )
 }
 
 /// One line of context for below the board.
-pub fn status_line(board: &dyn GameBoard) -> String {
+pub fn status_line(board: &Board) -> String {
     match board.status() {
         Status::Ongoing => format!(
-            "engine: {} · move {} · {:?} to move",
-            board.name(),
+            "engine: fast · move {} · {:?} to move",
             board.moves().len(),
             board.to_move()
         ),
@@ -1171,12 +1178,11 @@ pub fn render_opening_styled(state: &OpeningState) -> Vec<String> {
 }
 
 fn render_opening(state: &OpeningState, paint: impl Fn(char, bool, Move) -> String) -> Vec<String> {
-    let board = TemporaryOpeningBoard::from(state);
-    render_with(&board, 3, paint)
+    let view = TemporaryOpeningBoard::from(state);
+    render_with(&view.moves, |mv| view.stone_at(mv), 3, paint)
 }
 
-/// A temporary `GameBoard` view of an opening position, used only for
-/// rendering.
+/// A temporary board view of an opening position, used only for rendering.
 struct TemporaryOpeningBoard {
     moves: Vec<Move>,
     colors: Vec<Color>,
@@ -1192,30 +1198,6 @@ impl TemporaryOpeningBoard {
         }
         Self { moves, colors }
     }
-}
-
-impl GameBoard for TemporaryOpeningBoard {
-    fn play(&mut self, _mv: Move) -> Result<(), PlayError> {
-        unimplemented!("TemporaryOpeningBoard is render-only")
-    }
-
-    fn undo(&mut self) {
-        unimplemented!("TemporaryOpeningBoard is render-only")
-    }
-
-    fn status(&self) -> Status {
-        Status::Ongoing
-    }
-
-    fn to_move(&self) -> Color {
-        let black = self.colors.iter().filter(|&&c| c == Color::Black).count() as u8;
-        let white = self.colors.len() as u8 - black;
-        if white < black {
-            Color::White
-        } else {
-            Color::Black
-        }
-    }
 
     fn stone_at(&self, mv: Move) -> Option<Color> {
         self.moves
@@ -1224,45 +1206,47 @@ impl GameBoard for TemporaryOpeningBoard {
             .find(|(m, _)| **m == mv)
             .map(|(_, &c)| c)
     }
-
-    fn moves(&self) -> &[Move] {
-        &self.moves
-    }
-
-    fn name(&self) -> &'static str {
-        "opening"
-    }
 }
 
 // -----------------------------------------------------------------------------
 // TSS proof overlay
 
 /// Plain rendering with a verified TSS line overlaid as numbered cells.
-pub fn render_lines_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
+pub fn render_lines_with_overlay(board: &Board, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 3, |glyph, is_last, mv| {
-        if let Some((n, side)) = overlay.get(mv) {
-            return overlay_cell_plain(n, side);
-        }
-        plain_cell(glyph, is_last)
-    })
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |glyph, is_last, mv| {
+            if let Some((n, side)) = overlay.get(mv) {
+                return overlay_cell_plain(n, side);
+            }
+            plain_cell(glyph, is_last)
+        },
+    )
 }
 
 /// Styled rendering with a verified TSS line overlaid as numbered cells.
-pub fn render_styled_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
+pub fn render_styled_with_overlay(board: &Board, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 3, |glyph, is_last, mv| {
-        if let Some((n, side)) = overlay.get(mv) {
-            return overlay_cell_styled(n, side, proof.winner);
-        }
-        let styled = match glyph {
-            '.' => ".".dark_grey(),
-            'x' => "x".cyan().bold(),
-            'o' => "o".yellow(),
-            _ => unreachable!("glyph is one of . x o"),
-        };
-        styled_cell(&styled, is_last)
-    })
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |glyph, is_last, mv| {
+            if let Some((n, side)) = overlay.get(mv) {
+                return overlay_cell_styled(n, side, proof.winner);
+            }
+            let styled = match glyph {
+                '.' => ".".dark_grey(),
+                'x' => "x".cyan().bold(),
+                'o' => "o".yellow(),
+                _ => unreachable!("glyph is one of . x o"),
+            };
+            styled_cell(&styled, is_last)
+        },
+    )
 }
 
 fn plain_cell(glyph: char, is_last: bool) -> String {
@@ -1311,8 +1295,8 @@ enum Side {
 }
 
 // Overlay numbers are single-digit because the CLI's TSS budget caps
-// max_depth at 9 (ui.rs) — that is what lets the overlay keep the
-// normal width-3 grid. Raise the depth cap and the width must follow.
+// max_depth at 9 — that is what lets the overlay keep the normal width-3
+// grid. Raise the depth cap and the width must follow.
 fn overlay_cell_plain(n: usize, side: Side) -> String {
     debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
     match side {
@@ -1715,14 +1699,13 @@ pub fn render_policy_board_for_test(
 mod tests {
     use super::*;
     use crate::actor::AiConfig;
-    use crate::tui::board::{EngineKind, board_for};
     use crate::tui::opening::OpeningState;
     use crate::tui::overlay::PolicyOverlay;
 
     #[test]
     fn empty_board_is_ruled_and_framed() {
-        let board = board_for(EngineKind::Naive);
-        let lines = render_lines(&*board);
+        let board = Board::new();
+        let lines = render_lines(&board);
 
         assert_eq!(lines.len(), 19);
         assert!(lines.iter().all(|l| l.chars().count() == 53));
@@ -1744,11 +1727,11 @@ mod tests {
 
     #[test]
     fn last_move_wears_brackets() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         board.play(Move::new(7, 7).unwrap()).unwrap(); // x — last move
         board.play(Move::new(7, 8).unwrap()).unwrap(); // o — now last
 
-        let lines = render_lines(&*board);
+        let lines = render_lines(&board);
         let row7 = &lines[2 + 7]; // line 0 ruler, line 1 border
         // 4-char gutter, then 3 bytes per column.
         assert_eq!(&row7[25..28], " x ");
@@ -1757,12 +1740,12 @@ mod tests {
 
     #[test]
     fn brackets_follow_an_undo() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         board.play(Move::new(7, 7).unwrap()).unwrap();
         board.play(Move::new(7, 8).unwrap()).unwrap();
         board.undo();
 
-        let lines = render_lines(&*board);
+        let lines = render_lines(&board);
         let row7 = &lines[2 + 7];
         assert_eq!(&row7[25..28], "[x]"); // the bracket walks back
         assert_eq!(&row7[28..31], " . ");
@@ -1770,11 +1753,8 @@ mod tests {
 
     #[test]
     fn status_line_reports_to_move_and_result() {
-        let mut board = board_for(EngineKind::Naive);
-        assert_eq!(
-            status_line(&*board),
-            "engine: naive · move 0 · Black to move"
-        );
+        let mut board = Board::new();
+        assert_eq!(status_line(&board), "engine: fast · move 0 · Black to move");
 
         // Black wins with five on row 0; White parks on row 1.
         for (br, bc, wr, wc) in [(0, 0, 1, 0), (0, 1, 1, 1), (0, 2, 1, 2), (0, 3, 1, 3)] {
@@ -1784,7 +1764,7 @@ mod tests {
         board.play(Move::new(0, 4).unwrap()).unwrap();
 
         assert_eq!(
-            status_line(&*board),
+            status_line(&board),
             "Black wins! — type 'new' to start over"
         );
     }
@@ -1808,7 +1788,7 @@ mod tests {
 
     #[test]
     fn tss_overlay_numbers_attack_and_defence() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         // Build a VCF win-in-3 from the engine TSS tests.
         let script = [
             (7, 4),
@@ -1827,7 +1807,7 @@ mod tests {
         }
 
         let proof = engine::prove_forced_win(
-            board.engine_board().unwrap(),
+            &board,
             board.to_move(),
             engine::SearchBudget {
                 max_nodes: 200_000,
@@ -1835,9 +1815,9 @@ mod tests {
             },
         )
         .expect("test position has a known forced win");
-        assert!(engine::verify_line(board.engine_board().unwrap(), &proof));
+        assert!(engine::verify_line(&board, &proof));
 
-        let lines = render_lines_with_overlay(&*board, &proof);
+        let lines = render_lines_with_overlay(&board, &proof);
         assert_eq!(lines.len(), 19);
         // Width-3 cells like normal play — the overlay causes no layout jump.
         assert!(lines.iter().all(|l| l.chars().count() == 4 + 45 + 4));

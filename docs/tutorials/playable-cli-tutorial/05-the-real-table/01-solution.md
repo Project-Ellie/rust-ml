@@ -1,7 +1,7 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the reference implementation files for chapter 05,
-> verified green at commit `8ad0061` in the reference worktree.
+> verified green at commit `8847c4a` in the reference worktree.
 
 Open this only if you have been stuck for more than twenty minutes,
 or after you have finished the chapter and want to compare your work
@@ -17,31 +17,21 @@ Files changed in this chapter:
 * `gomoku/crates/cli/src/session.rs`
 
 Files unchanged from chapter 04 include:
-`src/tui/board.rs`, `src/tui/input.rs`, `src/tui/opening.rs`,
-`src/tui/puzzle.rs`, `src/tui/ui.rs`, `src/lib.rs`, `src/command.rs`,
+`src/tui/opening.rs`, `src/lib.rs`, `src/command.rs`,
 `src/actor.rs`, `src/history.rs`, `src/fmt.rs`, the demo binaries in
-`src/bin/`, and the integration tests in `tests/`.
+`src/bin/`, and the integration tests in `tests/`. (The legacy
+`tui/board.rs`, `tui/input.rs`, `tui/puzzle.rs`, and `tui/ui.rs` no
+longer exist — they were deleted in chapter 01's slice 0.)
 
 # `gomoku/crates/cli/src/main.rs`
 
 ```rust
-use std::path::PathBuf;
-
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use engine::{Board, Color};
 
 use cli::actor::{AiConfig, EvaluatorKind, Occupant};
 use cli::session::SessionInit;
-use cli::tui::board::{EngineKind, board_for};
-use cli::tui::puzzle;
 use cli::tui::study;
-use cli::tui::ui;
-
-const PLAY_USAGE: &str = if cfg!(feature = "naive-engine") {
-    "usage: gomoku play [--engine naive|fast] [--plain] [--no-swap2] [--puzzle <path> [--index N]]\n\nSwap2 opening is only available with the fast engine; use --no-swap2 to start from an empty board with any engine. Puzzle mode skips the opening entirely."
-} else {
-    "usage: gomoku play [--engine fast] [--plain] [--no-swap2] [--puzzle <path> [--index N]]\n\nThis build was compiled without the naive-engine feature; only the fast engine is available. Puzzle mode skips the opening entirely."
-};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -51,7 +41,7 @@ const PLAY_USAGE: &str = if cfg!(feature = "naive-engine") {
     arg_required_else_help = false
 )]
 struct CliArgs {
-    /// Legacy `play` flags used when no subcommand is given.
+    /// `play` flags used when no subcommand is given.
     #[command(flatten)]
     play: PlayArgs,
 
@@ -61,7 +51,7 @@ struct CliArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
-    /// Play a human game or puzzle (legacy default).
+    /// Play at the study table.
     Play(PlayArgs),
     /// AI-vs-AI self-play.
     Selfplay(SearchArgs),
@@ -72,25 +62,9 @@ struct PlayArgs {
     #[command(flatten)]
     search: SearchArgs,
 
-    /// Engine board to use.
-    #[arg(long, value_name = "ENGINE")]
-    engine: Option<String>,
-
-    /// Use the scrolling plain-text UI.
-    #[arg(long)]
-    plain: bool,
-
     /// Skip the Swap2 opening and start from an empty board.
     #[arg(long)]
     no_swap2: bool,
-
-    /// Load a puzzle file instead of playing a game.
-    #[arg(long, value_name = "PATH")]
-    puzzle: Option<PathBuf>,
-
-    /// Puzzle index to start from.
-    #[arg(long, value_name = "N")]
-    index: Option<usize>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -152,17 +126,9 @@ fn main() {
         None => (Mode::Play, Some(args.play), None),
         Some(Commands::Play(p)) => (Mode::Play, Some(p), None),
         Some(Commands::Selfplay(s)) => {
-            // Reject legacy `play` flags placed before the subcommand.
-            if args.play.engine.is_some()
-                || args.play.plain
-                || args.play.no_swap2
-                || args.play.puzzle.is_some()
-                || args.play.index.is_some()
-            {
-                eprintln!(
-                    "error: --engine, --plain, --no-swap2, --puzzle, and --index are only valid with the 'play' subcommand"
-                );
-                eprintln!("{PLAY_USAGE}");
+            // Reject `play` flags placed before the subcommand.
+            if args.play.no_swap2 {
+                eprintln!("error: --no-swap2 is only valid with the 'play' subcommand");
                 std::process::exit(2);
             }
             (Mode::Selfplay, None, Some(s))
@@ -193,52 +159,20 @@ enum Mode {
 }
 
 fn run_play(play: &PlayArgs) -> std::io::Result<()> {
-    let kind = parse_engine(play.engine.as_deref())?;
-    let plain = play.plain;
-    let swap2 = !play.no_swap2;
+    validate_search_args(&play.search, false)?;
 
-    // Legacy puzzle mode is a separate flow, not part of the study table.
-    if let Some(puzzle_path) = &play.puzzle {
-        let index = play.index.unwrap_or(0);
-        return run_puzzle_mode(puzzle_path.clone(), index, plain);
-    }
-
-    validate_search_args(&play.search, kind, false)?;
-
-    #[cfg(feature = "naive-engine")]
-    if swap2 && kind == EngineKind::Naive {
-        eprintln!("error: the Swap2 opening requires the fast engine");
-        eprintln!("       use --no-swap2 to start from an empty board with the naive engine");
-        std::process::exit(2);
-    }
-
-    // Legacy paths: --plain and the naive engine keep the old hotseat UI.
-    if plain || kind == EngineKind::Naive {
-        if play.search.ai.is_some() {
-            eprintln!("error: --ai is not available in --plain or --engine naive mode");
-            eprintln!("{PLAY_USAGE}");
-            std::process::exit(2);
-        }
-        let board = board_for(kind);
-        return if plain {
-            ui::run_plain(board, kind, swap2)
-        } else {
-            ui::run_ui(board, kind, swap2)
-        };
-    }
-
-    // Study-table path: the modern front-end. Swap2 runs first unless
+    // The study table is the single front-end. Swap2 runs first unless
     // disabled, then the resulting board seeds the session.
     let make_init = |board: Board| build_play_init(&play.search, board);
-    if swap2 {
-        study::run_with_swap2(make_init, None)
-    } else {
+    if play.no_swap2 {
         study::run(make_init(Board::new()), None)
+    } else {
+        study::run_with_swap2(make_init, None)
     }
 }
 
 fn run_selfplay(search: &SearchArgs) -> std::io::Result<()> {
-    validate_search_args(search, EngineKind::Fast, true)?;
+    validate_search_args(search, true)?;
 
     let (config, black_sims, white_sims) = ai_config_from(search);
     let init = SessionInit {
@@ -254,68 +188,14 @@ fn run_selfplay(search: &SearchArgs) -> std::io::Result<()> {
     study::run(init, Some("Enter = step"))
 }
 
-fn run_puzzle_mode(path: PathBuf, index: usize, plain: bool) -> std::io::Result<()> {
-    let puzzles = puzzle::load(&path)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-    if puzzles.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "puzzle file contains no puzzles",
-        ));
-    }
-    if index >= puzzles.len() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("--index {index} is out of range (0..{})", puzzles.len()),
-        ));
-    }
-    if plain {
-        ui::run_plain_puzzle(puzzles, index)
-    } else {
-        ui::run_ui_puzzle(puzzles, index)
-    }
-}
-
-fn parse_engine(value: Option<&str>) -> std::io::Result<EngineKind> {
-    match value {
-        None => Ok(EngineKind::Fast),
-        Some("fast") => Ok(EngineKind::Fast),
-        #[cfg(feature = "naive-engine")]
-        Some("naive") => Ok(EngineKind::Naive),
-        #[cfg(not(feature = "naive-engine"))]
-        Some("naive") => {
-            eprintln!("error: built without the naive-engine feature");
-            eprintln!("{PLAY_USAGE}");
-            std::process::exit(2);
-        }
-        Some(other) => {
-            eprintln!("error: unknown engine '{other}'");
-            eprintln!("{PLAY_USAGE}");
-            std::process::exit(2);
-        }
-    }
-}
-
-fn validate_search_args(
-    search: &SearchArgs,
-    kind: EngineKind,
-    is_selfplay: bool,
-) -> std::io::Result<()> {
-    if kind == EngineKind::Naive && (search.ai.is_some() || is_selfplay) {
-        eprintln!("error: --engine naive cannot be used with --ai or selfplay");
-        eprintln!("{PLAY_USAGE}");
-        std::process::exit(2);
-    }
-
+fn validate_search_args(search: &SearchArgs, is_selfplay: bool) -> std::io::Result<()> {
     if !is_selfplay && search.color.is_some() && search.ai.is_none() {
         eprintln!("error: --color requires --ai");
-        eprintln!("{PLAY_USAGE}");
         std::process::exit(2);
     }
 
     if is_selfplay && search.color.is_some() {
         eprintln!("error: --color is not valid for selfplay");
-        eprintln!("{PLAY_USAGE}");
         std::process::exit(2);
     }
 
@@ -859,10 +739,9 @@ mod tests {
 use crate::actor::Occupant;
 use crate::command::Event;
 use crate::session::SessionCore;
-use crate::tui::board::GameBoard;
 use crate::tui::opening::OpeningState;
 use crossterm::style::Stylize;
-use engine::{Board, Color, Move, PlayError, Proof, Status};
+use engine::{Board, Color, Move, Proof, Status};
 
 fn glyph(stone: Option<Color>) -> char {
     match stone {
@@ -875,8 +754,11 @@ fn glyph(stone: Option<Color>) -> char {
 /// Shared layout: row label, bar, 15 cells, bar, row label — inside a
 /// ruler/border frame. `paint(glyph, is_last_move, move)` produces one
 /// cell's visible characters; `cell_width` is used for the ruler and frame.
+/// The board is passed as its move list plus a stone lookup, so render-only
+/// views (such as the Swap2 opening) can share the layout.
 fn render_with(
-    board: &dyn GameBoard,
+    moves: &[Move],
+    stone_at: impl Fn(Move) -> Option<Color>,
     cell_width: usize,
     paint: impl Fn(char, bool, Move) -> String,
 ) -> Vec<String> {
@@ -885,7 +767,7 @@ fn render_with(
         .collect();
     let ruler = format!("    {ruler}    ");
     let border = format!("   +{}+   ", "-".repeat(cell_width * 15));
-    let last = board.moves().last().copied();
+    let last = moves.last().copied();
 
     let mut lines = Vec::with_capacity(19);
     lines.push(ruler.clone());
@@ -894,7 +776,7 @@ fn render_with(
         let mut line = format!("{:>2} |", row + 1);
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
-            line.push_str(&paint(glyph(board.stone_at(mv)), Some(mv) == last, mv));
+            line.push_str(&paint(glyph(stone_at(mv)), Some(mv) == last, mv));
         }
         line.push_str(&format!("| {:<2}", row + 1));
         lines.push(line);
@@ -904,40 +786,49 @@ fn render_with(
     lines
 }
 
-/// Plain ASCII: tests, `--plain`, piping into a file.
-pub fn render_lines(board: &dyn GameBoard) -> Vec<String> {
-    render_with(board, 3, |g, is_last, _mv| {
-        if is_last {
-            format!("[{g}]")
-        } else {
-            format!(" {g} ")
-        }
-    })
+/// Plain ASCII: tests and piping into a file.
+pub fn render_lines(board: &Board) -> Vec<String> {
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |g, is_last, _mv| {
+            if is_last {
+                format!("[{g}]")
+            } else {
+                format!(" {g} ")
+            }
+        },
+    )
 }
 
-/// ANSI-coloured: the alternate-screen UI.
-pub fn render_styled(board: &dyn GameBoard) -> Vec<String> {
-    render_with(board, 3, |g, is_last, _mv| {
-        let styled = match g {
-            '.' => ".".dark_grey(),
-            'x' => "x".cyan().bold(),
-            'o' => "o".yellow(),
-            _ => unreachable!("glyph is one of . x o"),
-        };
-        if is_last {
-            format!("[{styled}]")
-        } else {
-            format!(" {styled} ")
-        }
-    })
+/// ANSI-coloured: the alternate-screen front-end.
+pub fn render_styled(board: &Board) -> Vec<String> {
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |g, is_last, _mv| {
+            let styled = match g {
+                '.' => ".".dark_grey(),
+                'x' => "x".cyan().bold(),
+                'o' => "o".yellow(),
+                _ => unreachable!("glyph is one of . x o"),
+            };
+            if is_last {
+                format!("[{styled}]")
+            } else {
+                format!(" {styled} ")
+            }
+        },
+    )
 }
 
 /// One line of context for below the board.
-pub fn status_line(board: &dyn GameBoard) -> String {
+pub fn status_line(board: &Board) -> String {
     match board.status() {
         Status::Ongoing => format!(
-            "engine: {} · move {} · {:?} to move",
-            board.name(),
+            "engine: fast · move {} · {:?} to move",
             board.moves().len(),
             board.to_move()
         ),
@@ -978,12 +869,11 @@ pub fn render_opening_styled(state: &OpeningState) -> Vec<String> {
 }
 
 fn render_opening(state: &OpeningState, paint: impl Fn(char, bool, Move) -> String) -> Vec<String> {
-    let board = TemporaryOpeningBoard::from(state);
-    render_with(&board, 3, paint)
+    let view = TemporaryOpeningBoard::from(state);
+    render_with(&view.moves, |mv| view.stone_at(mv), 3, paint)
 }
 
-/// A temporary `GameBoard` view of an opening position, used only for
-/// rendering.
+/// A temporary board view of an opening position, used only for rendering.
 struct TemporaryOpeningBoard {
     moves: Vec<Move>,
     colors: Vec<Color>,
@@ -999,30 +889,6 @@ impl TemporaryOpeningBoard {
         }
         Self { moves, colors }
     }
-}
-
-impl GameBoard for TemporaryOpeningBoard {
-    fn play(&mut self, _mv: Move) -> Result<(), PlayError> {
-        unimplemented!("TemporaryOpeningBoard is render-only")
-    }
-
-    fn undo(&mut self) {
-        unimplemented!("TemporaryOpeningBoard is render-only")
-    }
-
-    fn status(&self) -> Status {
-        Status::Ongoing
-    }
-
-    fn to_move(&self) -> Color {
-        let black = self.colors.iter().filter(|&&c| c == Color::Black).count() as u8;
-        let white = self.colors.len() as u8 - black;
-        if white < black {
-            Color::White
-        } else {
-            Color::Black
-        }
-    }
 
     fn stone_at(&self, mv: Move) -> Option<Color> {
         self.moves
@@ -1031,45 +897,47 @@ impl GameBoard for TemporaryOpeningBoard {
             .find(|(m, _)| **m == mv)
             .map(|(_, &c)| c)
     }
-
-    fn moves(&self) -> &[Move] {
-        &self.moves
-    }
-
-    fn name(&self) -> &'static str {
-        "opening"
-    }
 }
 
 // -----------------------------------------------------------------------------
 // TSS proof overlay
 
 /// Plain rendering with a verified TSS line overlaid as numbered cells.
-pub fn render_lines_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
+pub fn render_lines_with_overlay(board: &Board, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 3, |glyph, is_last, mv| {
-        if let Some((n, side)) = overlay.get(mv) {
-            return overlay_cell_plain(n, side);
-        }
-        plain_cell(glyph, is_last)
-    })
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |glyph, is_last, mv| {
+            if let Some((n, side)) = overlay.get(mv) {
+                return overlay_cell_plain(n, side);
+            }
+            plain_cell(glyph, is_last)
+        },
+    )
 }
 
 /// Styled rendering with a verified TSS line overlaid as numbered cells.
-pub fn render_styled_with_overlay(board: &dyn GameBoard, proof: &Proof) -> Vec<String> {
+pub fn render_styled_with_overlay(board: &Board, proof: &Proof) -> Vec<String> {
     let overlay = Overlay::new(proof);
-    render_with(board, 3, |glyph, is_last, mv| {
-        if let Some((n, side)) = overlay.get(mv) {
-            return overlay_cell_styled(n, side, proof.winner);
-        }
-        let styled = match glyph {
-            '.' => ".".dark_grey(),
-            'x' => "x".cyan().bold(),
-            'o' => "o".yellow(),
-            _ => unreachable!("glyph is one of . x o"),
-        };
-        styled_cell(&styled, is_last)
-    })
+    render_with(
+        board.moves(),
+        |mv| board.stone_at(mv),
+        3,
+        |glyph, is_last, mv| {
+            if let Some((n, side)) = overlay.get(mv) {
+                return overlay_cell_styled(n, side, proof.winner);
+            }
+            let styled = match glyph {
+                '.' => ".".dark_grey(),
+                'x' => "x".cyan().bold(),
+                'o' => "o".yellow(),
+                _ => unreachable!("glyph is one of . x o"),
+            };
+            styled_cell(&styled, is_last)
+        },
+    )
 }
 
 fn plain_cell(glyph: char, is_last: bool) -> String {
@@ -1118,8 +986,8 @@ enum Side {
 }
 
 // Overlay numbers are single-digit because the CLI's TSS budget caps
-// max_depth at 9 (ui.rs) — that is what lets the overlay keep the
-// normal width-3 grid. Raise the depth cap and the width must follow.
+// max_depth at 9 — that is what lets the overlay keep the normal width-3
+// grid. Raise the depth cap and the width must follow.
 fn overlay_cell_plain(n: usize, side: Side) -> String {
     debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
     match side {
@@ -1327,13 +1195,12 @@ fn path_tail_string(core: &SessionCore) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::board::{EngineKind, board_for};
     use crate::tui::opening::OpeningState;
 
     #[test]
     fn empty_board_is_ruled_and_framed() {
-        let board = board_for(EngineKind::Naive);
-        let lines = render_lines(&*board);
+        let board = Board::new();
+        let lines = render_lines(&board);
 
         assert_eq!(lines.len(), 19);
         assert!(lines.iter().all(|l| l.chars().count() == 53));
@@ -1355,11 +1222,11 @@ mod tests {
 
     #[test]
     fn last_move_wears_brackets() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         board.play(Move::new(7, 7).unwrap()).unwrap(); // x — last move
         board.play(Move::new(7, 8).unwrap()).unwrap(); // o — now last
 
-        let lines = render_lines(&*board);
+        let lines = render_lines(&board);
         let row7 = &lines[2 + 7]; // line 0 ruler, line 1 border
         // 4-char gutter, then 3 bytes per column.
         assert_eq!(&row7[25..28], " x ");
@@ -1368,12 +1235,12 @@ mod tests {
 
     #[test]
     fn brackets_follow_an_undo() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         board.play(Move::new(7, 7).unwrap()).unwrap();
         board.play(Move::new(7, 8).unwrap()).unwrap();
         board.undo();
 
-        let lines = render_lines(&*board);
+        let lines = render_lines(&board);
         let row7 = &lines[2 + 7];
         assert_eq!(&row7[25..28], "[x]"); // the bracket walks back
         assert_eq!(&row7[28..31], " . ");
@@ -1381,11 +1248,8 @@ mod tests {
 
     #[test]
     fn status_line_reports_to_move_and_result() {
-        let mut board = board_for(EngineKind::Naive);
-        assert_eq!(
-            status_line(&*board),
-            "engine: naive · move 0 · Black to move"
-        );
+        let mut board = Board::new();
+        assert_eq!(status_line(&board), "engine: fast · move 0 · Black to move");
 
         // Black wins with five on row 0; White parks on row 1.
         for (br, bc, wr, wc) in [(0, 0, 1, 0), (0, 1, 1, 1), (0, 2, 1, 2), (0, 3, 1, 3)] {
@@ -1395,7 +1259,7 @@ mod tests {
         board.play(Move::new(0, 4).unwrap()).unwrap();
 
         assert_eq!(
-            status_line(&*board),
+            status_line(&board),
             "Black wins! — type 'new' to start over"
         );
     }
@@ -1419,7 +1283,7 @@ mod tests {
 
     #[test]
     fn tss_overlay_numbers_attack_and_defence() {
-        let mut board = board_for(EngineKind::Fast);
+        let mut board = Board::new();
         // Build a VCF win-in-3 from the engine TSS tests.
         let script = [
             (7, 4),
@@ -1438,7 +1302,7 @@ mod tests {
         }
 
         let proof = engine::prove_forced_win(
-            board.engine_board().unwrap(),
+            &board,
             board.to_move(),
             engine::SearchBudget {
                 max_nodes: 200_000,
@@ -1446,9 +1310,9 @@ mod tests {
             },
         )
         .expect("test position has a known forced win");
-        assert!(engine::verify_line(board.engine_board().unwrap(), &proof));
+        assert!(engine::verify_line(&board, &proof));
 
-        let lines = render_lines_with_overlay(&*board, &proof);
+        let lines = render_lines_with_overlay(&board, &proof);
         assert_eq!(lines.len(), 19);
         // Width-3 cells like normal play — the overlay causes no layout jump.
         assert!(lines.iter().all(|l| l.chars().count() == 4 + 45 + 4));
@@ -1537,18 +1401,15 @@ mod tests {
 # `gomoku/crates/cli/src/tui/mod.rs`
 
 ```rust
-//! Existing terminal UI modules.
+//! Terminal rendering helpers and the study-table front-end.
 //!
-//! Moved under `tui/` during the lib/bin split; their behavior is
-//! unchanged.
+//! The legacy hotseat/puzzle UI (and the `dyn GameBoard` abstraction it
+//! needed) is deleted; the study table is the single terminal front-end,
+//! built on these rendering pieces.
 
-pub mod board;
-pub mod input;
 pub mod opening;
-pub mod puzzle;
 pub mod render;
 pub mod study;
-pub mod ui;
 ```
 
 # `gomoku/crates/cli/src/session.rs`

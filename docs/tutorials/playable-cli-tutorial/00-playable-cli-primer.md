@@ -11,6 +11,13 @@ The old CLI had one flow: humans take turns. The new one has a
 **table** with two **seats** — Black and White — and each seat holds an
 **occupant**: a `Human` or an `Ai`. That's the whole model.
 
+And there is exactly **one UI**. The old hotseat/puzzle front-end is
+deleted, not preserved behind flags (owner decision, 2026-10-17): no
+`--plain` (subsumed by the non-tty line-mode fallback), no
+naive-engine play (the naive engine stays in the `engine` crate as the
+test oracle), no `dyn GameBoard` abstraction. The study table is the
+single CLI.
+
 - Hotseat is (Human, Human). "Play against the AI" is (Human, Ai).
   "Self-play" is (Ai, Ai). None of these are modes; they are *initial
   seat assignments*.
@@ -33,8 +40,13 @@ cli/
 │   ├── command.rs    Command, Event, parser, CommandError
 │   ├── session.rs    SessionCore — the state machine
 │   ├── actor.rs      Occupant, AiConfig, SearchInfo
+│   ├── puzzle.rs     puzzle pack parsing (chapter 07)
+│   ├── game.rs       .psq game record parsing (chapter 08)
 │   └── fmt.rs        shared ASCII formatting helpers
-├── src/tui/          the crossterm front-end (the shell)
+├── src/tui/          the crossterm front-end (the shell):
+│                     opening + render helpers, the study table,
+│                     overlays — nothing else survived the slice-0
+│                     deletion of the legacy UI
 └── src/bin/          gomoku, historydemo, sessiondemo
 ```
 
@@ -153,6 +165,14 @@ Chapter 6's payoffs, all sourced from the cursor node's `SearchInfo`:
 - The Swap2 ceremony is unchanged and default-on for `play`; its
   result becomes the tree's root. `selfplay` skips it (the schedule
   provides variety instead).
+- Positions enroll from files. `--puzzle <pack.json> [--index N]`
+  seeds the tree with a puzzle position ([chapter
+  07](07-positions-from-files-puzzles.md); `hint` and `reveal` expose
+  the claimed solution line, `next`/`prev` walk the pack), and `--game
+  <file.psq>` replays a recorded game as the tree's main line with the
+  cursor at the end position ([chapter
+  08](08-positions-from-files-game-records.md)). Both are starting
+  positions at the same table, not separate modes.
 - Seeded sessions (`--seed N`) are bit-reproducible — the acceptance
   chapter's golden transcript depends on it.
 - Gates per chapter, from `gomoku/`: `cargo test -p cli`,
@@ -161,7 +181,8 @@ Chapter 6's payoffs, all sourced from the cursor node's `SearchInfo`:
 
 ## What this tutorial deliberately does not build
 
-No trained network (later milestone). No game save/load (gomoku-gui's
+No trained network (later milestone). No game *save* (records load
+for study in chapter 08; writing them is out of scope — gomoku-gui's
 record format is the prior art). No raw-key input (line commands
 only). No time-based search budgets (sim counts are deterministic).
 No REST server, no GUI — the core is *ready* for them; building them

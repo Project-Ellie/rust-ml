@@ -14,6 +14,20 @@ and displays moves in algebraic notation (`h8`, `a1`) rather than numeric
 0–14) and all `Event` fields are unchanged; the parser and rendering
 layers perform display/input mapping only.
 
+**Amendment 2026-10-17 (single CLI + positions from files, owner
+decisions):** the legacy flows are deleted (no `--plain`, no naive-engine
+play, no `dyn GameBoard`, no legacy puzzle UI); the study table is the only
+UI. Two new lean chapters land after overlays: **07 positions from files —
+puzzles** (`--puzzle <pack.json> [--index N]`, `hint`/`reveal`/`next`/`prev`,
+pack format per `data/puzzles/README.md`) and **08 positions from files —
+game records** (`--game <file.psq>`, Piskvork parser, cursor at the end
+position, full study + overlays); acceptance becomes **09**. New reference
+tasks: **T8 puzzles** and **T9 game records**; T0 and T5 are rebuilt
+without legacy code (T0 deletes `ui.rs`/`input.rs`/`board.rs`/`puzzle.rs`
+instead of moving them; T5's `main.rs` has no legacy dispatch). Tests use
+committed fixtures under `crates/cli/tests/fixtures/`. See the spec's
+same-dated amendments for the authoritative decisions.
+
 ## Context
 
 The `cli` crate (binary `gomoku`) grows from human-vs-human into the

@@ -207,7 +207,7 @@ two simulation budgets and look only at the `SearchInfo`.
 The position is the win-in-one setup from
 `tactics_ai_takes_win_in_one` in `tests/actor.rs`: Black has an open
 four on row 7 and can win by playing `c8` or `h8`. Measured in the
-reference worktree at commit `baa2c1a`:
+reference worktree at commit `251246c`:
 
 | Simulations | `value` | total visits | top move(s) |
 |-------------|---------|--------------|-------------|
@@ -235,12 +235,12 @@ clear baseline.
 
 ### Files changed vs chapter 02
 
-The diff from chapter 02 (`161c49b`) to this chapter (`baa2c1a`) is
+The diff from chapter 02 (`6d1b7b7`) to this chapter (`251246c`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff 161c49b..baa2c1a --stat -- gomoku/crates/cli
- gomoku/crates/cli/Cargo.toml             |   1 +
+$ git diff 6d1b7b7..251246c --stat -- gomoku/crates/cli
+ gomoku/crates/cli/Cargo.toml             |   2 +
  gomoku/crates/cli/demo_script.txt        |   8 +
  gomoku/crates/cli/src/actor.rs           |  63 +++++++
  gomoku/crates/cli/src/bin/sessiondemo.rs |  39 ++++-
@@ -248,12 +248,15 @@ $ git diff 161c49b..baa2c1a --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/session.rs         | 235 +++++++++++++++++++++-----
  gomoku/crates/cli/tests/actor.rs         | 276 +++++++++++++++++++++++++++++++
  gomoku/crates/cli/tests/session.rs       |  72 ++++++--
- 8 files changed, 643 insertions(+), 60 deletions(-)
+ 8 files changed, 644 insertions(+), 60 deletions(-)
 ```
 
 `src/history.rs` and `src/fmt.rs` do not appear in the diff: they are
 unchanged from chapter 02. The `Cargo.toml` change adds the `mcts`
-dependency.
+dependency and an `engine` dev-dependency with the `testutil` feature
+(`tests/actor.rs` builds positions with
+`engine::reference::board_from_ascii` and queries
+`engine::immediate_wins`).
 
 ### `src/actor.rs`
 
@@ -341,7 +344,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/actor.rs`
 
-Exact `#[test]` function names from commit `baa2c1a`:
+Exact `#[test]` function names from commit `251246c`:
 
 1. `tactics_ai_takes_win_in_one`
 2. `tactics_ai_blocks_opponent_open_four`
@@ -351,7 +354,7 @@ Exact `#[test]` function names from commit `baa2c1a`:
 6. `step_after_game_over_is_error`
 7. `search_info_prior_and_visits_are_sorted_descending`
 
-### `tests/session.rs` and `tests/command.rs`
+### `tests/session.rs` and the `src/command.rs` parser tests
 
 All chapter-02 tests continue to pass and are part of the chapter-03
 gate. Notably:
@@ -380,7 +383,7 @@ cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --script ../crates/cli/demo_script.txt
 ```
 
-Key frames from the real output (measured at commit `baa2c1a`):
+Key frames from the real output (measured at commit `251246c`):
 
 Releasing White:
 

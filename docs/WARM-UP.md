@@ -277,15 +277,23 @@ Two further tutorial tracks are written and verified, ready to work:
   measured-strength acceptance. Design spec:
   [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
-  (primer + 7 chapters + opt-in solutions, written 2026-10-17): the
+  (primer + 9 chapters + opt-in solutions, written 2026-10-17/18): the
   `cli` crate grows into the study table — two seats (human or AI,
   take/release anytime), a persistent variation tree with silent
   branching, a headless `SessionCore` (commands/events, REST-ready),
-  policy overlays + value strip, per-seat sims. Reference built
-  TDD-first in worktree `../rust-ml-ref-playable-cli` (branch
-  `reference/playable-cli`, 10 commits, 122 tests + 1 ignored
-  measurement green, kept for inspection until chapter 07 is worked).
-  Design spec: [2026-10-17-playable-cli-design.md](specs/2026-10-17-playable-cli-design.md);
+  policy overlays + value strip, per-seat sims, and positions from
+  files: puzzle packs (`--puzzle`, hint/reveal/next/prev) and Piskvork
+  game records (`--game`, cursor at the end position). **Single-CLI
+  owner decision**: the legacy hotseat/puzzle UI is deleted (no
+  `--plain`, no naive-engine play, no `dyn GameBoard`) — the study
+  table is the only UI. Notation is standard Gomoku algebraic
+  (columns a–o, rows 1–15, center h8) at input and display. Reference
+  built TDD-first in worktree `../rust-ml-ref-playable-cli` (branch
+  `reference/playable-cli`, 12 commits, 136 tests + 1 ignored
+  measurement green, per-commit gates verified; kept for inspection
+  until chapter 09 is worked). Design spec (three dated amendments:
+  algebraic notation, single CLI, positions from files):
+  [2026-10-17-playable-cli-design.md](specs/2026-10-17-playable-cli-design.md);
   plan: [2026-10-17-playable-cli.md](plans/2026-10-17-playable-cli.md).
   Note: baseline ch.4's `--versus baseline` plan is superseded — the
   baseline evaluator will enroll as an `EvaluatorKind` in the study

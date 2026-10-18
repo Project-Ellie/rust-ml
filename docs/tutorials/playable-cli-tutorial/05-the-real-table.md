@@ -21,9 +21,9 @@ To get there you will:
   `Event`s;
 * extend the renderer with star points, the last-move marker, a
   coloured gutter, and a right-hand side panel;
-* wire the `play` and `selfplay` clap subcommands in `main.rs`,
-  including the legacy-flow dispatch and the `--color`-without-`--ai`
-  validation;
+* wire the `play` and `selfplay` clap subcommands in `main.rs`
+  straight into the study shell — the only UI — including the
+  `--color`-without-`--ai` validation;
 * implement the non-tty line-mode fallback so the same binary can be
   scripted for demos, chapter quotes, and tests.
 
@@ -59,6 +59,16 @@ to the `cli` crate and, unlike previous chapters, touches only the
 binary and the `tui/` modules — the library's command/event contract is
 already complete.
 
+One consolidation note before the design constraints. Chapter 01's
+slice 0 deleted the legacy hotseat/puzzle UI (owner decision,
+2026-10-17: the study table is the single CLI), so since then the
+`gomoku` binary has been a clap skeleton with nothing to dispatch to.
+This chapter builds the one and only UI: `play` and `selfplay` both
+land on the study table, the Swap2 ceremony runs inside the study
+shell, and there are no `--plain`, `--engine naive`, or `--puzzle`
+legacy paths to preserve. Puzzles return in chapter 07 as *positions*
+enrolling into this same table.
+
 Two important constraints from the spec govern this chapter:
 
 1. **The core stays ignorant of crossterm.** `SessionCore` already
@@ -88,18 +98,16 @@ Two important constraints from the spec govern this chapter:
      accessors.
 3. Extend `gomoku/crates/cli/src/main.rs`:
    * parse `play` (default) and `selfplay` subcommands via clap;
-   * route `--puzzle`, `--plain`, and `--engine naive` to the legacy
-     flows unchanged;
-   * route the modern study path through `study::run` or
-     `study::run_with_swap2`;
-   * validate that `--color` requires `--ai`, that `--engine naive`
-     cannot be combined with `--ai` or `selfplay`, and that legacy
-     flags are rejected before `selfplay`.
+   * route both through the study shell: `study::run` or
+     `study::run_with_swap2` for `play` (Swap2 default-on),
+     `study::run` with an "Enter = step" hint for `selfplay`;
+   * validate that `--color` requires `--ai`, that `--color` is invalid
+     for `selfplay`, and that `--no-swap2` placed before `selfplay` is
+     rejected.
 4. Add the small seat-accessor API that `study.rs` and `render.rs`
    need on `SessionCore` (`black`, `white`, `occupant`,
    `default_config`).
-5. Keep every existing legacy test green; add snapshot tests for the
-   new study rendering.
+5. Add snapshot tests for the new study rendering.
 
 Observable done-state: `gomoku play --ai tactics --no-swap2` draws the
 board and side panel; `gomoku selfplay --sims 200 --seed 7` steps
@@ -215,24 +223,22 @@ but the board layout does not jump.
 
 ### main.rs dispatch
 
-`main.rs` now parses clap subcommands and dispatches:
+`main.rs` parses the clap subcommands and dispatches — there is exactly
+one destination now, the study shell:
 
-* `--puzzle` → puzzle flow (unchanged).
-* `--plain` or `--engine naive` → legacy hotseat UI (unchanged).
-* `play` with modern flags → `study::run_with_swap2` (Swap2 on) or
-  `study::run` (Swap2 off).
-* `selfplay` → both seats AI, `--no-swap2` implied, `study::run` with an
-  "Enter = step" hint.
+* `play` (or no subcommand) → `study::run_with_swap2` (Swap2 on, the
+  default) or `study::run` (with `--no-swap2`). Seat assignments come
+  from `--ai` / `--color`: no `--ai` means hotseat (Human, Human);
+  `--ai tactics` seats the AI opposite the human.
+* `selfplay` → both seats AI, `--no-swap2` implied, `study::run` with
+  an "Enter = step" hint.
 
-The validation rules are:
+The validation rules are startup errors, reported before any crossterm
+state is entered:
 
-* `--engine naive` with `--ai` or `selfplay` → exit 2.
 * `--color` without `--ai` → exit 2.
 * `--color` with `selfplay` → exit 2.
-* Legacy `play` flags placed before `selfplay` → exit 2.
-
-These are startup errors, not runtime errors, so they are reported
-before any crossterm state is entered.
+* `--no-swap2` placed before `selfplay` → exit 2.
 
 ### The Swap2 handoff
 
@@ -255,33 +261,36 @@ position it was given.
 
 ### Files changed vs chapter 04
 
-The diff from chapter 04 (`f71de2f`) to this chapter (`8ad0061`) is
+The diff from chapter 04 (`d9e8fec`) to this chapter (`8847c4a`) is
 confined to the `cli` crate:
 
 ```text
-$ git diff f71de2f..8ad0061 --stat -- gomoku/crates/cli
- gomoku/crates/cli/src/main.rs       | 150 +++++++++---
+$ git diff d9e8fec..8847c4a --stat -- gomoku/crates/cli
+ gomoku/crates/cli/README.md         |  55 ++++-
+ gomoku/crates/cli/src/main.rs       | 173 ++++++++++++--
  gomoku/crates/cli/src/session.rs    |  34 ++-
- gomoku/crates/cli/src/tui/mod.rs    |   1 +
- gomoku/crates/cli/src/tui/render.rs | 243 +++++++++++++++++++-
- gomoku/crates/cli/src/tui/study.rs  | 442 ++++++++++++++++++++++++++++++++++++
- 5 files changed, 835 insertions(+), 35 deletions(-)
+ gomoku/crates/cli/src/tui/mod.rs    |   7 +-
+ gomoku/crates/cli/src/tui/render.rs | 241 +++++++++++++++++++
+ gomoku/crates/cli/src/tui/study.rs  | 465 ++++++++++++++++++++++++++++++++++++
+ 6 files changed, 940 insertions(+), 35 deletions(-)
 ```
 
-`src/tui/board.rs`, `src/tui/input.rs`, `src/tui/opening.rs`,
-`src/tui/puzzle.rs`, `src/tui/ui.rs`, `src/lib.rs`, `src/command.rs`,
-`src/actor.rs`, `src/history.rs`, `src/fmt.rs`, the demo binaries, and
-the integration tests are unchanged from chapter 04.
+`src/tui/opening.rs`, `src/lib.rs`, `src/command.rs`, `src/actor.rs`,
+`src/history.rs`, `src/fmt.rs`, the demo binaries, and the integration
+tests are unchanged from chapter 04. (The `tui/` directory holds only
+`opening.rs` and `render.rs` plus this chapter's `study.rs` — the
+legacy UI modules were deleted in chapter 01.)
 
 ### `src/main.rs`
 
 `main.rs` becomes a clap parser and dispatcher. Key structures:
 
-* `CliArgs` with a flattened `PlayArgs` for the legacy default
+* `CliArgs` with a flattened `PlayArgs` for the no-subcommand default
   invocation and an optional `Commands` subcommand.
 * `Commands::Play(PlayArgs)` and `Commands::Selfplay(SearchArgs)`.
-* `PlayArgs` contains both the legacy flags (`engine`, `plain`,
-  `no_swap2`, `puzzle`, `index`) and a flattened `SearchArgs`.
+* `PlayArgs` is just `no_swap2` plus a flattened `SearchArgs` — the
+  legacy flags (`engine`, `plain`, `puzzle`, `index`) are gone with the
+  legacy UI.
 * `SearchArgs` holds the AI/search flags (`ai`, `color`, `sims`,
   `c_puct`, `temperature`, `noise`, `black_sims`, `white_sims`,
   `seed`).
@@ -290,10 +299,9 @@ The dispatch flow:
 
 1. Parse `CliArgs`.
 2. Normalize `args.cmd == None` to `Mode::Play` with `args.play`.
-3. For `Selfplay`, reject any legacy flags that were placed before the
-   subcommand.
-4. In `run_play`, handle puzzle mode, then legacy `--plain`/`naive`,
-   then the study-table path.
+3. For `Selfplay`, reject `--no-swap2` placed before the subcommand.
+4. In `run_play`, build the `SessionInit` and enter the study shell —
+   Swap2 first unless `--no-swap2`.
 5. In `run_selfplay`, build a `SessionInit` with both seats AI and call
    `study::run`.
 
@@ -342,6 +350,14 @@ pub fn render_study(core: &SessionCore, recent_events: &[Event], styled: bool) -
 `render_study` splits the work into `render_study_board` and
 `render_side_panel`, then joins them line by line.
 
+The renderer you are extending is the GameBoard-free one from chapter
+01: every public entry point takes `&engine::Board` (or a
+`SessionCore`), and the shared `render_with` layout helper works on a
+move list plus a stone-lookup closure, so render-only views — the Swap2
+opening's `TemporaryOpeningBoard`, now a plain struct with no trait
+impl — reuse the same 19-line frame. `status_line` reports
+`engine: fast`, the only board the CLI drives.
+
 `study_board_lines` builds the 19-line board with:
 
 * `HOSHI = [3, 7, 11]`;
@@ -380,7 +396,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/render.rs`
 
-Exact new `#[test]` function names from commit `8ad0061`:
+Exact new `#[test]` function names from commit `8847c4a`:
 
 1. `study_board_shows_star_points_on_empty_cells`
 2. `study_board_marks_last_move`
@@ -389,7 +405,7 @@ Exact new `#[test]` function names from commit `8ad0061`:
 
 ### `src/tui/study.rs`
 
-Exact new `#[test]` function name from commit `8ad0061`:
+Exact new `#[test]` function name from commit `8847c4a`:
 
 1. `empty_line_step_only_when_ai_to_move`
 
@@ -398,9 +414,8 @@ Exact new `#[test]` function name from commit `8ad0061`:
 All tests from chapters 01–04 continue to pass and are part of the
 chapter-05 gate. Notably:
 
-* `tests/history.rs`, `tests/command.rs`, `tests/session.rs`, and
+* `tests/history.rs`, `tests/session.rs`, and
   `tests/actor.rs` are unchanged and must remain green.
-* The legacy puzzle, plain, and naive-engine flows keep working.
 
 ### Red-green-refactor rhythm
 

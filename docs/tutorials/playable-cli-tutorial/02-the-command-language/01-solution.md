@@ -1,23 +1,24 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
 > This file quotes the verified reference implementation for chapter 02.
-> The source files below are byte-for-byte copies from commit `161c49b`
+> The source files below are byte-for-byte copies from commit `6d1b7b7`
 > of the reference worktree (`rust-ml-ref-playable-cli`).
 >
 > `src/history.rs` from chapter 01 is **unchanged** in this chapter.
-> The diff from chapter 01 (`0782500`) to this chapter (`161c49b`)
+> The diff from chapter 01 (`22f1fa9`) to this chapter (`6d1b7b7`)
 > touches:
 > ```
->  Cargo.toml                              |   5 +
+>  Cargo.toml                              |   6 +
+>  README.md                               |   1 +
 >  src/actor.rs                             |  79 +++++
->  src/bin/historydemo.rs                   |  82 ++---
+>  src/bin/historydemo.rs                   |  73 +---
 >  src/bin/sessiondemo.rs                   | 146 ++++++++
->  src/command.rs                           | 542 +++++++++++++++++++++++++++++
+>  src/command.rs                           | 551 +++++++++++++++++++++++++++++
 >  src/fmt.rs                               |  41 +++
 >  src/lib.rs                               |   1 +
 >  src/session.rs                           | 579 +++++++++++++++++++++++++++++++
 >  tests/session.rs                         | 203 +++++++++++
->  9 files changed, 1616 insertions(+), 62 deletions(-)
+>  10 files changed, 1621 insertions(+), 59 deletions(-)
 > ```
 
 # Chapter 02 — opt-in solution

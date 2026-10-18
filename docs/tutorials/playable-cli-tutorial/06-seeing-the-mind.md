@@ -153,16 +153,16 @@ hidden.
 
 ### Files changed vs chapter 05
 
-The diff from chapter 05 (`8ad0061`) to this chapter (`ee4a66a`) is
+The diff from chapter 05 (`8847c4a`) to this chapter (`c41d339`) is
 confined to four files under `src/tui/`:
 
 ```text
-$ git diff 8ad0061..ee4a66a --stat -- gomoku/crates/cli
+$ git diff 8847c4a..c41d339 --stat -- gomoku/crates/cli
  gomoku/crates/cli/src/tui/mod.rs     |   1 +
- gomoku/crates/cli/src/tui/overlay.rs | 409 +++++++++++++++++++++++++++++++++++
+ gomoku/crates/cli/src/tui/overlay.rs | 408 +++++++++++++++++++++++++++++++++++
  gomoku/crates/cli/src/tui/render.rs  | 241 ++++++++++++++++++++-
  gomoku/crates/cli/src/tui/study.rs   | 130 ++++++++++-
- 4 files changed, 767 insertions(+), 14 deletions(-)
+ 4 files changed, 766 insertions(+), 14 deletions(-)
 ```
 
 Everything outside `src/tui/` is unchanged. In particular,
@@ -245,7 +245,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/overlay.rs`
 
-Exact `#[test]` function names from commit `ee4a66a`:
+Exact `#[test]` function names from commit `c41d339`:
 
 1. `cycle_order_is_off_visits_prior_off`
 2. `overlay_off_returns_none`
@@ -265,7 +265,7 @@ Exact `#[test]` function names from commit `ee4a66a`:
 
 ### `src/tui/render.rs`
 
-Exact `#[test]` function name added at `ee4a66a`:
+Exact `#[test]` function name added at `c41d339`:
 
 1. `policy_overlay_snapshot_with_fake_search_info`
 
@@ -417,7 +417,7 @@ numbered cells. Activating `t` clears the policy overlay, and activating
 * Commit message for the code slice:
   `feat(cli): policy overlay + value strip`.
 
-Next: [Chapter 07 — Acceptance](07-acceptance.md)
+Next: [Chapter 07 — Positions from files: puzzles](07-positions-from-files-puzzles.md)
 
 ## References
 

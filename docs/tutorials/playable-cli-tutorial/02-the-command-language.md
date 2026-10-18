@@ -89,7 +89,7 @@ shell thin and keeps the core testable without terminal mocking.
 
 `SessionInit` carries `seed: Option<u64>`. The core constructs a
 `StdRng` from it, even though Task 2 has no AI to use it. That seed is
-what will make chapter 03's `Step` reproducible and chapter 07's golden
+what will make chapter 03's `Step` reproducible and chapter 09's golden
 transcripts bit-stable. Defining it now avoids a constructor breaking
 change later.
 
@@ -117,9 +117,10 @@ gomoku/crates/cli/
 ```
 
 `src/history.rs` from chapter 01 is **unchanged** in this chapter. The
-verified diff from chapter 01 (`0782500`) to this chapter (`161c49b`)
-adds the files above and touches `Cargo.toml` and `src/bin/historydemo.rs`
-(formatting pass), but `history.rs` itself has zero diff.
+verified diff from chapter 01 (`22f1fa9`) to this chapter (`6d1b7b7`)
+adds the files above and touches `Cargo.toml` and
+`src/bin/historydemo.rs` (the demo's local board/move formatting moves
+to the shared `fmt` module), but `history.rs` itself has zero diff.
 
 ### Contracts (from the verified reference)
 
@@ -307,7 +308,6 @@ h7
 b1
 i8
 c1
-info
 ```
 
 Run it from `gomoku/`:
@@ -451,8 +451,6 @@ ply 6  status Ongoing  black Human  white Human
 13  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 14  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 15  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-
-No search info at the cursor.
 
 ```
 
