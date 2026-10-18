@@ -41,7 +41,7 @@ tutorials:
 - **Chapters give contracts, you write the implementation.** TDD
   checklists name the exact tests. Stuck for more than ~20 minutes?
   Each chapter has an opt-in `NN-name/01-solution.md` quoting the
-  verified reference implementation verbatim. Using it is not failure;
+  target state of the crate verbatim. Using it is not failure;
   it's what it's for.
 - **Gates per chapter:** `cargo test -p cli`,
   `cargo clippy --all-targets -- -D warnings`, and
@@ -67,10 +67,8 @@ tutorials:
 
 Written 2026-10-17 against the approved spec (as amended: algebraic
 notation, single CLI, positions from files); chapters 07–08 (positions
-from files) landed 2026-10-18. The reference implementation was built
-TDD-first in a disposable worktree
-(`../rust-ml-ref-playable-cli`, branch `reference/playable-cli`), kept
-for inspection until the tutorial is worked; solution files quote it
-byte-for-byte. Reference verification at the chapter-09 state (tip
-`3bf0544`): 136 tests green in the crate (one ignored measurement),
-workspace green, gates clean.
+from files) added 2026-10-18. What you will have built by the end of
+chapter 09: a `cli` crate with 136 tests green (one ignored
+measurement), workspace green, gates clean. The solution files quote
+that end state byte-for-byte; each carries its verification provenance
+in its header.

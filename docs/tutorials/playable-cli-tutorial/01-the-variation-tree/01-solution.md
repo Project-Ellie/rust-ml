@@ -1,13 +1,12 @@
 > **Opt-in solution — read only after you have tried the chapter, or if
 > you have been stuck for more than twenty minutes.**
 >
-> This file quotes the verified reference implementation for both
-> slices of Chapter 01. The files come from the disposable worktree
-> `/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli`
-> (branch `reference/playable-cli`): slice 0 at commit `664cc40`,
-> slice 1 at commit `22f1fa9`.
+> This file quotes the target state your work should produce for both
+> slices of Chapter 01, verbatim. Target state verified against the
+> tutorial's reference build: slice 0 at commit `664cc40`, slice 1 at
+> commit `22f1fa9`.
 
-# Slice 0 (commit `664cc40`) — `refactor(cli): lib/bin split + clap skeleton; legacy UI removed`
+# Slice 0 — `refactor(cli): lib/bin split + clap skeleton; legacy UI removed`
 
 ## `gomoku/crates/cli/Cargo.toml`
 
@@ -182,11 +181,12 @@ fn main() {
 
 ## The legacy UI is deleted, not moved
 
-The old hotseat/puzzle front-end — `src/ui.rs`, `src/input.rs`,
+Delete the old hotseat/puzzle front-end — `src/ui.rs`, `src/input.rs`,
 `src/board.rs`, `src/puzzle.rs`, and the `dyn GameBoard` abstraction
-they were built on — is deleted at this commit (owner decision,
-2026-10-17: the study table will be the single CLI). There is no
-runnable `gomoku play` UI until chapter 05 lands the study table.
+they were built on (owner decision,
+2026-10-17: the study table will be the single CLI). After this slice
+there is no runnable `gomoku play` UI until chapter 05 lands the study
+table.
 
 Only the pure rendering pieces survive, moved under `src/tui/`:
 
@@ -233,7 +233,7 @@ pub mod render;
 //! Session core — headless state machine.
 ```
 
-# Slice 1 (commit `22f1fa9`) — `feat(cli): variation-tree history + historydemo`
+# Slice 1 — `feat(cli): variation-tree history + historydemo`
 
 ## `gomoku/crates/cli/Cargo.toml`
 

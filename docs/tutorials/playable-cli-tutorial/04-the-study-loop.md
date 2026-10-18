@@ -195,8 +195,8 @@ which is what tests assert.
 
 ### Files changed vs chapter 03
 
-The diff from chapter 03 (`251246c`) to this chapter (`d9e8fec`) is
-confined to the `cli` crate:
+Your work in this chapter is confined to the `cli` crate; the
+footprint:
 
 ```text
 $ git diff 251246c..d9e8fec --stat -- gomoku/crates/cli
@@ -265,7 +265,7 @@ window.
 
 #### `opening_schedule_active`
 
-The exact rule, taken from the reference implementation:
+Implement this rule exactly:
 
 ```rust
 fn opening_schedule_active(&self, _side: Color) -> bool {
@@ -334,7 +334,7 @@ New headless integration tests. See the TDD checklist for exact names.
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [04-the-study-loop/01-solution.md](04-the-study-loop/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -345,7 +345,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/study.rs`
 
-Exact `#[test]` function names from commit `d9e8fec`:
+Write exactly these `#[test]` functions:
 
 1. `scripted_study_transcript`
 2. `opening_schedule_changes_ai_vs_ai_play`
@@ -379,14 +379,14 @@ gate. Notable carry-overs:
 
 ### AI-vs-AI opening variety
 
-Run the reference script in the worktree:
+Run the study script:
 
 ```text
 cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --seed 7 --script crates/cli/study_demo.txt
 ```
 
-Key frames from the measured output (commit `d9e8fec`):
+Expect these key frames:
 
 Releasing both seats:
 
@@ -467,7 +467,8 @@ different opening.
 
 ### Take → branch → var → release
 
-A short script demonstrating the study loop (saved here to `/tmp/study_loop_demo.txt`):
+A short script demonstrating the study loop (save it as
+`/tmp/study_loop_demo.txt`):
 
 ```text
 release both
@@ -489,7 +490,7 @@ Run it:
 cargo run -q -p cli --bin sessiondemo -- --seed 7 --script /tmp/study_loop_demo.txt
 ```
 
-Measured frames:
+Expect these frames:
 
 Three AI-vs-AI moves, then taking Black's seat:
 

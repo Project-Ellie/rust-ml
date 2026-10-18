@@ -116,13 +116,12 @@ gomoku/crates/cli/
 └── tests/session.rs        (new: headless integration tests)
 ```
 
-`src/history.rs` from chapter 01 is **unchanged** in this chapter. The
-verified diff from chapter 01 (`22f1fa9`) to this chapter (`6d1b7b7`)
-adds the files above and touches `Cargo.toml` and
+`src/history.rs` from chapter 01 is **unchanged** in this chapter.
+You add the files above and touch `Cargo.toml` and
 `src/bin/historydemo.rs` (the demo's local board/move formatting moves
-to the shared `fmt` module), but `history.rs` itself has zero diff.
+to the shared `fmt` module); `history.rs` itself stays untouched.
 
-### Contracts (from the verified reference)
+### Contracts
 
 `src/actor.rs`:
 
@@ -286,12 +285,12 @@ extra tokens produce `CommandError::Parse`.
 front-end decides how to report errors; the core never prints. The Task
 2 implementation validates arguments even for not-yet-implemented AI
 commands: `SetSims { seat, n: 0 }` returns `CommandError::ZeroSims`
-before the `AiSeatsNotImplemented` path is reached. This keeps the
-parser and state-machine contracts honest.
+before the `AiSeatsNotImplemented` path is reached, so the parser and
+state-machine contracts stay checkable.
 
 ### Solution (opt-in)
 
-The complete reference source for this chapter lives in
+The complete target source for this chapter is quoted in
 [02-the-command-language/01-solution.md](02-the-command-language/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare.
@@ -316,7 +315,7 @@ Run it from `gomoku/`:
 cargo run -q -p cli --bin sessiondemo -- --script demo_script.txt
 ```
 
-The real output is:
+Expect this output:
 
 ```text
 Session started. Type 'h' for help.

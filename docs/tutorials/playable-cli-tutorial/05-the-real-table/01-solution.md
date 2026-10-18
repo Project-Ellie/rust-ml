@@ -1,12 +1,12 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the reference implementation files for chapter 05,
-> verified green at commit `8847c4a` in the reference worktree.
+> This file quotes the target state your work should produce for
+> chapter 05, verbatim. Target state verified against the tutorial's
+> reference build, commit `8847c4a`.
 
-Open this only if you have been stuck for more than twenty minutes,
-or after you have finished the chapter and want to compare your work
-against the verified reference. The files below are quoted verbatim
-from the reference worktree.
+Read this only after you have tried the chapter, or when you have been
+stuck for more than twenty minutes. The files below are the chapter's
+target state, quoted verbatim.
 
 Files changed in this chapter:
 

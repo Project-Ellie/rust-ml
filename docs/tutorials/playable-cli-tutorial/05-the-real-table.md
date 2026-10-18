@@ -29,8 +29,8 @@ To get there you will:
 
 The chapter's mental-mapping centerpiece is the **shell doctrine**:
 the core stays ignorant of crossterm, and all visual state — including
-overlay mode — lives in the shell. The capstone is a real captured
-non-tty session, quoted below.
+overlay mode — lives in the shell. The capstone is a scripted
+non-tty session whose output is quoted below.
 
 ## Glossary
 
@@ -111,7 +111,7 @@ Two important constraints from the spec govern this chapter:
 
 Observable done-state: `gomoku play --ai tactics --no-swap2` draws the
 board and side panel; `gomoku selfplay --sims 200 --seed 7` steps
-through AI-vs-AI with Enter; the captured non-tty output matches the
+through AI-vs-AI with Enter; the non-tty output matches the
 frames below; the TDD checklist passes; the gates are clean.
 
 ## Mental mapping
@@ -261,8 +261,8 @@ position it was given.
 
 ### Files changed vs chapter 04
 
-The diff from chapter 04 (`d9e8fec`) to this chapter (`8847c4a`) is
-confined to the `cli` crate:
+Your work in this chapter is confined to the `cli` crate; the
+footprint:
 
 ```text
 $ git diff d9e8fec..8847c4a --stat -- gomoku/crates/cli
@@ -385,7 +385,7 @@ behaviour changes.
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [05-the-real-table/01-solution.md](05-the-real-table/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -396,7 +396,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/render.rs`
 
-Exact new `#[test]` function names from commit `8847c4a`:
+Write exactly these new `#[test]` functions:
 
 1. `study_board_shows_star_points_on_empty_cells`
 2. `study_board_marks_last_move`
@@ -405,7 +405,7 @@ Exact new `#[test]` function names from commit `8847c4a`:
 
 ### `src/tui/study.rs`
 
-Exact new `#[test]` function name from commit `8847c4a`:
+Write exactly this new `#[test]` function:
 
 1. `empty_line_step_only_when_ai_to_move`
 
@@ -429,7 +429,7 @@ chapter-05 gate. Notably:
 
 ## Capstone: the study table gets its wood
 
-Run the non-tty demo in the reference worktree:
+Run the non-tty demo:
 
 ```text
 cd gomoku
@@ -438,8 +438,7 @@ printf 'h8\nstep\nq\n' | cargo run -q -p cli --bin gomoku -- play --ai tactics -
 
 Because `--color white` seats the human in White, Black is the AI. The
 study table lets a human force a move even on an AI seat; the move is
-credited to the seat's occupant. The three frames below are the real
-captured output.
+credited to the seat's occupant. Expect these three frames.
 
 Initial frame:
 

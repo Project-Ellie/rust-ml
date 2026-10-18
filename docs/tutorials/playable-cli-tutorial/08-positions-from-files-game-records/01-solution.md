@@ -1,22 +1,20 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the reference files for chapter 08, verified green at
-> commit `3bf0544` of the reference worktree (parent `d6c2af3`, the
-> chapter-07 state). New files and every file with substantive edits are
-> quoted whole. Files already quoted in chapter 07's solution
+> This file quotes the target state your work should produce for
+> chapter 08, verbatim. New files and every file with substantive edits
+> are quoted whole. Files already quoted in chapter 07's solution
 > (`session.rs`, `main.rs`, `sessiondemo.rs`, `render.rs`, `lib.rs`,
-> `tests/session.rs`) are quoted again at their chapter-08 state — each
-> chapter's solution is self-contained. The quoted text was verified
-> byte-for-byte against the reference worktree with
-> `git show 3bf0544:<path>`.
+> `tests/session.rs`) are quoted again at their chapter-08 state —
+> each chapter's solution is self-contained. Target state verified
+> against the tutorial's reference build, commit `3bf0544`.
 
 # Chapter 08 — opt-in solution
 
 ## Files not quoted
 
-The following files changed at `3bf0544` but only mechanically — a
-`game: None` field added to `SessionInit` struct literals — so they are
-not quoted above:
+The following files also change in this chapter, but only
+mechanically — a `game: None` field added to `SessionInit` struct
+literals — so this file does not quote them:
 
 * `gomoku/crates/cli/tests/acceptance.rs` — one `game: None` line.
 * `gomoku/crates/cli/tests/actor.rs` — three `game: None` lines.
@@ -3667,44 +3665,3 @@ take black
 quit
 ```
 
-## Verification
-
-The quoted files were extracted from commit `3bf0544` of the reference
-worktree. To verify them yourself:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-REPO=/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli
-COMMIT=3bf0544
-SOLUTION=/Users/wgiersche/workspace/Project-Ellie/rust-ml/docs/tutorials/playable-cli-tutorial/08-positions-from-files-game-records/01-solution.md
-
-python3 - "$REPO" "$COMMIT" "$SOLUTION" <<'PY'
-import re, subprocess, sys
-repo, commit, solution_path = sys.argv[1:4]
-with open(solution_path, "r") as f:
-    text = f.read()
-# Each quoted file is a ## `path` header followed by a fenced code block.
-# The closing fence is on its own line, so we match that explicitly.
-pattern = re.compile(
-    r'^## `([^`]+)`\n+```(?:rust|text|json|toml)\n(.*?)\n```(?:\n|$)',
-    re.MULTILINE | re.DOTALL,
-)
-ok = True
-for m in pattern.finditer(text):
-    path = m.group(1)
-    if not path.endswith((".rs", ".txt", ".json", ".psq", ".toml")):
-        continue
-    body = m.group(2) + "\n"  # restore the newline before the closing fence
-    expected = subprocess.check_output(
-        ["git", "-C", repo, "show", f"{commit}:{path}"],
-        text=True,
-    )
-    if body != expected:
-        print(f"MISMATCH: {path}", file=sys.stderr)
-        ok = False
-    else:
-        print(f"OK: {path}")
-sys.exit(0 if ok else 1)
-PY
-```

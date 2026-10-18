@@ -197,11 +197,12 @@ they do for a Swap2 opening. A missing or invalid pack exits with code
 
 ### Files changed vs chapter 06
 
-The reference worktree built the acceptance tests (chapter 09) before
-this chapter, so the puzzle commit `d6c2af3` sits on `7d7ff13`, not on
-chapter 06's `c41d339`. The in-between commits are test-only; the diff
-below touches `tests/acceptance.rs` only with a mechanical
-`puzzle: None` field addition.
+Work in tutorial order: this chapter builds on chapter 06's state.
+(The footprint below was measured on a tree that also contained
+chapter 09's acceptance tests; if you work in order you have no
+acceptance file yet, and its only overlap with this chapter — one
+mechanical `puzzle: None` field in the `SessionInit` literals — is
+yours to write when chapter 09 arrives.)
 
 ```text
 $ git diff 7d7ff13..d6c2af3 --stat -- gomoku/crates/cli
@@ -373,7 +374,7 @@ the corpora.
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [07-positions-from-files-puzzles/01-solution.md](07-positions-from-files-puzzles/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -384,7 +385,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/puzzle.rs`
 
-Exact `#[test]` function names from commit `d6c2af3`:
+Write exactly these `#[test]` functions:
 
 1. `parses_valid_pack`
 2. `file_coordinates_are_x_column_y_row`
@@ -404,7 +405,7 @@ Exact `#[test]` function names from commit `d6c2af3`:
 
 ### `tests/session.rs`
 
-Ten new session tests at `d6c2af3`:
+Add these ten session tests:
 
 1. `puzzle_session_roots_at_puzzle_position_with_attacker_to_move`
 2. `puzzle_init_rejects_out_of_range_index`
@@ -419,13 +420,14 @@ Ten new session tests at `d6c2af3`:
 
 ### `src/command.rs`
 
-One new parser test at `d6c2af3`:
+Add this parser test:
 
 1. `parse_puzzle_commands`
 
 All earlier tests continue to pass and are part of the chapter-07 gate;
 the earlier `SessionInit` struct literals gain a `puzzle: None` field
-(`tests/acceptance.rs`, `tests/actor.rs`, `tests/study.rs`).
+(in `tests/actor.rs` and `tests/study.rs` now, and in chapter 09's
+`tests/acceptance.rs` when you write it).
 
 ### Red-green-refactor rhythm
 
@@ -457,14 +459,14 @@ next
 hint
 ```
 
-Run it in the reference worktree:
+Run it:
 
 ```text
 cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --puzzle crates/cli/tests/fixtures/mini-pack.json --script crates/cli/puzzle_demo.txt
 ```
 
-Frames from the measured output (commit `d6c2af3`).
+Expect these frames.
 
 The session opens on puzzle 1 of 3: Black to move, the vertical four on
 column h, and the puzzle line under the status row:

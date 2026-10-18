@@ -1,20 +1,18 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the reference files for chapter 07, verified green at
-> commit `d6c2af3` of the reference worktree (parent `7d7ff13`; the
-> reference built the chapter-09 acceptance tests before this chapter, so
-> they are already in the base). New files and every file with substantive
-> edits are quoted whole, including `command.rs` and `session.rs` although
-> earlier chapters quoted them too — each chapter's solution is
-> self-contained. The quoted text was verified byte-for-byte against the
-> reference worktree with `git show d6c2af3:<path>`.
+> This file quotes the target state your work should produce for
+> chapter 07, verbatim. New files and every file with substantive
+> edits are quoted whole, including `command.rs` and `session.rs`
+> although earlier chapters quoted them too — each chapter's solution
+> is self-contained. Target state verified against the tutorial's
+> reference build, commit `d6c2af3`.
 
 # Chapter 07 — opt-in solution
 
 ## Files not quoted
 
-The following files changed at `d6c2af3` but only mechanically, so they
-are not quoted above:
+The following files also change in this chapter, but only
+mechanically, so this file does not quote them:
 
 * `gomoku/crates/cli/tests/acceptance.rs` — one `puzzle: None` field in a
   `SessionInit` struct literal.
@@ -4751,44 +4749,3 @@ next
 hint
 ```
 
-## Verification
-
-The quoted files were extracted from commit `d6c2af3` of the reference
-worktree. To verify them yourself:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-REPO=/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli
-COMMIT=d6c2af3
-SOLUTION=/Users/wgiersche/workspace/Project-Ellie/rust-ml/docs/tutorials/playable-cli-tutorial/07-positions-from-files-puzzles/01-solution.md
-
-python3 - "$REPO" "$COMMIT" "$SOLUTION" <<'PY'
-import re, subprocess, sys
-repo, commit, solution_path = sys.argv[1:4]
-with open(solution_path, "r") as f:
-    text = f.read()
-# Each quoted file is a ## `path` header followed by a fenced code block.
-# The closing fence is on its own line, so we match that explicitly.
-pattern = re.compile(
-    r'^## `([^`]+)`\n+```(?:rust|text|json|toml)\n(.*?)\n```(?:\n|$)',
-    re.MULTILINE | re.DOTALL,
-)
-ok = True
-for m in pattern.finditer(text):
-    path = m.group(1)
-    if not path.endswith((".rs", ".txt", ".json", ".psq", ".toml")):
-        continue
-    body = m.group(2) + "\n"  # restore the newline before the closing fence
-    expected = subprocess.check_output(
-        ["git", "-C", repo, "show", f"{commit}:{path}"],
-        text=True,
-    )
-    if body != expected:
-        print(f"MISMATCH: {path}", file=sys.stderr)
-        ok = False
-    else:
-        print(f"OK: {path}")
-sys.exit(0 if ok else 1)
-PY
-```

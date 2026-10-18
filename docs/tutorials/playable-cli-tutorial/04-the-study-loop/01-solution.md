@@ -1,9 +1,10 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the reference files for chapter 04, verified green at
-> commit `d9e8fec` against main's `cli` crate with chapters 01–03 in
-> place. Files unchanged from chapter 03 are not quoted; they are listed
-> at the end.
+> This file quotes the target state your work should produce for
+> chapter 04, verified green against the `cli` crate with chapters
+> 01–03 in place. Files unchanged from chapter 03 are not quoted; they
+> are listed at the end. Target state verified against the tutorial's
+> reference build, commit `d9e8fec`.
 
 ## `gomoku/crates/cli/src/actor.rs`
 
@@ -1759,8 +1760,8 @@ step
 
 ## Files unchanged from chapter 03
 
-The following files are identical to their chapter-03 versions at
-`251246c` and are not quoted above:
+The following files are identical to their chapter-03 versions and are
+not quoted above:
 
 * `gomoku/crates/cli/src/command.rs`
 * `gomoku/crates/cli/src/history.rs`
@@ -1769,44 +1770,3 @@ The following files are identical to their chapter-03 versions at
 * `gomoku/crates/cli/tests/history.rs`
 * `gomoku/crates/cli/tests/session.rs`
 
-## Verification
-
-The quoted files were extracted from commit `d9e8fec` of the reference
-worktree. To verify them yourself:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-REPO=/Users/wgiersche/workspace/Project-Ellie/rust-ml-ref-playable-cli
-COMMIT=d9e8fec
-SOLUTION=/Users/wgiersche/workspace/Project-Ellie/rust-ml/docs/tutorials/playable-cli-tutorial/04-the-study-loop/01-solution.md
-
-python3 - "$REPO" "$COMMIT" "$SOLUTION" <<'PY'
-import re, subprocess, sys
-repo, commit, solution_path = sys.argv[1:4]
-with open(solution_path, "r") as f:
-    text = f.read()
-# Each quoted file is a ## `path` header followed by a fenced code block.
-# The closing fence is on its own line, so we match that explicitly.
-pattern = re.compile(
-    r'^## `([^`]+)`\n+```(?:rust|text)\n(.*?)\n```(?:\n|$)',
-    re.MULTILINE | re.DOTALL,
-)
-ok = True
-for m in pattern.finditer(text):
-    path = m.group(1)
-    if not (path.endswith(".rs") or path.endswith(".txt")):
-        continue
-    body = m.group(2) + "\n"  # restore the newline before the closing fence
-    expected = subprocess.check_output(
-        ["git", "-C", repo, "show", f"{commit}:{path}"],
-        text=True,
-    )
-    if body != expected:
-        print(f"MISMATCH: {path}", file=sys.stderr)
-        ok = False
-    else:
-        print(f"OK: {path}")
-sys.exit(0 if ok else 1)
-PY
-```

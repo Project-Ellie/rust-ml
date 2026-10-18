@@ -1,7 +1,8 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the verified reference files for chapter 03. The
-> source was commit `251246c` in the disposable reference worktree.
+> This file quotes the target state your work should produce for
+> chapter 03, verbatim. Target state verified against the tutorial's
+> reference build, commit `251246c`.
 > `src/history.rs` and `src/fmt.rs` are unchanged from chapter 02 and
 > are not repeated.
 

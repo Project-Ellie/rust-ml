@@ -1,17 +1,16 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the four files that changed at commit `c41d339`:
-> `src/tui/overlay.rs` (new), `src/tui/study.rs`, `src/tui/render.rs`,
-> and `src/tui/mod.rs`. All other files are unchanged from chapter 05.
-> The quoted text was verified byte-for-byte against the reference
-> worktree with `git show c41d339:<path>`.
+> This file quotes the target state of the four files you change in
+> this chapter: `src/tui/overlay.rs` (new), `src/tui/study.rs`,
+> `src/tui/render.rs`, and `src/tui/mod.rs`. All other files are
+> unchanged from chapter 05. Target state verified against the
+> tutorial's reference build, commit `c41d339`.
 
 # Chapter 06 — opt-in solution
 
 ## Unchanged files
 
-The following files are identical to their chapter-05 versions at
-`8847c4a`:
+The following files are identical to their chapter-05 versions:
 
 * `gomoku/crates/cli/src/lib.rs`
 * `gomoku/crates/cli/src/main.rs`

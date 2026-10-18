@@ -150,8 +150,9 @@ Chapter 6's payoffs, all sourced from the cursor node's `SearchInfo`:
   of the evaluator's raw belief before search) → off.
 - **`v` toggles the value strip** in the side panel: root value from
   the searching side's perspective, total visits, top-3 moves. A
-  scalar, honestly displayed — per-cell values would need an evaluator
-  call per child and are not what AlphaZero shows you anyway.
+  scalar, displayed as stored — per-cell values would need an
+  evaluator call per child and are not what AlphaZero shows you
+  anyway.
 - Cell overlays are **mutually exclusive** (policy and the TSS overlay
   clear each other); the value strip composes with everything.
 

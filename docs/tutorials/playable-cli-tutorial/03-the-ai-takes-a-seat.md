@@ -206,8 +206,8 @@ two simulation budgets and look only at the `SearchInfo`.
 
 The position is the win-in-one setup from
 `tactics_ai_takes_win_in_one` in `tests/actor.rs`: Black has an open
-four on row 7 and can win by playing `c8` or `h8`. Measured in the
-reference worktree at commit `251246c`:
+four on row 7 and can win by playing `c8` or `h8`. Measure it at two
+budgets and you should see:
 
 | Simulations | `value` | total visits | top move(s) |
 |-------------|---------|--------------|-------------|
@@ -235,8 +235,8 @@ clear baseline.
 
 ### Files changed vs chapter 02
 
-The diff from chapter 02 (`6d1b7b7`) to this chapter (`251246c`) is
-confined to the `cli` crate:
+Your work in this chapter is confined to the `cli` crate; the
+footprint:
 
 ```text
 $ git diff 6d1b7b7..251246c --stat -- gomoku/crates/cli
@@ -251,8 +251,9 @@ $ git diff 6d1b7b7..251246c --stat -- gomoku/crates/cli
  8 files changed, 644 insertions(+), 60 deletions(-)
 ```
 
-`src/history.rs` and `src/fmt.rs` do not appear in the diff: they are
-unchanged from chapter 02. The `Cargo.toml` change adds the `mcts`
+`src/history.rs` and `src/fmt.rs` do not appear in the footprint: you
+leave them unchanged from chapter 02. The `Cargo.toml` change adds the
+`mcts`
 dependency and an `engine` dev-dependency with the `testutil` feature
 (`tests/actor.rs` builds positions with
 `engine::reference::board_from_ascii` and queries
@@ -333,7 +334,7 @@ info
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [03-the-ai-takes-a-seat/01-solution.md](03-the-ai-takes-a-seat/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -344,7 +345,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/actor.rs`
 
-Exact `#[test]` function names from commit `251246c`:
+Write exactly these `#[test]` functions:
 
 1. `tactics_ai_takes_win_in_one`
 2. `tactics_ai_blocks_opponent_open_four`
@@ -376,14 +377,14 @@ gate. Notably:
 
 ## Capstone: the AI answers and shows its working
 
-Run the scripted demo in the worktree:
+Run the scripted demo:
 
 ```text
 cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --script ../crates/cli/demo_script.txt
 ```
 
-Key frames from the real output (measured at commit `251246c`):
+Expect these key frames:
 
 Releasing White:
 
@@ -452,8 +453,9 @@ top moves (visits, prior%):
 
 On a quiet board the search has nothing to prefer, so the top moves
 are scattered along the first row with two visits each and a flat
-0.5% prior. The AI sat down, answered, and honestly reported that it
-had no idea what to do. The baseline tutorial will teach it better.
+0.5% prior. The AI sat down, answered, and reported in plain numbers
+that it had no idea what to do. The baseline tutorial will teach it
+better.
 ## Done when
 
 * `cargo test -p cli` passes from `gomoku/` (including all chapter-02

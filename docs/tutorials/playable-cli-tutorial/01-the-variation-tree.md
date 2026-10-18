@@ -43,14 +43,15 @@ tree, and a core/shell split. This chapter builds the first core
 module.
 
 Before this chapter, the `cli` crate is a binary-only hotseat client.
-Task 0 of the implementation plan
-([`docs/plans/2026-10-17-playable-cli.md`](../../plans/2026-10-17-playable-cli.md))
-deletes that legacy UI (the study table will be the single CLI — the
-owner accepted having no runnable `gomoku play` UI until chapter 05),
-adds the library target, and installs the `clap` skeleton that later
-chapters will wire up. Task 1 implements the tree itself
+Slice 0 of this chapter deletes that legacy UI (the study table will
+be the single CLI — the owner accepted having no runnable `gomoku
+play` UI until chapter 05), adds the library target, and installs the
+`clap` skeleton that later chapters wire up (Task 0 of the
+implementation plan,
+[`docs/plans/2026-10-17-playable-cli.md`](../../plans/2026-10-17-playable-cli.md)).
+Slice 1 implements the tree itself
 ([`docs/specs/2026-10-17-playable-cli-design.md`](../../specs/2026-10-17-playable-cli-design.md)
-§7).
+§7, Task 1 of the plan).
 
 The design authority is the spec. When this chapter and the spec
 disagree, the spec wins.
@@ -111,7 +112,7 @@ matters.
 
 ### Slice 0 — crate split and clap skeleton
 
-Files touched at commit `664cc40`:
+Files you touch in this slice:
 
 * [`gomoku/crates/cli/Cargo.toml`](../../../gomoku/crates/cli/Cargo.toml)
   — add `[lib]`, keep `[[bin]]`, add `clap`; the `naive-engine`
@@ -131,11 +132,12 @@ Files touched at commit `664cc40`:
 * `actor.rs`, `command.rs`, `history.rs`, `session.rs` — stub modules
   with module docs.
 
-Deleted at this commit: `src/ui.rs`, `src/input.rs`, `src/board.rs`,
-`src/puzzle.rs`, and the `dyn GameBoard` trait they implemented. The
+Then delete the legacy UI: `src/ui.rs`, `src/input.rs`,
+`src/board.rs`, `src/puzzle.rs`, and the `dyn GameBoard` trait they
+implement. The
 naive engine stays in the `engine` crate as the test oracle; *playing*
-on it was curriculum scaffolding, and that scaffolding is what is being
-deleted.
+on it was curriculum scaffolding, and that scaffolding is what you are
+deleting.
 
 Why split the crate now? The core/shell split is the load-bearing
 structure of the whole tutorial. A headless library lets every
@@ -157,7 +159,7 @@ accepted it explicitly.
 
 ### Slice 1 — the variation tree
 
-Files created or modified at commit `22f1fa9`:
+Files you create or modify in this slice:
 
 * [`gomoku/crates/cli/src/history.rs`](../../../gomoku/crates/cli/src/history.rs)
   — the variation tree.
@@ -168,7 +170,7 @@ Files created or modified at commit `22f1fa9`:
 
 #### Exact `History` API
 
-The public contract from the verified reference (`22f1fa9`) is:
+Implement exactly this public contract:
 
 ```rust
 pub type NodeId = u32;
@@ -251,7 +253,7 @@ cd gomoku
 cargo run -q -p cli --bin historydemo
 ```
 
-The verified output is:
+Expect exactly this output:
 
 ```text
 variation-tree demo
@@ -438,7 +440,7 @@ ply 0  path: (root)
 > **Opt-in solution — read only after you have tried the chapter, or if
 > you have been stuck for more than twenty minutes.**
 >
-> The complete reference files for both slices are quoted in
+> The target state of both slices is quoted in
 > [`01-the-variation-tree/01-solution.md`](01-the-variation-tree/01-solution.md).
 > Open it only if you need it; using it is not failure.
 

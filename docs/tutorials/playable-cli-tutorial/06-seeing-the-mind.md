@@ -76,8 +76,8 @@ strip). Three constraints carry over from earlier chapters:
 3. Extend `gomoku/crates/cli/src/tui/study.rs`:
    * add `p` to cycle the policy overlay and clear any TSS overlay;
    * add `v` to toggle the value strip;
-   * keep the `t` TSS command working (it already clears the policy
-     overlay in the reference).
+   * keep the `t` TSS command working (it clears the policy overlay in
+     the target state).
 4. Understand and document the **searching-side derivation**: because
    `SearchInfo` is stored on the child node produced by the search, the
    side that searched is `core.board().to_move().other()`.
@@ -153,8 +153,8 @@ hidden.
 
 ### Files changed vs chapter 05
 
-The diff from chapter 05 (`8847c4a`) to this chapter (`c41d339`) is
-confined to four files under `src/tui/`:
+Your work in this chapter is confined to four files under `src/tui/`;
+the footprint:
 
 ```text
 $ git diff 8847c4a..c41d339 --stat -- gomoku/crates/cli
@@ -234,7 +234,7 @@ One line: add `pub mod overlay;`.
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [06-seeing-the-mind/01-solution.md](06-seeing-the-mind/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -245,7 +245,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `src/tui/overlay.rs`
 
-Exact `#[test]` function names from commit `c41d339`:
+Write exactly these `#[test]` functions:
 
 1. `cycle_order_is_off_visits_prior_off`
 2. `overlay_off_returns_none`
@@ -265,7 +265,7 @@ Exact `#[test]` function names from commit `c41d339`:
 
 ### `src/tui/render.rs`
 
-Exact `#[test]` function name added at `c41d339`:
+Add exactly this `#[test]` function:
 
 1. `policy_overlay_snapshot_with_fake_search_info`
 
@@ -284,7 +284,7 @@ gate.
 
 ## Capstone: now you can see what the AI thinks
 
-Run the scripted session in the reference worktree. The captures below
+Run the scripted session. The frames below
 use the non-tty fallback (stdout is a pipe), so the frames are plain
 text without ANSI escapes. The alternate-screen path paints the same
 cells with `\x1b[48;5;...m` backgrounds, using the `^[` convention from
@@ -332,7 +332,7 @@ The search spent its budget on the two cells that stop Black's open
 four: `g8` — already played by White — and `l8`. The occupied cell
 shows the stone glyph; the empty block cell is highlighted. In a colour
 terminal the hot cells glow red/orange on an ANSI-256 background; the
-non-tty capture above uses the plain-cell convention.
+non-tty frame above uses the plain-cell convention.
 
 ### Prior overlay
 

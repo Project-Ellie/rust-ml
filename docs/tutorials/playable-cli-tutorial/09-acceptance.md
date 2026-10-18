@@ -49,8 +49,8 @@ three different lenses:
    that claim.
 
 This chapter is the controller's checkpoint before the tutorial is
-considered done: run the gates, quote the numbers, and write down the
-honest reading.
+considered done: run the gates, record the numbers, and write down
+what they do and do not prove.
 
 ## Intent
 
@@ -76,11 +76,11 @@ reproduces the table quoted below.
 
 ## The three acceptance artifacts
 
-The reference implementation contains exactly these three tests,
-landed across three commits: `355a77a` introduced them, `d908cd3`
-amended the measurement to a uniform-random baseline (the story
-below), and `7d7ff13` dropped an unused import the clippy gate
-caught. The diff from chapter 06 (`c41d339`) is small and confined:
+You add exactly these three tests, and you land them in three
+commits: the first introduces them, the second amends the measurement
+to a uniform-random baseline (the story below), and the third drops an
+unused import the clippy gate catches. The footprint over chapter 06's
+state is small and confined:
 
 ```text
 $ git diff c41d339..7d7ff13 --stat -- gomoku/crates/cli
@@ -258,8 +258,8 @@ harness playing uniform-random legal moves through `Command::Play`
 base seed plus the level and game index so the measurement is
 reproducible.
 
-Measured output on the reference machine (Apple M5 Max, macOS / Darwin
-27, release profile, 20 games per level, base seed 2026):
+Expect output of this shape (measured on an Apple M5 Max, macOS /
+Darwin 27, release profile, 20 games per level, base seed 2026):
 
 ```text
 sims-vs-strength (tactics AI Black vs uniform-random White)
@@ -270,14 +270,14 @@ sims     wins losses  draws  games win_rate
 800        20      0      0     20     100%
 ```
 
-The table is honest but not triumphant. A 100% win rate against
+The table is accurate but not triumphant. A 100% win rate against
 uniform-random play is the minimum bar for any search that understands
 tactics: even 50 simulations of Monte Carlo Tree Search (MCTS) with
 PUCT selection (predictor UCT, Rosin 2011) and a tactics-shaped
 evaluator never loses to pure randomness. The table therefore tells us very
 little about the *gradient* of strength as simulations increase.
 
-## Honest reading: what the measurement actually means
+## What the measurement actually means
 
 **100% at every level is not a boring non-result.** It is a specific,
 useful negative claim: uniform-random play is not a strength yardstick
@@ -287,15 +287,15 @@ baseline tutorial's evaluator (spec §13), which becomes
 `EvaluatorKind::Baseline` behind a cargo feature and enrolls into the
 same seat abstraction with zero redesign.
 
-**There is a second, subtler lesson in the commit history.** The first
-version of this measurement, at commit `355a77a`, used a "near-random"
-opponent defined as 1 simulation with temperature 1.0. That sounds
-like randomness, but 1 simulation of PUCT collapses to a deterministic
-top-prior greed: the evaluator's highest prior is always selected. The
-result was an unexplained cliff at 50 and 200 simulations — some
-losses that disappeared at 800 — and the table was hard to interpret.
-The amendment at `d908cd3` replaced that opponent with a truly
-uniform-random driver, which yielded the clean 100% table above.
+**There is a second, subtler lesson in the three-commit structure.**
+Your first commit measures against a "near-random" opponent: 1
+simulation with temperature 1.0. That sounds like randomness, but 1
+simulation of PUCT collapses to a deterministic top-prior greed: the
+evaluator's highest prior is always selected. You will see an
+unexplained cliff at 50 and 200 simulations — some losses that
+disappear at 800 — and the table is hard to interpret. Your second
+commit replaces that opponent with a truly uniform-random driver,
+which yields the clean 100% table above.
 
 The meta-lesson of the chapter is that **acceptance criteria are
 hypotheses about what "better" means.** Measuring against the wrong
@@ -321,12 +321,12 @@ Add the attribute directly after the module documentation in
 #![deny(missing_docs)]
 ```
 
-On the reference build this compiles cleanly with the public surface
-already documented from chapters 01–06. If the compiler reports missing
+With the public surface documented from the earlier chapters, this
+compiles cleanly. If the compiler reports missing
 doc comments, add them; documenting the public contract is part of
 locking the crate.
 
-### The full gate ritual — measured on the reference worktree
+### The full gate ritual
 
 Run from `gomoku/`:
 
@@ -344,40 +344,35 @@ Run from `gomoku/`:
 2. **Workspace suite.** `cargo test --workspace`:
    All crate test suites pass. The `cli` acceptance suite contributes
    the same 90 passed / 1 ignored; other crates add their own green
-   suites. The full run finishes in roughly 70 s on the reference
-   machine, dominated by the `mcts` and `patterns` proof suites.
+   suites. The full run finishes in roughly 70 s on a fast desktop,
+   dominated by the `mcts` and `patterns` proof suites.
 
 3. **Clippy.** `cargo clippy --all-targets -- -D warnings`: green.
-   Getting there was the gate doing its job: the amendment at
-   `d908cd3` replaced a hand-rolled `Board::new()` with
-   `SessionInit::ai_vs_ai` and left `use engine::{Board, ...}` behind,
-   which `-D warnings` refused to pass. The fix (`7d7ff13`) is the
-   one-line import cleanup. Run the gate; it must pass clean, not
-   "clean except".
+   Watch the gate do its job here: your second commit replaces a
+   hand-rolled `Board::new()` with `SessionInit::ai_vs_ai` and leaves
+   `use engine::{Board, ...}` behind, which `-D warnings` refuses to
+   pass. Your third commit is the one-line import cleanup. Run the
+   gate; it must pass clean, not "clean except".
 
 4. **Format.** `cargo fmt --all -- --check`:
    No changes.
 
 5. **Ignored measurement.** `cargo test -p cli --release --test acceptance -- --ignored --nocapture`:
-   Produces the table quoted above and finishes in about 1 s on the
-   reference machine because the uniform-random baseline resigns
-   quickly.
+   Produces the table quoted above and finishes in about 1 s, because
+   the uniform-random baseline resigns quickly.
 
-The final state (`7d7ff13`) is the one worth committing.
+Land the three commits in order; the final state is the target.
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [09-acceptance/01-solution.md](09-acceptance/01-solution.md). Open it
 only if you have been stuck for more than twenty minutes, or after you
 have finished the chapter and want to compare your work.
 
-The solution file spans three commits: `355a77a` introduced the three
-acceptance tests, `d908cd3` amended the measurement to use a
-uniform-random baseline, and `7d7ff13` dropped the unused import the
-clippy gate caught. The quoted text is the final `7d7ff13` state,
-verified byte-for-byte against the reference worktree with
-`git show <commit>:<path>`.
+The quoted text is the final state after the chapter's three commits,
+verified byte-for-byte against the tutorial's reference build (commit
+`7d7ff13`).
 
 ## TDD checklist
 
@@ -431,20 +426,19 @@ cargo test -p cli --release --test acceptance -- --ignored --nocapture
 ```
 
 The 100% table is the final lesson. The study table is playable, it is
-tested, and it is honest about what it has and has not proven.
+tested, and it is precise about what it has and has not proven.
 
 ## Done when
 
 * `tests/acceptance.rs` contains the three tests named above.
 * `golden_transcript_seeded_study_session` passes with the exact event
-  stream and final snapshot from the reference implementation.
+  stream and final snapshot quoted above.
 * `scripted_human_beats_tactics_ai` passes and ends with
   `Status::Won(Color::Black)`.
 * `sims_vs_strength_measured` reproduces the measured table when run
   with `--ignored --nocapture`.
 * `src/lib.rs` has `#![deny(missing_docs)]` and the crate compiles.
-* `cargo test -p cli` is green (90 passed / 1 ignored on the
-  reference machine).
+* `cargo test -p cli` is green (90 passed / 1 ignored).
 * `cargo test --workspace` is green.
 * `cargo clippy --all-targets -- -D warnings` is green.
 * `cargo fmt --all -- --check` makes no changes.
@@ -453,9 +447,9 @@ tested, and it is honest about what it has and has not proven.
   `test(cli): sims-vs-strength vs uniform-random baseline, W/L/D breakdown`,
   `test(cli): drop unused Board import from acceptance tests`.
 
-## What was built
+## What you have built
 
-In nine chapters the `cli` crate grew from a human-vs-human board
+In nine chapters you grew the `cli` crate from a human-vs-human board
 into a study table. Chapter 01 gave it a persistent variation tree;
 chapter 02 a command language and a headless `SessionCore`; chapter 03
 seats for humans and the tactics AI; chapter 04 take/release, per-seat
@@ -488,8 +482,8 @@ the milestone status when the owner signs off.
   tutorial).
 * `gomoku/crates/cli/src/lib.rs` — crate entry point and
   `#![deny(missing_docs)]`.
-* `gomoku/crates/cli/tests/acceptance.rs` — the three acceptance tests
-  (reference commits `355a77a`, `d908cd3`, and `7d7ff13`).
+* `gomoku/crates/cli/tests/acceptance.rs` — the three acceptance
+  tests.
 * Christopher D. Rosin (2011). *Multi-armed bandits with episode
   context*. Annals of Mathematics and Artificial Intelligence 61(3),
   203–230. [`https://doi.org/10.1007/s10472-011-9258-6`](https://doi.org/10.1007/s10472-011-9258-6)

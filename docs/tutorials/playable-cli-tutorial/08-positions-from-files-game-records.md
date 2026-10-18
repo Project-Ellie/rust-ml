@@ -220,8 +220,8 @@ own slice.
 
 ### Files changed vs chapter 07
 
-The diff from chapter 07 (`d6c2af3`) to this chapter (`3bf0544`) is
-confined to the `cli` crate:
+Your work in this chapter is confined to the `cli` crate; the
+footprint:
 
 ```text
 $ git diff d6c2af3..3bf0544 --stat -- gomoku/crates/cli
@@ -332,7 +332,7 @@ win on row 8. It uses LF endings; CRLF tolerance is covered by the
 
 ## Solution (opt-in)
 
-The complete reference files for this chapter are quoted verbatim in
+The complete target files for this chapter are quoted verbatim in
 [08-positions-from-files-game-records/01-solution.md](08-positions-from-files-game-records/01-solution.md).
 Open it only if you have been stuck for more than twenty minutes, or
 after you have finished the chapter and want to compare your work.
@@ -343,7 +343,7 @@ Run from `gomoku/` with `cargo test -p cli`.
 
 ### `tests/game.rs`
 
-Exact `#[test]` function names from commit `3bf0544`:
+Write exactly these `#[test]` functions:
 
 1. `parses_fixture_into_the_main_line`
 2. `file_coordinates_are_1_based_x_column_y_row`
@@ -362,7 +362,7 @@ Exact `#[test]` function names from commit `3bf0544`:
 
 ### `tests/session.rs`
 
-Six new session tests at `3bf0544`:
+Add these six session tests:
 
 1. `game_session_replays_the_record_as_the_main_line_with_cursor_at_end`
 2. `game_session_navigation_works_across_the_loaded_line`
@@ -373,7 +373,8 @@ Six new session tests at `3bf0544`:
 
 All earlier tests continue to pass and are part of the chapter-08 gate;
 the earlier `SessionInit` struct literals gain a `game: None` field
-(`tests/acceptance.rs`, `tests/actor.rs`, `tests/study.rs`).
+(in `tests/actor.rs` and `tests/study.rs` now, and in chapter 09's
+`tests/acceptance.rs` when you write it).
 
 ### Red-green-refactor rhythm
 
@@ -416,14 +417,14 @@ take black
 quit
 ```
 
-Run it in the reference worktree:
+Run it:
 
 ```text
 cd gomoku
 cargo run -q -p cli --bin sessiondemo -- --game crates/cli/tests/fixtures/mini-game.psq --script crates/cli/game_demo.txt
 ```
 
-Frames from the measured output (commit `3bf0544`). The AI step is
+Expect these frames. The AI step is
 reproducible without a seed: temperature 0 selects by argmax and no
 noise is applied.
 

@@ -1,12 +1,11 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the verified reference implementation for chapter 02.
-> The source files below are byte-for-byte copies from commit `6d1b7b7`
-> of the reference worktree (`rust-ml-ref-playable-cli`).
+> This file quotes the target state your work should produce for
+> chapter 02, verbatim. Target state verified against the tutorial's
+> reference build, commit `6d1b7b7`.
 >
 > `src/history.rs` from chapter 01 is **unchanged** in this chapter.
-> The diff from chapter 01 (`22f1fa9`) to this chapter (`6d1b7b7`)
-> touches:
+> Your footprint for this chapter:
 > ```
 >  Cargo.toml                              |   6 +
 >  README.md                               |   1 +
