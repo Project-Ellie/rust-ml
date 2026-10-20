@@ -68,7 +68,7 @@ pub enum HistoryError {
         /// Index that was requested.
         index: usize,
         /// Number of children at the cursor.
-        child_count: usize
+        child_count: usize,
     },
 }
 
@@ -125,7 +125,6 @@ impl History {
     /// cursor (occupied cell or game already over). User input must never
     /// cause a panic.
     pub fn play(&mut self, mv: Move) -> Result<PlayOutcome, HistoryError> {
-
         // Validate the move before touching the tree.
         let mut probe = self.root_board.clone();
         for &m in &self.path_to_cursor() {
@@ -189,9 +188,10 @@ impl History {
                 }
                 _ => {
                     return ForwardOutcome::NeedsChoice(
-                      children.iter()
-                          .map(|&id| self.nodes[id as usize].mv.expect("child has a move"))
-                          .collect(),
+                        children
+                            .iter()
+                            .map(|&id| self.nodes[id as usize].mv.expect("child has a move"))
+                            .collect(),
                     );
                 }
             }
@@ -243,9 +243,7 @@ impl History {
         let mut path = Vec::new();
         let mut id = self.cursor;
         while let Some(parent) = self.nodes[id as usize].parent {
-            path.push(
-                self.nodes[id as usize].mv.expect("non-root has a move"),
-            );
+            path.push(self.nodes[id as usize].mv.expect("non-root has a move"));
             id = parent;
         }
 

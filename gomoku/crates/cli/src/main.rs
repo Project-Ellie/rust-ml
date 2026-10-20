@@ -16,7 +16,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 )]
 struct CliArgs {
     #[command(subcommand)]
-    cmd: Option<Commands>
+    cmd: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -46,7 +46,7 @@ struct SearchArgs {
     /// Human seat color when --ai is used.
     #[arg(long, value_name = "COLOR")]
     color: Option<PlayerColor>,
-    
+
     /// Number of MCTS simulations per move.
     #[arg(long, value_name = "N", default_value_t = 400)]
     sims: u32,
@@ -76,10 +76,6 @@ struct SearchArgs {
     seed: Option<u64>,
 }
 
-
-
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "lower")]
 enum AiKind {
@@ -90,7 +86,7 @@ enum AiKind {
 #[value(rename_all = "lower")]
 enum PlayerColor {
     Black,
-    White
+    White,
 }
 
 fn main() {

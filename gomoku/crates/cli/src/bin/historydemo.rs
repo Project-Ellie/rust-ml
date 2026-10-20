@@ -72,7 +72,6 @@ fn main() {
     // Back to the root.
     let to_root = history.back(100);
     print_step(&history, &format!("back {to_root} to root"));
-
 }
 
 fn print_step(history: &History, label: &str) {
