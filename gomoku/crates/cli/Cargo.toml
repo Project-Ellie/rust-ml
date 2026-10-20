@@ -5,9 +5,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "gomoku"
 path = "src/main.rs"
+
+[[bin]]
+name = "historydemo"
+path = "src/bin/historydemo.rs"
 
 [features]
 default = ["naive-engine"]
@@ -16,6 +24,9 @@ naive-engine = ["engine/testutil"]
 [dependencies]
 crossterm.workspace = true
 engine = { path = "../engine" }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 thiserror.workspace = true
+clap = { workspace = true, features = ["derive" ]}
+
+
+[dev-dependencies]
+proptest.workspace = true
