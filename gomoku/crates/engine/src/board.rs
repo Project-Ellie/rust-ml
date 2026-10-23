@@ -36,7 +36,7 @@ pub enum Status {
 }
 
 /// Errors returned by `Board::play` and the Swap2 opening transitions.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PlayError {
     /// The target cell already contains a stone.
     #[error("Cell is already occupied.")]

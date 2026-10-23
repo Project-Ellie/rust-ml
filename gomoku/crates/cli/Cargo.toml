@@ -26,6 +26,8 @@ crossterm.workspace = true
 engine = { path = "../engine" }
 thiserror.workspace = true
 clap = { workspace = true, features = ["derive" ]}
+rand = "0.9.5"
+serde = { version = "1.0.229", features = ["derive"] }
 
 
 [dev-dependencies]
