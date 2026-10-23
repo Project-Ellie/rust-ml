@@ -58,7 +58,7 @@ fn main() {
                 std::process::exit(1);
             });
             let reader = BufReader::new(file);
-            for line in reader.buffer().lines() {
+            for line in reader.lines() {
                 let line = line.unwrap_or_else(|e| {
                     eprintln!("Cannot read line {}", e);
                     std::process::exit(1);
