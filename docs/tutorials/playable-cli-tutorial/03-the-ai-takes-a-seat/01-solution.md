@@ -55,6 +55,10 @@ proptest.workspace = true
 
 ## `gomoku/crates/cli/src/actor.rs`
 
+Only `SearchInfo` (with `from_search`) is new in this chapter;
+`Occupant`, `OccupantKind`, `AiConfig`, and `EvaluatorKind` already
+exist from chapter 02 and are quoted for completeness.
+
 ````rust
 //! Seat occupants and AI configuration.
 //!

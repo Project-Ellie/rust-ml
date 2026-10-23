@@ -7,14 +7,15 @@ This chapter seats the AI at the study table. The payoff is two-fold:
 `info` exposes the search's reasoning as concrete numbers — visits,
 prior probabilities, and a root value. To get there you will:
 
-* define the `Occupant` enum (`Human` or `Ai(AiConfig)`), the
-  `AiConfig` search-knob record, and the `SearchInfo` record that
-  stores what the search concluded;
+* extend `src/actor.rs` — chapter 02 already placed `Occupant`,
+  `OccupantKind`, `AiConfig`, and `EvaluatorKind` there — with the
+  `SearchInfo` record that stores what the search concluded;
 * wire `SessionCore::execute(Step)` to call `mcts::search`, extract
   the visit distribution, pick a move with temperature, store the
   `SearchInfo` on the new history node, and emit the right events;
-* seed a `StdRng` from `SessionInit::seed` so identical sessions are
-  bit-reproducible;
+* put the `StdRng` you already seeded from `SessionInit::seed` in
+  chapter 02 to work — temperature selection and Dirichlet noise draw
+  from it, so identical sessions are bit-reproducible;
 * add an `info` command to `sessiondemo` that prints the cursor's
   stored search record.
 
@@ -40,10 +41,16 @@ shows its working.
 
 ## Context
 
-Chapter 02 left `Command::Step` parsed and validated, but executing it
-with a human seat to move returned `CommandError::StepRequiresAi`.
-That was correct: the command language and the session state machine
-were in place before the AI plumbing arrived.
+Chapter 02 left `Step`, `Release`, and `SetSims` parsed and
+validated, but executing any of them returned the not-yet-implemented
+stub `CommandError::AiSeatsNotImplemented`. That was correct: the
+command language and the session state machine were in place before
+the AI plumbing arrived. Chapter 02 also placed the seat types
+(`Occupant`, `OccupantKind`) and the configuration shapes (`AiConfig`,
+`EvaluatorKind`) in `src/actor.rs`, and `SessionCore` already holds a
+`StdRng` seeded from `SessionInit::seed` (marked `#[allow(dead_code)]`
+— nothing consumed it yet). This chapter fills in behavior on top of
+those existing types; the only genuinely new type is `SearchInfo`.
 
 The `mcts` crate is already complete. It exposes exactly the four
 functions this chapter needs (covered in detail below):
@@ -59,17 +66,18 @@ side-to-move seat to search and play.
 
 ## Intention
 
-1. Create `gomoku/crates/cli/src/actor.rs` with `Occupant`,
-   `OccupantKind`, `AiConfig`, `EvaluatorKind`, and `SearchInfo`.
-   `SearchInfo::from_search` must collect root-edge statistics,
-   sort visits and prior descending, and compute the root value as
-   `sum(W) / sum(N)`.
+1. Extend `gomoku/crates/cli/src/actor.rs` — it already defines
+   `Occupant`, `OccupantKind`, `AiConfig`, and `EvaluatorKind` — with
+   `SearchInfo`. `SearchInfo::from_search` must collect root-edge
+   statistics, sort visits and prior descending, and compute the root
+   value as `sum(W) / sum(N)`.
 2. Extend `gomoku/crates/cli/src/session.rs`:
    * store a `HashMap<HistoryNodeId, SearchInfo>`;
    * implement `execute_step` by rebuilding `board()`, calling
      `mcts::search`, optionally adding Dirichlet noise, building
      `SearchInfo`, selecting a move, playing it, and storing the info;
-   * seed `StdRng` from `SessionInit::seed`;
+   * remove the `#[allow(dead_code)]` on `rng` and draw from it in
+     `select_move` and `add_dirichlet_noise`;
    * expose `search_info()` at the cursor.
 3. Extend `gomoku/crates/cli/src/bin/sessiondemo.rs` to recognize
    `info` and print the cursor's `SearchInfo`.
@@ -178,7 +186,8 @@ perspective." The `mcts` crate's `backup` function makes that true.
 `mcts::backup` (see `gomoku/crates/mcts/src/backup.rs`) receives a
 `leaf_value` that is from the **leaf player's perspective**. It walks
 the selection path from leaf back to root and, at every edge, flips the
-sign. The comment in `src/actor.rs` states the consequence:
+sign. The doc comment you add to `SearchInfo` in `src/actor.rs` states the
+consequence:
 
 > Each edge therefore accumulates a value `W` from the perspective of
 the player who chose at its parent node. For a root edge, that parent
@@ -235,35 +244,31 @@ clear baseline.
 
 ### Files changed vs chapter 02
 
-Your work in this chapter is confined to the `cli` crate; the
-footprint:
+Your work is confined to the `cli` crate:
 
-```text
-$ git diff 6d1b7b7..251246c --stat -- gomoku/crates/cli
- gomoku/crates/cli/Cargo.toml             |   2 +
- gomoku/crates/cli/demo_script.txt        |   8 +
- gomoku/crates/cli/src/actor.rs           |  63 +++++++
- gomoku/crates/cli/src/bin/sessiondemo.rs |  39 ++++-
- gomoku/crates/cli/src/command.rs         |   9 +-
- gomoku/crates/cli/src/session.rs         | 235 +++++++++++++++++++++-----
- gomoku/crates/cli/tests/actor.rs         | 276 +++++++++++++++++++++++++++++++
- gomoku/crates/cli/tests/session.rs       |  72 ++++++--
- 8 files changed, 644 insertions(+), 60 deletions(-)
-```
+* `Cargo.toml` — add the `mcts` dependency and an `engine`
+  dev-dependency with the `testutil` feature (`tests/actor.rs` builds
+  positions with `engine::reference::board_from_ascii` and queries
+  `engine::immediate_wins`).
+* `src/actor.rs` — add `SearchInfo`; the seat and config types are
+  already there.
+* `src/session.rs` — the bulk of the work: `execute_step`, real
+  `execute_release` / `execute_set_sims`, the `search_info` map.
+* `src/command.rs` — replace the `AiSeatsNotImplemented` stub error
+  with `StepRequiresAi`; no new command variants.
+* `src/bin/sessiondemo.rs` — the `info` command.
+* `tests/actor.rs` — new headless AI tests.
+* `tests/session.rs` — reshape the not-yet-implemented test (see the
+  TDD checklist).
+* `demo_script.txt` — the capstone script.
 
-`src/history.rs` and `src/fmt.rs` do not appear in the footprint: you
-leave them unchanged from chapter 02. The `Cargo.toml` change adds the
-`mcts`
-dependency and an `engine` dev-dependency with the `testutil` feature
-(`tests/actor.rs` builds positions with
-`engine::reference::board_from_ascii` and queries
-`engine::immediate_wins`).
+`src/history.rs` and `src/fmt.rs` stay untouched.
 
 ### `src/actor.rs`
 
-New file. It owns `Occupant`, `OccupantKind`, `AiConfig`,
-`EvaluatorKind`, and `SearchInfo`. The key computation is in
-`SearchInfo::from_search`:
+Already exists from chapter 02 with `Occupant`, `OccupantKind`,
+`AiConfig`, and `EvaluatorKind`. You add `SearchInfo` and
+`SearchInfo::from_search`. The key computation:
 
 ```rust
 let total_visits: u32 = edges.iter().map(|e| e.n).sum();
@@ -281,11 +286,15 @@ deterministic tie-breaker, so the front-end can display a stable top-N.
 ### `src/session.rs`
 
 * Add `search_info: HashMap<HistoryNodeId, SearchInfo>`.
-* `new` seeds `StdRng` from `init.seed`, falling back to
-  `rand::random::<u64>()` when no seed is supplied.
-* `execute_release` builds a fresh `Ai(default_config)` for the target
-  seat, applying any per-seat simulation override (`black_sims` or
-  `white_sims`).
+* The seeded `StdRng` already exists from chapter 02 — drop its
+  `#[allow(dead_code)]` and start drawing from it (`select_move`,
+  `add_dirichlet_noise`).
+* `execute_release` (currently a stub error) builds a fresh
+  `Ai(default_config)` for the target seat, applying any per-seat
+  simulation override (`black_sims` or `white_sims`).
+* `execute_set_sims` (also a stub) stores the per-seat override,
+  updates the live config if the seat is already AI, and emits
+  `ConfigChanged`.
 * `execute_step` is the heart:
   1. Check the game is ongoing and the side-to-move seat is `Ai`.
   2. Build the evaluator from `EvaluatorKind`.
@@ -301,10 +310,20 @@ deterministic tie-breaker, so the front-end can display a stable top-N.
 
 ### `src/command.rs`
 
-No new command variants are required — `Step` was already parsed in
-chapter 02. The only change is that `Step` now executes instead of
-returning `StepRequiresAi` (except when the side-to-move seat is human,
-in which case the error still applies).
+No new command variants are required — `Step`, `Release`, and
+`SetSims` were already parsed in chapter 02. The changes are in the
+error enum:
+
+* Delete the `AiSeatsNotImplemented` stub variant. `Release` and
+  `SetSims` now execute for real; `Step` gets a proper typed error.
+* Add `StepRequiresAi { seat: Color }`, returned by `Step` when the
+  side-to-move seat is human. This is the error the chapter-02 stub
+  was standing in for.
+
+Naming note: if your chapter-02 error enum deviates from the reference
+in other ways (e.g. `NotAtBranchPoint` where the solution quotes
+`NotABranchPoint`), keep your names — only the stub replacement above
+is load-bearing for this chapter.
 
 ### `src/bin/sessiondemo.rs`
 
@@ -357,17 +376,25 @@ Write exactly these `#[test]` functions:
 
 ### `tests/session.rs` and the `src/command.rs` parser tests
 
-All chapter-02 tests continue to pass and are part of the chapter-03
-gate. Notably:
+Most chapter-02 tests continue to pass and are part of the chapter-03
+gate — but one must change shape, because the behavior it pinned down
+was a stub. Replace `step_release_and_set_sims_are_not_yet_implemented`
+(in both `tests/session.rs` and the inline `#[cfg(test)]` module) with
+tests against the real behavior:
 
-* `step_on_human_seat_returns_typed_error` (in `tests/session.rs`) must
-  still reject `Step` when both seats are human.
-* Parser tests must still round-trip `step`, `release white`,
-  `sims black 800`, etc.
+* `step_on_human_seat_returns_typed_error` — `Step` with a human
+  side-to-move returns `CommandError::StepRequiresAi`.
+* `release_sets_seat_to_ai_and_take_reclaims_it`.
+* `set_sims_updates_override_and_emits_config_changed`.
+
+Everything else from chapter 02 — navigation, branching, illegal
+moves, game-over, reset, determinism, and the parser round-trips
+(`step`, `release white`, `sims black 800`, …) — continues to pass
+unchanged.
 
 ### Red-green-refactor rhythm
 
-1. **Red:** Add `src/actor.rs`, extend `src/session.rs` and
+1. **Red:** Extend `src/actor.rs`, `src/session.rs`, and
    `src/bin/sessiondemo.rs`, and add `tests/actor.rs`. Run
    `cargo test -p cli`. Expect failures.
 2. **Green:** Implement the contracts above until `cargo test -p cli`
@@ -381,7 +408,7 @@ Run the scripted demo:
 
 ```text
 cd gomoku
-cargo run -q -p cli --bin sessiondemo -- --script ../crates/cli/demo_script.txt
+cargo run -q -p cli --bin sessiondemo -- --script crates/cli/demo_script.txt
 ```
 
 Expect these key frames:
