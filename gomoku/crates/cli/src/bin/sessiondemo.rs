@@ -27,13 +27,14 @@ use cli::session::{SessionCore, SessionInit};
 const HELP: &str = r#"Commands (case-insensitive):
   SQUARE           play a move, e.g. "h8"
   play SQUARE      same as above
-  step             let the AI play (Task 3)
+  step             let the AI play
   back [N]         go back N plies (default 1)
   forward [N]      go forward N plies (default 1)
   var N            choose child variation N
   take black|white|both      make seat(s) human
-  release black|white|both   release seat(s) to AI (Task 3)
-  sims black|white N         set per-seat simulations (Task 3)
+  release black|white|both   release seat(s) to AI
+  sims black|white N         set per-seat simulations
+  info             show AI search info at the cursor
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit
@@ -89,6 +90,10 @@ fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
     if trimmed.is_empty() {
         return false;
     }
+    if trimmed.eq_ignore_ascii_case("info") {
+        print_search_info(core);
+        return false;
+    }
     match cli::command::parse(trimmed) {
         Ok(Command::Help) => {
             println!("{HELP}");
@@ -120,6 +125,33 @@ fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
         }
     }
     false
+}
+
+fn print_search_info(core: &SessionCore) {
+    match core.search_info() {
+        None => println!("No search info at the cursor."),
+        Some(info) => {
+            let total_visits: u32 = info.visits.iter().map(|(_, n)| n).sum();
+            println!("value {:.3}  total visits {total_visits}", info.value);
+            if info.visits.is_empty() {
+                println!("(no legal moves)");
+                return;
+            }
+            let prior_by_move: std::collections::HashMap<_, _> =
+                info.prior.iter().map(|(mv, p)| (*mv, *p)).collect();
+            println!("top moves (visits, prior%):");
+            for (i, (mv, visits)) in info.visits.iter().take(5).enumerate() {
+                let prior = prior_by_move.get(mv).copied().unwrap_or(0.0);
+                println!(
+                    "  {}. ({}, {:.1}%) {}",
+                    i + 1,
+                    visits,
+                    prior * 100.0,
+                    cli::fmt::format_move(*mv)
+                );
+            }
+        }
+    }
 }
 
 fn print_state(core: &SessionCore, header: &str) {

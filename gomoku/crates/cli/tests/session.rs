@@ -4,8 +4,8 @@
 
 use cli::actor::OccupantKind;
 use cli::command::{Command, CommandError, Event, SeatSel};
-use cli::session::{SessionCore, SessionInit};
-use engine::{Board, Move, PlayError};
+use cli::session::{SessionCore, SessionInit, Snapshot};
+use engine::{Board, Color, Move, PlayError, Status};
 
 fn mv(r: u8, c: u8) -> Move {
     Move::new(r, c).unwrap()
@@ -139,6 +139,64 @@ fn new_emits_reset_and_returns_to_opening() {
 }
 
 #[test]
+fn step_on_human_seat_returns_typed_error() {
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    let err = core.execute(Command::Step).unwrap_err();
+    assert_eq!(err, CommandError::StepRequiresAi { seat: Color::Black });
+}
+
+#[test]
+fn release_sets_seat_to_ai_and_take_reclaims_it() {
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    let events = core
+        .execute(Command::Release {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+    assert!(events.iter().any(|e| matches!(
+        e,
+        Event::SeatChanged {
+            seat: Color::White,
+            now: OccupantKind::Ai,
+        }
+    )));
+    assert_eq!(core.snapshot().white, OccupantKind::Ai);
+
+    let events = core
+        .execute(Command::Take {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+    assert!(events.iter().any(|e| matches!(
+        e,
+        Event::SeatChanged {
+            seat: Color::White,
+            now: OccupantKind::Human,
+        }
+    )));
+    assert_eq!(core.snapshot().white, OccupantKind::Human);
+}
+
+#[test]
+fn set_sims_updates_override_and_emits_config_changed() {
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    let events = core
+        .execute(Command::SetSims {
+            seat: SeatSel::Black,
+            n: 123,
+        })
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(events.iter().any(|e| matches!(
+        e,
+        Event::ConfigChanged {
+            seat: Color::Black,
+            sims: 123,
+        }
+    )));
+}
+
+#[test]
 fn take_is_no_op_for_human_seats() {
     let mut core = SessionCore::new(SessionInit::new_hotseat());
     let events = core
@@ -157,31 +215,6 @@ fn take_is_no_op_for_human_seats() {
 }
 
 #[test]
-fn step_release_and_set_sims_are_not_yet_implemented() {
-    let mut core = SessionCore::new(SessionInit::new_hotseat());
-
-    assert!(matches!(
-        core.execute(Command::Step),
-        Err(CommandError::AiSeatsNotImplemented(_))
-    ));
-
-    assert!(matches!(
-        core.execute(Command::Release {
-            seat: SeatSel::White
-        }),
-        Err(CommandError::AiSeatsNotImplemented(_))
-    ));
-
-    assert!(matches!(
-        core.execute(Command::SetSims {
-            seat: SeatSel::Black,
-            n: 100
-        }),
-        Err(CommandError::AiSeatsNotImplemented(_))
-    ));
-}
-
-#[test]
 fn seeded_determinism_smoke() {
     let init = SessionInit {
         seed: Some(12345),
@@ -196,4 +229,96 @@ fn seeded_determinism_smoke() {
         assert_eq!(ev_a, ev_b);
     }
     assert_eq!(a.snapshot(), b.snapshot());
+}
+
+// --- Snapshot serde contract: the future gomoku-gui REST seam ---
+
+fn round_trip(snapshot: &Snapshot) {
+    let json = serde_json::to_string(snapshot).expect("snapshot must serialize");
+    let back: Snapshot = serde_json::from_str(&json).expect("snapshot must deserialize");
+    assert_eq!(&back, snapshot, "round trip must be lossless: {json}");
+}
+
+#[test]
+fn snapshot_serde_round_trip_covers_all_statuses() {
+    // A live mid-game snapshot from a real session.
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    play(&mut core, 7, 7);
+    play(&mut core, 6, 7);
+    round_trip(&core.snapshot());
+
+    // All status variants, with branch options and a last move present.
+    for status in [
+        Status::Ongoing,
+        Status::Won(Color::Black),
+        Status::Won(Color::White),
+        Status::Draw,
+    ] {
+        round_trip(&Snapshot {
+            ply: 3,
+            branch_options: vec![(0, mv(6, 7)), (1, mv(8, 7))],
+            black: OccupantKind::Human,
+            white: OccupantKind::Ai,
+            status,
+            last_move: Some(mv(7, 7)),
+        });
+    }
+
+    // Edge case: fresh session shape — no options, no last move.
+    round_trip(&Snapshot {
+        ply: 0,
+        branch_options: vec![],
+        black: OccupantKind::Human,
+        white: OccupantKind::Human,
+        status: Status::Ongoing,
+        last_move: None,
+    });
+}
+
+#[test]
+fn snapshot_json_wire_format_is_stable() {
+    let snapshot = Snapshot {
+        ply: 2,
+        branch_options: vec![(0, mv(6, 7)), (1, mv(8, 7))],
+        black: OccupantKind::Human,
+        white: OccupantKind::Ai,
+        status: Status::Won(Color::Black),
+        last_move: Some(mv(7, 7)),
+    };
+    let value = serde_json::to_value(&snapshot).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "ply": 2,
+            "branch_options": [[0, 97], [1, 127]],
+            "black": "Human",
+            "white": "Ai",
+            "status": "won_black",
+            "last_move": 112,
+        })
+    );
+}
+
+#[test]
+fn snapshot_deserialization_rejects_bad_input() {
+    let good = serde_json::json!({
+        "ply": 0,
+        "branch_options": [],
+        "black": "Human",
+        "white": "Human",
+        "status": "ongoing",
+        "last_move": null,
+    });
+
+    // Unknown status string is rejected.
+    let mut bad_status = good.clone();
+    bad_status["status"] = serde_json::json!("won_green");
+    assert!(serde_json::from_value::<Snapshot>(bad_status).is_err());
+
+    // A missing mandatory field is rejected. Note: `last_move` is
+    // `Option<Move>`, which serde treats as implicitly optional — the
+    // mandatory fields on the wire are the non-Option ones.
+    let mut missing = good.clone();
+    missing.as_object_mut().unwrap().remove("status");
+    assert!(serde_json::from_value::<Snapshot>(missing).is_err());
 }

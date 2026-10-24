@@ -24,11 +24,14 @@ naive-engine = ["engine/testutil"]
 [dependencies]
 crossterm.workspace = true
 engine = { path = "../engine" }
+mcts = { path = "../mcts" }
 thiserror.workspace = true
 clap = { workspace = true, features = ["derive" ]}
-rand = "0.9.5"
+rand = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 
 
 [dev-dependencies]
+serde_json = "1"
+engine = { path = "../engine", features = ["testutil"]}
 proptest.workspace = true

@@ -1,0 +1,8 @@
+release white
+h8
+step
+h7
+step
+i8
+step
+info

@@ -4,13 +4,15 @@
 //! tree, the seat table, and AI search defaults. Commands go in; events
 //! and snapshots come out. No terminal code, no I/O.
 
+use crate::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind, SearchInfo};
+use crate::command::{Command, CommandError, Event, SeatSel};
+use crate::history::NodeId as HistoryNodeId;
+use crate::history::{ForwardOutcome, History, PlayOutcome};
 use engine::{Board, Color, Move, Status};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-
-use crate::actor::{AiConfig, Occupant, OccupantKind};
-use crate::command::{Command, CommandError, Event, SeatSel};
-use crate::history::{ForwardOutcome, History, PlayOutcome};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionInit {
@@ -64,16 +66,72 @@ impl SessionInit {
 pub struct Snapshot {
     /// Cursor ply in the variation tree.
     pub ply: u32,
-
+    /// the branches from this position
     pub branch_options: Vec<(usize, Move)>,
-
+    /// ai or human
     pub black: OccupantKind,
-
+    /// ai or human
     pub white: OccupantKind,
-
+    /// game status
     pub status: Status,
-
+    /// most recent move
     pub last_move: Option<Move>,
+}
+
+impl Serialize for Snapshot {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("Snapshot", 6)?;
+        state.serialize_field("ply", &self.ply)?;
+        state.serialize_field("branch_options", &self.branch_options)?;
+        state.serialize_field("black", &self.black)?;
+        state.serialize_field("white", &self.white)?;
+        state.serialize_field("status", &status_as_str(self.status))?;
+        state.serialize_field("last_move", &self.last_move)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Snapshot {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct SnapshotHelper {
+            ply: u32,
+            branch_options: Vec<(usize, Move)>,
+            black: OccupantKind,
+            white: OccupantKind,
+            status: String,
+            last_move: Option<Move>,
+        }
+        let helper = SnapshotHelper::deserialize(deserializer)?;
+        Ok(Snapshot {
+            ply: helper.ply,
+            branch_options: helper.branch_options,
+            black: helper.black,
+            white: helper.white,
+            status: status_from_str(&helper.status).map_err(serde::de::Error::custom)?,
+            last_move: helper.last_move,
+        })
+    }
+}
+
+fn status_as_str(status: Status) -> &'static str {
+    match status {
+        Status::Ongoing => "ongoing",
+        Status::Won(Color::Black) => "won_black",
+        Status::Won(Color::White) => "won_white",
+        Status::Draw => "draw",
+    }
+}
+
+fn status_from_str(s: &str) -> Result<Status, String> {
+    match s {
+        "ongoing" => Ok(Status::Ongoing),
+        "won_black" => Ok(Status::Won(Color::Black)),
+        "won_white" => Ok(Status::Won(Color::White)),
+        "draw" => Ok(Status::Draw),
+        _ => Err(format!("unknown status string {s}")),
+    }
 }
 
 pub struct SessionCore {
@@ -86,6 +144,7 @@ pub struct SessionCore {
     #[allow(dead_code)]
     rng: StdRng,
     init: SessionInit,
+    search_info: HashMap<HistoryNodeId, SearchInfo>,
 }
 
 impl SessionCore {
@@ -102,6 +161,7 @@ impl SessionCore {
             white_sims: init.white_sims,
             rng,
             init,
+            search_info: HashMap::new(),
         }
     }
 
@@ -121,8 +181,14 @@ impl SessionCore {
         }
     }
 
+    #[must_use]
     pub fn board(&self) -> Board {
         self.history.board()
+    }
+
+    #[must_use]
+    pub fn search_info(&self) -> Option<&SearchInfo> {
+        self.search_info.get(&self.history.cursor())
     }
 
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
@@ -133,27 +199,126 @@ impl SessionCore {
             Command::Var { index } => self.execute_var(index),
             Command::New => self.execute_new(),
             Command::Take { seat } => self.execute_take(seat),
-            Command::Step => Err(CommandError::AiSeatsNotImplemented(
-                "Step requires Ai Seat".to_string(),
-            )),
-            Command::Release { seat } => {
-                self.validate_seat_arg(seat)?;
-                Err(CommandError::AiSeatsNotImplemented(
-                    "Release requires AI seats (Task 3)".to_string(),
-                ))
-            }
-            Command::SetSims { seat, n } => {
-                self.validate_seat_arg(seat)?;
-                if n == 0 {
-                    return Err(CommandError::ZeroSims);
-                }
-                Err(CommandError::AiSeatsNotImplemented(
-                    "SetSims requires AI seats (Task 3)".to_string(),
-                ))
-            }
+            Command::Step => self.execute_step(),
+            Command::Release { seat } => self.execute_release(seat),
+            Command::SetSims { seat, n } => self.execute_set_sims(seat, n),
 
-            _ => todo!(),
+            Command::Help | Command::Quit => Ok(vec![]),
         }
+    }
+
+    fn execute_step(&mut self) -> Result<Vec<Event>, CommandError> {
+        let board = self.history.board();
+        if board.status() != Status::Ongoing {
+            return Err(CommandError::GameOver);
+        }
+        let side = board.to_move();
+        let config = match self.occupant(side) {
+            Occupant::Ai(cfg) => cfg.clone(),
+            Occupant::Human => {
+                return Err(CommandError::StepRequiresAi { seat: side });
+            }
+        };
+
+        let mut evaluator = Self::make_evaluator(&config.evaluator);
+        let search_cfg = mcts::SearchConfig {
+            simulations: config.simulations,
+            c_puct: config.c_puct,
+        };
+
+        let mut outcome = mcts::search(&board, &mut *evaluator, &search_cfg);
+
+        if config.noise_epsilon > 0.0 {
+            mcts::add_dirichlet_noise(
+                &mut outcome.tree,
+                outcome.root,
+                config.noise_epsilon,
+                0.3,
+                &mut self.rng,
+            );
+        }
+
+        let info = SearchInfo::from_search(&outcome, &board, &config);
+        let visits = mcts::visit_distribution(&outcome.tree, outcome.root);
+        let mv = mcts::select_move(&visits, config.temperature, &mut self.rng)
+            .expect("AI must select a move from a non-empty distribution");
+
+        let old_cursor = self.history.cursor();
+        let play_outcome = self.history.play(mv)?;
+        let new_cursor = self.history.cursor();
+        self.search_info.insert(new_cursor, info);
+
+        let mut events = Vec::new();
+        events.push(Event::Moved {
+            mv,
+            by: OccupantKind::Ai,
+        });
+
+        if matches!(play_outcome, PlayOutcome::Moved(_)) {
+            let siblings = self.history.children(old_cursor);
+            if siblings.len() > 1 {
+                events.push(Event::Branched { options: siblings });
+            }
+        }
+
+        let new_board = self.history.board();
+        if new_board.status() != Status::Ongoing {
+            events.push(Event::GameOver {
+                result: new_board.status(),
+            });
+        }
+
+        Ok(events)
+    }
+
+    pub fn execute_new(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.reset();
+        Ok(vec![Event::Reset])
+    }
+
+    pub fn execute_set_sims(
+        &mut self,
+        seat: SeatSel,
+        sims: u32,
+    ) -> Result<Vec<Event>, CommandError> {
+        self.validate_seat_arg(seat)?;
+        if sims == 0 {
+            return Err(CommandError::ZeroSims);
+        }
+        let mut events = Vec::new();
+        self.apply_to_seats(seat, |this, color| {
+            match color {
+                Color::Black => this.black_sims = Some(sims),
+                Color::White => this.white_sims = Some(sims),
+            }
+            if let Occupant::Ai(config) = this.occupant_mut(color) {
+                config.simulations = sims;
+            }
+            events.push(Event::ConfigChanged { seat: color, sims })
+        });
+
+        Ok(events)
+    }
+
+    pub fn execute_release(&mut self, seat: SeatSel) -> Result<Vec<Event>, CommandError> {
+        self.validate_seat_arg(seat)?;
+        let mut events = Vec::new();
+        self.apply_to_seats(seat, |this, color| {
+            let sims = match color {
+                Color::Black => this.black_sims,
+                Color::White => this.white_sims,
+            };
+            let mut config = this.default_config.clone();
+            if let Some(s) = sims {
+                config.simulations = s;
+            }
+            this.set_occupant(color, Occupant::Ai(config));
+            events.push(Event::SeatChanged {
+                seat: color,
+                now: OccupantKind::Ai,
+            })
+        });
+        Ok(events)
     }
 
     fn validate_seat_arg(&self, seat: SeatSel) -> Result<(), CommandError> {
@@ -257,15 +422,17 @@ impl SessionCore {
         }
     }
 
-    pub fn execute_new(&mut self) -> Result<Vec<Event>, CommandError> {
-        self.reset();
-        Ok(vec![Event::Reset])
-    }
-
     fn occupant(&self, color: Color) -> &Occupant {
         match color {
             Color::Black => &self.black,
             Color::White => &self.white,
+        }
+    }
+
+    fn occupant_mut(&mut self, color: Color) -> &mut Occupant {
+        match color {
+            Color::Black => &mut self.black,
+            Color::White => &mut self.white,
         }
     }
 
@@ -284,6 +451,13 @@ impl SessionCore {
         self.black_sims = self.init.black_sims;
         self.white_sims = self.init.white_sims;
         // Keep the same RNG; reset does not reseed.
+    }
+
+    fn make_evaluator(kind: &EvaluatorKind) -> Box<dyn mcts::Evaluator> {
+        match kind {
+            // Currently, there's only one. Will have two more, soon.
+            EvaluatorKind::Tactics => Box::new(mcts::TacticsEvaluator::new()),
+        }
     }
 }
 
@@ -448,28 +622,56 @@ mod tests {
     }
 
     #[test]
-    fn step_release_set_sims_return_not_yet_implemented() {
+    fn release_seats_ai_and_take_reclaims_it() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
 
-        assert!(matches!(
-            core.execute(Command::Step),
-            Err(CommandError::AiSeatsNotImplemented(_))
-        ));
+        let events = core
+            .execute(Command::Release {
+                seat: SeatSel::White,
+            })
+            .unwrap();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::SeatChanged {
+                now: OccupantKind::Ai,
+                ..
+            }
+        )));
+        assert_eq!(core.snapshot().white, OccupantKind::Ai);
 
-        assert!(matches!(
-            core.execute(Command::Release {
-                seat: SeatSel::White
-            }),
-            Err(CommandError::AiSeatsNotImplemented(_))
-        ));
+        let events = core
+            .execute(Command::Take {
+                seat: SeatSel::White,
+            })
+            .unwrap();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::SeatChanged {
+                seat: Color::White,
+                now: OccupantKind::Human,
+            }
+        )));
+        assert_eq!(core.snapshot().white, OccupantKind::Human);
+    }
 
-        assert!(matches!(
-            core.execute(Command::SetSims {
+    #[test]
+    fn set_sims_updates_and_emits_config_changed() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+
+        let events = core
+            .execute(Command::SetSims {
                 seat: SeatSel::Black,
-                n: 100
-            }),
-            Err(CommandError::AiSeatsNotImplemented(_))
-        ));
+                n: 123,
+            })
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::ConfigChanged {
+                seat: Color::Black,
+                sims: 123,
+            }
+        )));
     }
 
     #[test]

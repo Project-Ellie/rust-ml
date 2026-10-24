@@ -72,7 +72,7 @@ side-to-move seat to search and play.
    statistics, sort visits and prior descending, and compute the root
    value as `sum(W) / sum(N)`.
 2. Extend `gomoku/crates/cli/src/session.rs`:
-   * store a `HashMap<HistoryNodeId, SearchInfo>`;
+   *  store a `HashMap<HistoryNodeId, SearchInfo>`;
    * implement `execute_step` by rebuilding `board()`, calling
      `mcts::search`, optionally adding Dirichlet noise, building
      `SearchInfo`, selecting a move, playing it, and storing the info;

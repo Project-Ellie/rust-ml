@@ -26,7 +26,7 @@ pub enum Command {
     Quit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeatSel {
     Black,
     White,
@@ -147,8 +147,8 @@ pub enum CommandError {
     ForwardAtLeaf,
     #[error("Not at branch point. Simply move")]
     NotAtBranchPoint,
-    #[error("Ai seats are not yet implemented. Patience, young Padawan!")]
-    AiSeatsNotImplemented(String),
+    #[error("Step for {seat:?} requires AI")]
+    StepRequiresAi { seat: Color },
     #[error("Simulations must be greater than zero")]
     ZeroSims,
 }
