@@ -12,8 +12,9 @@
 //! choice belongs to the screen, so the parameter is part of the view.
 
 use crate::actor::Occupant;
-use crate::command::Event;
+use crate::command::{Event, OpeningPhase};
 use crate::notation::algebraic;
+use crate::opening::OpeningSnapshot;
 use crate::session::{SessionCore, Snapshot};
 use crossterm::style::Stylize;
 use engine::{Board, Color, Move, Status};
@@ -49,6 +50,8 @@ pub struct StudyView<'a> {
     recent_events: &'a [Event],
     cursor: Option<Move>,
     command_line: Option<&'a str>,
+    message: Option<&'a str>,
+    color_override: Option<Color>,
     styled: bool,
 }
 
@@ -62,6 +65,8 @@ impl<'a> StudyView<'a> {
             recent_events,
             cursor: None,
             command_line: None,
+            message: None,
+            color_override: None,
             styled: false,
         }
     }
@@ -89,6 +94,30 @@ impl<'a> StudyView<'a> {
         self
     }
 
+    /// Show `text` as the bottom line of the frame.
+    ///
+    /// One bottom line exists. While the command line is open it shows
+    /// the buffer and the message is not drawn; in normal mode the
+    /// message carries the last event summary or the last error text.
+    /// The line is never styled: it is feedback text, not furniture.
+    #[must_use]
+    pub fn message(mut self, text: &'a str) -> Self {
+        self.message = Some(text);
+        self
+    }
+
+    /// Report `color` as the selected color of the next Swap2 stone.
+    ///
+    /// The selection lives in the shell's input state, not in the
+    /// session, so the renderer must be told. At a placement phase the
+    /// panel shows the override when one is set, else the ceremony's
+    /// default color. Outside a placement phase the value is ignored.
+    #[must_use]
+    pub fn color_override(mut self, color: Option<Color>) -> Self {
+        self.color_override = color;
+        self
+    }
+
     /// Turn ANSI styling on (`true`) or off (`false`).
     ///
     /// Unstyled output contains no escape sequences, so it is safe to pipe
@@ -112,8 +141,25 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
     let core = view.core;
     let board = core.board();
     let snapshot = core.snapshot();
-    let board_lines = study_board_lines(&board, snapshot.last_move, view.cursor, view.styled);
-    let panel_lines = render_side_panel(core, &board, &snapshot, view.recent_events, view.styled);
+    // During a Swap2 ceremony the tree board is empty by design (the
+    // placements are not game moves), so the stones to draw come from
+    // the opening snapshot.
+    let opening = snapshot.opening.as_ref();
+    let board_lines = study_board_lines(
+        &board,
+        opening,
+        snapshot.last_move,
+        view.cursor,
+        view.styled,
+    );
+    let panel_lines = render_side_panel(
+        core,
+        &board,
+        &snapshot,
+        view.recent_events,
+        view.color_override,
+        view.styled,
+    );
     let rows = board_lines.len().max(panel_lines.len());
     let mut out = Vec::with_capacity(rows + 1);
     for i in 0..rows {
@@ -121,10 +167,13 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         let right = panel_lines.get(i).map(String::as_str).unwrap_or("");
         out.push(format!("{left}  {right}"));
     }
-    // The command line is the last line of the frame, so the user's text
-    // always appears at the bottom of the screen.
+    // One bottom line: the command line while it is open (the user's
+    // text always at the bottom of the screen), else the message when
+    // the loop has one to show.
     if let Some(buffer) = view.command_line {
         out.push(format!(":{buffer}"));
+    } else if let Some(text) = view.message {
+        out.push(text.to_string());
     }
     out
 }
@@ -137,6 +186,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
 /// optional.
 fn study_board_lines(
     board: &Board,
+    opening: Option<&OpeningSnapshot>,
     last: Option<Move>,
     cursor: Option<Move>,
     styled: bool,
@@ -150,7 +200,7 @@ fn study_board_lines(
         let mut line = format!("{label} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
-            line.push_str(&study_cell(board, mv, last, cursor, styled));
+            line.push_str(&study_cell(board, opening, mv, last, cursor, styled));
         }
         line.push_str(&format!("| {rlabel}"));
         lines.push(line);
@@ -199,12 +249,24 @@ fn style_gutter(text: &str, styled: bool) -> String {
 /// cursor in a styled frame, so the stone information is not lost.
 fn study_cell(
     board: &Board,
+    opening: Option<&OpeningSnapshot>,
     mv: Move,
     last: Option<Move>,
     cursor: Option<Move>,
     styled: bool,
 ) -> String {
-    let stone = board.stone_at(mv);
+    // Ceremony placements are not in the tree board, so the board
+    // lookup falls back to the placement list. The list holds at most
+    // five entries; a linear scan is fast enough for a per-frame draw.
+    let stone = board.stone_at(mv).or_else(|| {
+        opening.and_then(|opening| {
+            opening
+                .placements
+                .iter()
+                .find(|(m, _)| *m == mv)
+                .map(|(_, color)| *color)
+        })
+    });
     let glyph = match stone {
         Some(Color::Black) => "x",
         Some(Color::White) => "o",
@@ -237,13 +299,15 @@ fn study_cell(
     }
 }
 
-/// The side panel: seat table, ply, side to move or game result, path
-/// tail, branch options, recent events, and the key hints.
+/// The side panel: seat table, then the phase-dependent middle block
+/// (the ceremony during a Swap2 opening, the game state afterwards),
+/// then recent events and the key hints.
 fn render_side_panel(
     core: &SessionCore,
     board: &Board,
     snapshot: &Snapshot,
     recent_events: &[Event],
+    color_override: Option<Color>,
     styled: bool,
 ) -> Vec<String> {
     let mut lines = Vec::new();
@@ -251,6 +315,32 @@ fn render_side_panel(
     lines.push(format!("Black: {}", seat_label(core.black())));
     lines.push(format!("White: {}", seat_label(core.white())));
     lines.push(String::new());
+    // The middle block is phase-dependent: during the ceremony the tree
+    // is empty, so ply and side-to-move would describe a game that has
+    // not started. The ceremony block takes their place.
+    match &snapshot.opening {
+        Some(opening) => ceremony_lines(&mut lines, opening, color_override),
+        None => position_lines(&mut lines, board, snapshot),
+    }
+    lines.push(String::new());
+    lines.push("Last events:".to_string());
+    if recent_events.is_empty() {
+        lines.push("  (none)".to_string());
+    } else {
+        // The five most recent events, oldest first: the latest event is
+        // the bottom line of the list.
+        for ev in recent_events.iter().rev().take(5).rev() {
+            lines.push(format!("  {ev}"));
+        }
+    }
+    lines.push(String::new());
+    lines.push(panel_line("? help · q quit", styled));
+    lines
+}
+
+/// The game-state block of the side panel: ply, side to move or game
+/// result, path tail, and branch options.
+fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
     lines.push(format!("Ply: {}", snapshot.ply));
     // One line covers both states a game can be in: waiting for a side,
     // or finished with a result.
@@ -276,20 +366,60 @@ fn render_side_panel(
             opts.join(" ")
         ));
     }
-    lines.push(String::new());
-    lines.push("Last events:".to_string());
-    if recent_events.is_empty() {
-        lines.push("  (none)".to_string());
+}
+
+/// The ceremony block of the side panel: the phase, the placements,
+/// the color of the next stone at a placement phase, and the keys that
+/// apply now.
+///
+/// The panel teaches the phase-dependent keys at the point where the
+/// user needs them: a placement phase shows the placement keys, a
+/// choice phase shows the choice keys. The guidance strings match the
+/// key table in the help screen word for word.
+fn ceremony_lines(
+    lines: &mut Vec<String>,
+    opening: &OpeningSnapshot,
+    color_override: Option<Color>,
+) {
+    lines.push(format!("Swap2: {:?}", opening.phase));
+    let stones = if opening.placements.is_empty() {
+        "(none)".to_string()
     } else {
-        // The five most recent events, oldest first: the latest event is
-        // the bottom line of the list.
-        for ev in recent_events.iter().rev().take(5).rev() {
-            lines.push(format!("  {ev}"));
+        opening
+            .placements
+            .iter()
+            .map(|(mv, color)| format!("{}:{color:?}", algebraic(*mv)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    lines.push(format!("Stones: {stones}"));
+    match opening.phase {
+        OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
+            // The next stone's color is the override when the user
+            // selected one with `b`/`w`, else the ceremony's default.
+            // The snapshot guarantees a default at a placement phase.
+            let (color, source) = match color_override {
+                Some(color) => (color, "override"),
+                None => (
+                    opening
+                        .default_next_color
+                        .expect("a placement phase always has a default color"),
+                    "default",
+                ),
+            };
+            lines.push(format!("Next: {color:?} ({source})"));
+            lines.push("Enter place · u undo · d done".to_string());
+        }
+        OpeningPhase::FirstChoice => {
+            // A choice phase has no next stone, so there is no `Next:`
+            // line; showing a default here would report a stone that
+            // does not exist.
+            lines.push("b black · w white · m more".to_string());
+        }
+        OpeningPhase::FinalChoice => {
+            lines.push("b black · w white".to_string());
         }
     }
-    lines.push(String::new());
-    lines.push(panel_line("? help · q quit", styled));
-    lines
 }
 
 /// A panel line, dimmed when styled.
@@ -518,6 +648,101 @@ mod tests {
         // The command line adds exactly one line: the buffer behind ':'.
         assert_eq!(with_line.len(), bare.len() + 1);
         assert_eq!(with_line.last().unwrap(), ":play h8");
+    }
+
+    #[test]
+    fn the_ceremony_draws_its_placements_as_stones() {
+        // The tree board stays empty during the ceremony by design;
+        // the stones on the frame come from the opening snapshot.
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        assert!(core.board().moves().is_empty());
+        play(&mut core, 7, 7); // h8, Black by the default order
+        core.execute(Command::Play {
+            mv: mv(7, 8),
+            color: Some(Color::White),
+        })
+        .unwrap(); // i8, White by the override token
+
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let row7 = &frame[2 + 7];
+        // Four gutter bytes, then three bytes per column: h8 starts at
+        // byte 25. Ceremony stones get no last-move brackets: the
+        // marker belongs to the tree, and the tree is empty.
+        assert_eq!(&row7[25..28], " x ");
+        assert_eq!(&row7[28..31], " o ");
+    }
+
+    #[test]
+    fn the_ceremony_panel_shows_phase_next_color_and_keys() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("Swap2: Placing3"), "the phase: {text}");
+        assert!(text.contains("Stones: (none)"), "no placements yet: {text}");
+        assert!(
+            text.contains("Next: Black (default)"),
+            "the default color of the first stone: {text}"
+        );
+        assert!(
+            text.contains("Enter place · u undo · d done"),
+            "the placement keys: {text}"
+        );
+        // The ceremony block replaces the game-state lines: the tree is
+        // empty, so there is no side to move.
+        assert!(
+            !text.contains("To move:"),
+            "no game state during the ceremony: {text}"
+        );
+
+        play(&mut core, 7, 7);
+        let view = StudyView::new(&core, &[]).color_override(Some(Color::White));
+        let text = render_study(&view).join("\n");
+        assert!(text.contains("Stones: h8:Black"), "the placements: {text}");
+        assert!(
+            text.contains("Next: White (override)"),
+            "the selected color of the next stone: {text}"
+        );
+    }
+
+    #[test]
+    fn the_choice_phase_panel_shows_the_choice_keys_and_no_next_stone() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        for (r, c) in [(7, 7), (8, 8), (9, 9)] {
+            play(&mut core, r, c);
+        }
+        core.execute(Command::Done).unwrap();
+
+        let text = render_study(&StudyView::new(&core, &[])).join("\n");
+        assert!(text.contains("Swap2: FirstChoice"), "the phase: {text}");
+        assert!(
+            text.contains("b black · w white · m more"),
+            "the first-choice keys: {text}"
+        );
+        // A choice phase has no next stone, so the panel must not
+        // report one.
+        assert!(
+            !text.contains("Next:"),
+            "no next stone at a choice phase: {text}"
+        );
+    }
+
+    #[test]
+    fn the_message_is_the_bottom_line_unless_the_command_line_is_open() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let bare = render_study(&StudyView::new(&core, &[]));
+        let with_message = render_study(&StudyView::new(&core, &[]).message("Moved h8 by Human"));
+        // The message adds exactly one line, at the bottom.
+        assert_eq!(with_message.len(), bare.len() + 1);
+        assert_eq!(with_message.last().unwrap(), "Moved h8 by Human");
+
+        // While the command line is open it owns the bottom line.
+        let both = render_study(
+            &StudyView::new(&core, &[])
+                .message("Moved h8 by Human")
+                .command_line("pla"),
+        );
+        assert_eq!(both.len(), bare.len() + 1);
+        assert_eq!(both.last().unwrap(), ":pla");
     }
 
     #[test]

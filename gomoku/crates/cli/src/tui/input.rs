@@ -1,0 +1,706 @@
+//! Input translation for the full-screen shell: keys in, outcomes out.
+//!
+//! This module is the pure half of the shell. It reads crossterm's key
+//! vocabulary ([`KeyEvent`]) but performs no I/O: a key event plus the
+//! input state plus the session go in, and an [`InputOutcome`] comes
+//! out. Every key mapping is unit-tested without a terminal.
+//!
+//! The model is modal, in the style of vim. In normal mode single keys
+//! act: arrows and `hjkl` move the board cursor, Enter plays or steps,
+//! `?` shows help, `q` quits. `:` opens a command line that accepts the
+//! full command language of [`crate::command`]. Keys are only
+//! translations to `Command` values; the session core sees no
+//! difference between a key and a typed line.
+//!
+//! Several keys are phase-dependent. The session knows the phase (a
+//! Swap2 ceremony in progress, or not, and which ceremony phase), so
+//! one key can safely carry one meaning per phase: `u` removes a
+//! placement during the ceremony and goes back one ply afterwards.
+
+use crate::command::{self, Command, OpeningPhase};
+use crate::opening::OpeningSnapshot;
+use crate::session::SessionCore;
+use crossterm::event::{KeyCode, KeyEvent};
+use engine::{Color, Move};
+
+/// The message for the `m` key at a phase where it does not apply.
+///
+/// The text matches [`crate::command::CommandError::NotAtFirstChoice`]
+/// on purpose: the user sees one sentence for one rule, no matter
+/// whether the input layer or the session reports it.
+const MORE_ONLY_AT_FIRST_CHOICE: &str = "'more' applies only at the first Swap2 choice";
+
+/// The input mode of the shell.
+///
+/// Two modes exist. Normal mode translates single keys directly. The
+/// command line is a small editor over a `String` buffer: raw mode
+/// gives the program one keypress at a time, so appending, Backspace,
+/// and echo are this module's job, not the terminal driver's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputMode {
+    /// Single keys act immediately.
+    Normal,
+    /// A `:` command line is open; the payload is the buffer typed so
+    /// far.
+    CommandLine(String),
+}
+
+/// The shell's input state.
+///
+/// This is display and editing state, not session state. The session
+/// core owns the game; this struct owns what the user's hands are
+/// doing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputState {
+    /// The current mode.
+    pub mode: InputMode,
+    /// The board cursor: the square the next Enter acts on.
+    pub cursor: Move,
+    /// The selected color of the next Swap2 stone, set with `b`/`w` at
+    /// a placement phase. `None` means the ceremony's default order
+    /// applies. The shell clears it when a placement lands, so the
+    /// override arms exactly one stone.
+    pub next_color_override: Option<Color>,
+}
+
+impl InputState {
+    /// Fresh input state: normal mode, no override, the cursor on the
+    /// center point h8.
+    ///
+    /// The center is the natural first target on an empty board and the
+    /// most common first stone of a Swap2 ceremony, so the cursor
+    /// starts there instead of in a corner.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            mode: InputMode::Normal,
+            cursor: Move::new(7, 7).expect("the center point is on the board"),
+            next_color_override: None,
+        }
+    }
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// What one key press means for the shell.
+///
+/// The translation layer never executes anything. It reports what the
+/// key means, and the loop in [`crate::tui::study`] acts on the report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputOutcome {
+    /// Execute this command on the session core.
+    Command(Command),
+    /// Show the full-screen help; any key returns to the table.
+    Help,
+    /// Leave the shell.
+    Quit,
+    /// Show this text on the message line. Parse errors and keys that
+    /// do not apply in the current phase use this variant.
+    Message(String),
+    /// The key changed only input state (cursor moved, buffer edited),
+    /// or the key is not mapped. Nothing reaches the session.
+    None,
+}
+
+/// Translate one key press into an outcome.
+///
+/// The function is pure: it mutates only `state` and touches no I/O.
+/// `core` is read-only; it supplies the phase (the Swap2 snapshot) and
+/// the seat table (for Enter during play). Two small machines share the
+/// work: the command-line editor while a command line is open, and the
+/// normal-mode mapping otherwise.
+pub fn handle_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) -> InputOutcome {
+    match &state.mode {
+        InputMode::Normal => handle_normal_key(key, state, core),
+        InputMode::CommandLine(_) => handle_command_line_key(key, state),
+    }
+}
+
+/// One key while the command line is open: the editing machine.
+///
+/// The buffer comes out of the state with `mem::replace`, so the mode
+/// can change (Esc, Enter) without two live borrows of `state.mode`.
+/// Every path below either puts the buffer back or leaves the state in
+/// normal mode.
+fn handle_command_line_key(key: KeyEvent, state: &mut InputState) -> InputOutcome {
+    let InputMode::CommandLine(mut buffer) = std::mem::replace(&mut state.mode, InputMode::Normal)
+    else {
+        unreachable!("handle_key dispatches here only in command-line mode")
+    };
+    match key.code {
+        // Any character appends, including characters that are commands
+        // in normal mode. The command line is text, not keys.
+        KeyCode::Char(c) => {
+            buffer.push(c);
+            state.mode = InputMode::CommandLine(buffer);
+            InputOutcome::None
+        }
+        KeyCode::Backspace => {
+            buffer.pop();
+            state.mode = InputMode::CommandLine(buffer);
+            InputOutcome::None
+        }
+        // Esc cancels: the mode is already Normal (the replace above),
+        // and the buffer is dropped with this frame.
+        KeyCode::Esc => InputOutcome::None,
+        KeyCode::Enter => {
+            let text = buffer.trim().to_string();
+            // An empty command line closes quietly, the way vim's `:`
+            // followed by Enter does nothing.
+            if text.is_empty() {
+                return InputOutcome::None;
+            }
+            // One grammar exists, and it lives in `command::parse`. The
+            // command line reuses it; a second parser here would drift.
+            match command::parse(&text) {
+                Ok(cmd) => InputOutcome::Command(cmd),
+                Err(err) => InputOutcome::Message(err.to_string()),
+            }
+        }
+        // Arrows and every other key do not edit; the buffer stays open.
+        _ => {
+            state.mode = InputMode::CommandLine(buffer);
+            InputOutcome::None
+        }
+    }
+}
+
+/// One key in normal mode: the translation table.
+///
+/// The table is in two parts. The global keys (cursor motion, `:`,
+/// `?`, `q`) mean the same thing in every phase and are checked first.
+/// The remaining keys are phase-dependent and dispatch on the session
+/// snapshot. Modifiers are not inspected: `?` arrives as `Char('?')`
+/// with the Shift modifier on most layouts, and matching the code alone
+/// keeps the mapping independent of the layout.
+fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) -> InputOutcome {
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            move_cursor(&mut state.cursor, -1, 0);
+            return InputOutcome::None;
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            move_cursor(&mut state.cursor, 1, 0);
+            return InputOutcome::None;
+        }
+        KeyCode::Left | KeyCode::Char('h') => {
+            move_cursor(&mut state.cursor, 0, -1);
+            return InputOutcome::None;
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            move_cursor(&mut state.cursor, 0, 1);
+            return InputOutcome::None;
+        }
+        KeyCode::Char(':') => {
+            state.mode = InputMode::CommandLine(String::new());
+            return InputOutcome::None;
+        }
+        KeyCode::Char('?') => return InputOutcome::Help,
+        KeyCode::Char('q') => return InputOutcome::Quit,
+        _ => {}
+    }
+
+    // Phase-dependent keys. The session knows the phase; the snapshot
+    // reports it. This is what makes one key per action safe: `u`
+    // cannot mean two things at once, because the session always knows
+    // which phase the session is in.
+    match core.snapshot().opening {
+        Some(opening) => opening_key(key, state, &opening),
+        None => playing_key(key, state, core),
+    }
+}
+
+/// The phase-dependent keys during the Swap2 ceremony.
+fn opening_key(key: KeyEvent, state: &mut InputState, opening: &OpeningSnapshot) -> InputOutcome {
+    match opening.phase {
+        OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
+            // Enter places the next stone at the cursor. The override
+            // colors this one stone when set; the loop clears it when
+            // the placement lands.
+            KeyCode::Enter => InputOutcome::Command(Command::Play {
+                mv: state.cursor,
+                color: state.next_color_override,
+            }),
+            // During the ceremony the session routes `back` to the
+            // replay log, so `u` removes the last placement.
+            KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
+            KeyCode::Char('d') => InputOutcome::Command(Command::Done),
+            // `b`/`w` select the next stone's color. The panel shows
+            // the selection, so the outcome needs no message.
+            KeyCode::Char('b') => {
+                state.next_color_override = Some(Color::Black);
+                InputOutcome::None
+            }
+            KeyCode::Char('w') => {
+                state.next_color_override = Some(Color::White);
+                InputOutcome::None
+            }
+            // `m` is the decline of the first choice. During placement
+            // it applies nowhere, so the key explains itself instead of
+            // producing the session's typed error with no visible
+            // context.
+            KeyCode::Char('m') => InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string()),
+            _ => InputOutcome::None,
+        },
+        // At a choice phase the only stone-related keys are the choice
+        // itself. Enter places nothing here, and `u` is not mapped:
+        // removing a placement belongs to the placement phases.
+        OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => match key.code {
+            KeyCode::Char('b') => InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black,
+            }),
+            KeyCode::Char('w') => InputOutcome::Command(Command::ChooseColor {
+                color: Color::White,
+            }),
+            // `more` exists only at the first choice. At the final
+            // choice the key gets the same message as at a placement
+            // phase, so the rule has one sentence everywhere.
+            KeyCode::Char('m') if opening.phase == OpeningPhase::FirstChoice => {
+                InputOutcome::Command(Command::More)
+            }
+            KeyCode::Char('m') => InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string()),
+            _ => InputOutcome::None,
+        },
+    }
+}
+
+/// The phase-dependent keys during play, after any ceremony finished.
+fn playing_key(key: KeyEvent, state: &InputState, core: &SessionCore) -> InputOutcome {
+    match key.code {
+        // Enter is the obvious next action: a human seat plays at the
+        // cursor, an AI seat searches. The seat table decides; the
+        // session validates the result (an occupied square, a finished
+        // game) and the loop shows the error.
+        KeyCode::Enter => {
+            let side = core.board().to_move();
+            if core.occupant(side).is_human() {
+                InputOutcome::Command(Command::Play {
+                    mv: state.cursor,
+                    color: None,
+                })
+            } else {
+                InputOutcome::Command(Command::Step)
+            }
+        }
+        KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
+        // The ceremony keys (`d`, `b`, `w`, `m`) have no meaning during
+        // play and are ignored like any other unmapped key.
+        _ => InputOutcome::None,
+    }
+}
+
+/// Move the board cursor one step, clamped to the board edges.
+///
+/// Up and left use `saturating_sub`: a `u8` cannot go below zero, and
+/// saturating_sub clamps at the edge instead of underflowing. Down and
+/// right use `min` with 14, the last valid index on a 15×15 board. The
+/// clamped coordinates are always valid, so `Move::new` cannot fail;
+/// the `expect` documents that invariant instead of handling an error.
+fn move_cursor(cursor: &mut Move, dr: i8, dc: i8) {
+    let row = match dr {
+        -1 => cursor.row().saturating_sub(1),
+        1 => cursor.row().saturating_add(1).min(14),
+        _ => cursor.row(),
+    };
+    let col = match dc {
+        -1 => cursor.col().saturating_sub(1),
+        1 => cursor.col().saturating_add(1).min(14),
+        _ => cursor.col(),
+    };
+    *cursor = Move::new(row, col).expect("clamped coordinates stay on the board");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::SeatSel;
+    use crate::session::SessionInit;
+    use crossterm::event::KeyModifiers;
+
+    /// A key event with no modifiers, as a terminal reports a plain
+    /// keypress. `KeyEvent::new` marks the event as a press.
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn char_key(c: char) -> KeyEvent {
+        key(KeyCode::Char(c))
+    }
+
+    /// Type a string into an open command line, one `Char` key at a time.
+    fn type_text(state: &mut InputState, core: &SessionCore, text: &str) {
+        for c in text.chars() {
+            let outcome = handle_key(char_key(c), state, core);
+            assert_eq!(outcome, InputOutcome::None, "typing '{c}' edits only");
+        }
+    }
+
+    fn playing_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat())
+    }
+
+    /// A session at the first placement phase.
+    fn placing_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
+    }
+
+    /// A session at the first choice: three default placements, `done`.
+    fn first_choice_core() -> SessionCore {
+        let mut core = placing_core();
+        for (r, c) in [(7, 7), (8, 8), (9, 9)] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+                color: None,
+            })
+            .unwrap();
+        }
+        core.execute(Command::Done).unwrap();
+        core
+    }
+
+    /// A session at the second placement phase: the first choice
+    /// declined with `more`.
+    fn placing2_core() -> SessionCore {
+        let mut core = first_choice_core();
+        core.execute(Command::More).unwrap();
+        core
+    }
+
+    /// A session at the final choice: both rounds placed and confirmed.
+    fn final_choice_core() -> SessionCore {
+        let mut core = placing2_core();
+        for (r, c) in [(5, 5), (6, 6)] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+                color: None,
+            })
+            .unwrap();
+        }
+        core.execute(Command::Done).unwrap();
+        core
+    }
+
+    #[test]
+    fn arrows_and_hjkl_move_the_cursor() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        assert_eq!(state.cursor, Move::new(7, 7).unwrap());
+
+        handle_key(key(KeyCode::Up), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(6, 7).unwrap());
+        handle_key(key(KeyCode::Left), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(6, 6).unwrap());
+        handle_key(char_key('j'), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(7, 6).unwrap());
+        handle_key(char_key('l'), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(7, 7).unwrap());
+    }
+
+    #[test]
+    fn the_cursor_clamps_at_the_board_edges() {
+        let core = playing_core();
+        let mut state = InputState {
+            cursor: Move::new(0, 0).unwrap(),
+            ..InputState::new()
+        };
+        // The top-left corner: up and left cannot underflow.
+        handle_key(char_key('k'), &mut state, &core);
+        handle_key(key(KeyCode::Left), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(0, 0).unwrap());
+
+        state.cursor = Move::new(14, 14).unwrap();
+        // The bottom-right corner: down and right cannot pass index 14.
+        handle_key(char_key('j'), &mut state, &core);
+        handle_key(key(KeyCode::Right), &mut state, &core);
+        assert_eq!(state.cursor, Move::new(14, 14).unwrap());
+    }
+
+    #[test]
+    fn the_global_keys_work_in_every_phase() {
+        let mut state = InputState::new();
+        for core in [
+            playing_core(),
+            placing_core(),
+            first_choice_core(),
+            final_choice_core(),
+        ] {
+            assert_eq!(
+                handle_key(char_key('?'), &mut state, &core),
+                InputOutcome::Help
+            );
+            assert_eq!(
+                handle_key(char_key('q'), &mut state, &core),
+                InputOutcome::Quit
+            );
+            let outcome = handle_key(char_key(':'), &mut state, &core);
+            assert_eq!(outcome, InputOutcome::None);
+            assert_eq!(state.mode, InputMode::CommandLine(String::new()));
+            // Close the line again for the next phase's core.
+            handle_key(key(KeyCode::Esc), &mut state, &core);
+            assert_eq!(state.mode, InputMode::Normal);
+        }
+    }
+
+    #[test]
+    fn during_play_enter_plays_at_the_cursor_for_a_human_seat() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        state.cursor = Move::new(3, 4).unwrap();
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(3, 4).unwrap(),
+                color: None
+            })
+        );
+    }
+
+    #[test]
+    fn during_play_enter_steps_for_an_ai_seat() {
+        let mut core = playing_core();
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Step)
+        );
+    }
+
+    #[test]
+    fn during_play_u_is_back_and_the_ceremony_keys_are_unmapped() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('u'), &mut state, &core),
+            InputOutcome::Command(Command::Back { n: 1 })
+        );
+        for c in ['d', 'b', 'w', 'm'] {
+            assert_eq!(
+                handle_key(char_key(c), &mut state, &core),
+                InputOutcome::None,
+                "'{c}' is unmapped during play"
+            );
+        }
+    }
+
+    #[test]
+    fn at_a_placement_phase_enter_places_with_the_default_color() {
+        let core = placing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap(),
+                color: None
+            })
+        );
+    }
+
+    #[test]
+    fn at_a_placement_phase_b_and_w_select_the_next_color() {
+        let core = placing_core();
+        let mut state = InputState::new();
+
+        // `w` selects White for the next stone; the key itself is only
+        // a state change, so the outcome is None.
+        assert_eq!(
+            handle_key(char_key('w'), &mut state, &core),
+            InputOutcome::None
+        );
+        assert_eq!(state.next_color_override, Some(Color::White));
+
+        // Enter uses the selection. Clearing the override after a
+        // placement is the loop's job, not the translator's.
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap(),
+                color: Some(Color::White)
+            })
+        );
+
+        // `b` re-selects Black.
+        handle_key(char_key('b'), &mut state, &core);
+        assert_eq!(state.next_color_override, Some(Color::Black));
+    }
+
+    #[test]
+    fn at_a_placement_phase_u_undoes_and_d_is_done() {
+        for core in [placing_core(), placing2_core()] {
+            let mut state = InputState::new();
+            assert_eq!(
+                handle_key(char_key('u'), &mut state, &core),
+                InputOutcome::Command(Command::Back { n: 1 })
+            );
+            assert_eq!(
+                handle_key(char_key('d'), &mut state, &core),
+                InputOutcome::Command(Command::Done)
+            );
+        }
+    }
+
+    #[test]
+    fn at_a_placement_phase_m_is_a_message_not_a_command() {
+        let core = placing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('m'), &mut state, &core),
+            InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string())
+        );
+    }
+
+    #[test]
+    fn at_the_first_choice_b_w_choose_and_m_is_more() {
+        let core = first_choice_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('b'), &mut state, &core),
+            InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            handle_key(char_key('w'), &mut state, &core),
+            InputOutcome::Command(Command::ChooseColor {
+                color: Color::White
+            })
+        );
+        assert_eq!(
+            handle_key(char_key('m'), &mut state, &core),
+            InputOutcome::Command(Command::More)
+        );
+    }
+
+    #[test]
+    fn at_the_final_choice_b_w_choose_and_m_is_a_message() {
+        let core = final_choice_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('b'), &mut state, &core),
+            InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            handle_key(char_key('m'), &mut state, &core),
+            InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string())
+        );
+    }
+
+    #[test]
+    fn at_a_choice_phase_enter_and_u_are_unmapped() {
+        let core = first_choice_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::None
+        );
+        assert_eq!(
+            handle_key(char_key('u'), &mut state, &core),
+            InputOutcome::None
+        );
+    }
+
+    #[test]
+    fn the_command_line_appends_and_backspace_edits() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+
+        type_text(&mut state, &core, "pla");
+        assert_eq!(state.mode, InputMode::CommandLine("pla".to_string()));
+
+        handle_key(key(KeyCode::Backspace), &mut state, &core);
+        assert_eq!(state.mode, InputMode::CommandLine("pl".to_string()));
+
+        // Backspace on an empty buffer is a no-op, not an underflow.
+        handle_key(key(KeyCode::Backspace), &mut state, &core);
+        handle_key(key(KeyCode::Backspace), &mut state, &core);
+        handle_key(key(KeyCode::Backspace), &mut state, &core);
+        assert_eq!(state.mode, InputMode::CommandLine(String::new()));
+    }
+
+    #[test]
+    fn esc_cancels_the_command_line() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "play h8");
+        assert_eq!(
+            handle_key(key(KeyCode::Esc), &mut state, &core),
+            InputOutcome::None
+        );
+        assert_eq!(state.mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn enter_on_an_empty_command_line_returns_to_normal() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::None
+        );
+        assert_eq!(state.mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn enter_parses_the_buffer_with_the_shared_grammar() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "play h8");
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap(),
+                color: None
+            })
+        );
+        assert_eq!(state.mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn a_parse_error_is_a_message_and_closes_the_line() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "play");
+        let outcome = handle_key(key(KeyCode::Enter), &mut state, &core);
+        let InputOutcome::Message(text) = outcome else {
+            panic!("a parse error is a message, got {outcome:?}");
+        };
+        assert!(text.contains("Parse error"), "the parser's text: {text}");
+        assert_eq!(state.mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn the_typed_quit_and_help_are_commands_for_the_loop_to_intercept() {
+        // `quit` and `help` typed on the command line translate to the
+        // same Command values as everything else. The loop intercepts
+        // them, because the session core treats both as no-ops.
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "quit");
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Quit)
+        );
+
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "help");
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Help)
+        );
+    }
+}
