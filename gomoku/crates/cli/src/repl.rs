@@ -220,11 +220,8 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::session::SessionInit;
-    use engine::{Color, Move};
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
+    use engine::Color;
 
     #[test]
     fn print_state_without_a_ceremony_has_no_swap2_line() {

@@ -485,11 +485,7 @@ fn parse_required_seat<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::Move;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
 
     #[test]
     fn parse_quit() {

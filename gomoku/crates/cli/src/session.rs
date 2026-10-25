@@ -691,11 +691,8 @@ impl SessionCore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testkit::mv;
     use engine::PlayError;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
 
     fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
         core.execute(Command::Play {

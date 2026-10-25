@@ -468,10 +468,7 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::session::SessionInit;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
 
     fn play(core: &mut SessionCore, r: u8, c: u8) {
         core.execute(Command::Play {

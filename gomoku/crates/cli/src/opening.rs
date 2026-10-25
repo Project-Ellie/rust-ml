@@ -296,10 +296,7 @@ fn rebuild_final_choice(log: &[(Move, Color)]) -> Swap2<FinalChoice> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
 
     #[test]
     fn the_default_color_alternates_per_round_starting_with_black() {

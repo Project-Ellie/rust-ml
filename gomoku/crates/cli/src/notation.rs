@@ -99,10 +99,7 @@ pub fn algebraic(mv: Move) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
 
     #[test]
     fn parses_edge_and_center_squares() {
