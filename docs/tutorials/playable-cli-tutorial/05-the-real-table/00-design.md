@@ -1,7 +1,7 @@
 # Chapter 05 redesign — the study table as a sub-project
 
-Status: DRAFT. Nothing here is implemented yet. When you approve, this
-paper becomes the contract for the sub-chapters.
+Status: implemented on main (sub-chapters a–f, 152 cli tests green).
+This paper remains the architecture contract for the sub-chapters.
 
 Decided (2026-10, with the owner):
 

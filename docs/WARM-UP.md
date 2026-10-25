@@ -298,6 +298,17 @@ Two further tutorial tracks are written and verified, ready to work:
   Note: baseline ch.4's `--versus baseline` plan is superseded — the
   baseline evaluator will enroll as an `EvaluatorKind` in the study
   table (spec §13).
+  **Progress on main (2026-10-20)**: chapters 01–04 are implemented
+  (variation tree, command language, AI seats via mcts, study loop
+  with the opening schedule). Chapter 05 was redesigned as a
+  six-part sub-project — design paper and TUI excursion in
+  `05-the-real-table/00-*.md` — and implemented in full: a-refactor
+  (notation + repl extraction, shared test kit), b-renderer (pure
+  study-table renderer), c-swap2 (engine typestate behind a session
+  replay log; command-driven ceremony), d-shell (alternate screen,
+  vim-style modal input, pure input state machine), e-fallback
+  (line mode behind the same Screen/InputSource traits), f-binary
+  (the real clap front-end). `cargo test -p cli`: 152 green.
 
 ## How the tutorials work (respect the pedagogy)
 
