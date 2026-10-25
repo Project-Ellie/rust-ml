@@ -25,6 +25,27 @@ binary parses, validates, builds a `SessionInit`, and dispatches into
 `study::run`. The terminal or line-mode selection happens inside
 `study::run`, not in the binary.
 
+src/main.rs, lines 1–16:
+
+```rust
+//! The `gomoku` binary — the clap front-end of the study table.
+//!
+//! All session logic lives in the `cli` library. This file does three
+//! things: parse the command line, reject invalid flag combinations,
+//! and build the [`SessionInit`] that [`cli::tui::study::run`] runs.
+//!
+//! `play` is the default subcommand: the Swap2 ceremony first unless
+//! `--no-swap2`, then the study table. `selfplay` seats the AI in both
+//! seats; Enter steps the search forward. The terminal or line-mode
+//! selection happens inside `study::run`, not here.
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use cli::actor::{AiConfig, EvaluatorKind, Occupant};
+use cli::session::SessionInit;
+use cli::tui::study;
+use engine::{Board, Color};
+```
+
 ### The clap structure
 
 `CliArgs` carries the flattened `PlayArgs` next to the optional
@@ -297,6 +318,34 @@ The module doc (lines 1–9) names the two facts the file stands on: a
 pipe is not a terminal, so every session runs the line-mode fallback;
 and the assertions read stable substrings, because the byte-exact
 frame contract already lives in `tests/line_mode.rs`.
+
+tests/binary.rs, lines 1–23:
+
+```rust
+//! The `gomoku` binary, end to end: the real process with piped stdin
+//! and stdout.
+//!
+//! A pipe is not a terminal, so every session here runs the line-mode
+//! fallback: plain text frames out, complete lines in. That is what
+//! makes the binary testable without a terminal — sub-chapter e's
+//! selection rule, exercised through the operating system this time.
+//! The assertions read stable substrings (seat labels, event texts,
+//! the panel's phase and game-over lines), not whole frames: the
+//! byte-exact frame contract already lives in `tests/line_mode.rs`.
+
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
+
+/// Run the `gomoku` binary with `args`, feed `script` to its stdin,
+/// and return the captured output.
+///
+/// `CARGO_BIN_EXE_gomoku` is the path of the binary target; cargo
+/// sets it when it builds the integration tests. The scripts here fit
+/// in one pipe buffer, so writing before waiting cannot deadlock. A
+/// process that exits early (a usage error) closes its end of the
+/// pipe before reading, so the write error is ignored — those tests
+/// assert on the exit code and stderr, not on the script.
+```
 
 ### The harness
 

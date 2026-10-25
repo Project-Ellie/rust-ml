@@ -18,17 +18,45 @@ then the loop (`study.rs`).
 
 ## src/tui/screen.rs (new, 122 lines)
 
-The module doc (lines 1–15) states the doctrine: the trait is
+The module doc (lines 1–13) states the doctrine: the trait is
 deliberately small; a screen knows how to draw lines and nothing
 about sessions, commands, or keys. That smallness is what lets a test
 replace the terminal with a `Vec`.
+
+src/tui/screen.rs, lines 1–23:
+
+```rust
+//! The screen abstraction: where a finished frame goes.
+//!
+//! One trait, one method. The loop in [`crate::tui::study`] builds a
+//! frame as a `Vec<String>` and hands it to a [`Screen`]; the screen
+//! decides how the lines reach the user. [`AltScreen`] is the
+//! full-screen implementation: crossterm, the alternate screen, and an
+//! RAII guard that restores the terminal on every exit path. The
+//! line-mode fallback of sub-chapter e will be a second implementation.
+//!
+//! The trait is deliberately small. A screen does not know about
+//! sessions, commands, or keys; it knows how to draw lines. That is
+//! what lets a test replace the terminal with a `Vec` of recorded
+//! frames.
+
+use crossterm::{
+    cursor::{Hide, MoveTo, Show},
+    execute, queue,
+    style::Print,
+    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use std::io::{self, Write};
+
+/// A destination for one rendered frame.
+```
 
 The trait has one required method and one defaulted one. `styled()`
 lives here because sub-chapter b established that the styling choice
 belongs to the screen; the default is unstyled, so a recording test
 screen gets plain text without opting out.
 
-src/tui/screen.rs, lines 24–44:
+src/tui/screen.rs, lines 24–43:
 
 ```rust
 pub trait Screen {
@@ -59,7 +87,7 @@ screen left first (both are escape sequences on stdout), raw mode off
 last. `enter` uses `execute!`, which flushes: the mode switch must
 take effect before the first frame is queued.
 
-src/tui/screen.rs, lines 62–93:
+src/tui/screen.rs, lines 62–94:
 
 ```rust
 pub struct AltScreen;
@@ -138,11 +166,40 @@ design.
 
 ## src/tui/input.rs (new, 706 lines, 19 tests)
 
-The module doc (lines 1–20) states the two rules that shape the file:
+The module doc (lines 1–18) states the two rules that shape the file:
 the module reads crossterm's key vocabulary but performs no I/O, and
 the phase-dependent keys are safe because the session knows the
 phase. One constant sets the wrong-phase message for `m`, matching
 the session's own error sentence word for word.
+
+src/tui/input.rs, lines 1–24:
+
+```rust
+//! Input translation for the full-screen shell: keys in, outcomes out.
+//!
+//! This module is the pure half of the shell. It reads crossterm's key
+//! vocabulary ([`KeyEvent`]) but performs no I/O: a key event plus the
+//! input state plus the session go in, and an [`InputOutcome`] comes
+//! out. Every key mapping is unit-tested without a terminal.
+//!
+//! The model is modal, in the style of vim. In normal mode single keys
+//! act: arrows and `hjkl` move the board cursor, Enter plays or steps,
+//! `?` shows help, `q` quits. `:` opens a command line that accepts the
+//! full command language of [`crate::command`]. Keys are only
+//! translations to `Command` values; the session core sees no
+//! difference between a key and a typed line.
+//!
+//! Several keys are phase-dependent. The session knows the phase (a
+//! Swap2 ceremony in progress, or not, and which ceremony phase), so
+//! one key can safely carry one meaning per phase: `u` removes a
+//! placement during the ceremony and goes back one ply afterwards.
+
+use crate::command::{self, Command, OpeningPhase};
+use crate::opening::OpeningSnapshot;
+use crate::session::SessionCore;
+use crossterm::event::{KeyCode, KeyEvent};
+use engine::{Color, Move};
+```
 
 src/tui/input.rs, lines 26–31:
 
@@ -162,13 +219,13 @@ const MORE_ONLY_AT_FIRST_CHOICE: &str = "'more' applies only at the first Swap2 
 records why the editor exists: raw mode delivers one keypress at a
 time, so appending, Backspace, and echo are this module's job.
 
-`InputState` (lines 54–72) is three public fields with doc comments.
-`InputState::new()` (lines 74–89) starts in normal mode with the
+`InputState` (lines 48–64) is three public fields with doc comments.
+`InputState::new()` (lines 67–81) starts in normal mode with the
 cursor on the center point h8 — the natural first target on an empty
 board. The `next_color_override` field documents its own lifecycle:
 set by `b`/`w`, cleared by the loop when a placement lands.
 
-src/tui/input.rs, lines 54–72:
+src/tui/input.rs, lines 48–64:
 
 ```rust
 /// The shell's input state.
@@ -203,7 +260,7 @@ layer never executes; it reports, and the loop acts.
 borrows of `state.mode`. Every path either puts the buffer back or
 leaves the state in normal mode.
 
-src/tui/input.rs, lines 129–177:
+src/tui/input.rs, lines 129–170:
 
 ```rust
 fn handle_command_line_key(key: KeyEvent, state: &mut InputState) -> InputOutcome {
@@ -262,7 +319,7 @@ cursor motion, `:`, `?`, `q` — and dispatches the rest on
 safety argument: one key per action is safe because the session
 always knows the phase.
 
-src/tui/input.rs, lines 208–215:
+src/tui/input.rs, lines 207–214:
 
 ```rust
     // Phase-dependent keys. The session knows the phase; the snapshot
@@ -282,7 +339,7 @@ whether the placement will succeed. `b`/`w` arm the override and
 return `None`: the panel shows the selection, so no message is
 needed. At a choice phase, Enter and `u` are not mapped.
 
-src/tui/input.rs, lines 218–244 (placement arm):
+src/tui/input.rs, lines 220–237 (excerpt):
 
 ```rust
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
@@ -305,7 +362,7 @@ src/tui/input.rs, lines 218–244 (placement arm):
             }
 ```
 
-The `m` guard at the choice phases (lines 261–266): `more` exists only
+The `m` guard at the choice phases (lines 259–265): `more` exists only
 at the first choice, so the arm carries a guard; the fallthrough arm
 returns the same message as the placement phases.
 
@@ -352,13 +409,13 @@ treats both as no-ops.
 ### The view
 
 `StudyView` gains two fields, each with a chainable setter.
-`message` (lines 104–113) is the bottom line in normal mode; the doc
+`message` (lines 97–107) is the bottom line in normal mode; the doc
 comment records that the command line owns the bottom line while it
-is open. `color_override` (lines 116–125) carries the armed override
+is open. `color_override` (lines 109–119) carries the armed override
 from the input state; the selection lives in the shell, not in the
 session, so the renderer must be told.
 
-src/tui/render.rs, lines 116–125:
+src/tui/render.rs, lines 109–119:
 
 ```rust
     /// Report `color` as the selected color of the next Swap2 stone.
@@ -482,6 +539,49 @@ render through the same `study_cell` path.
 
 ## src/tui/study.rs (new, 561 lines, 8 tests)
 
+src/tui/study.rs, lines 1–38:
+
+```rust
+//! The study-table shell: one loop over a [`Screen`] and an
+//! [`InputSource`].
+//!
+//! The loop is the rhythm from the TUI excursion: draw the frame, wait
+//! for one key, update the state, repeat. It knows nothing about
+//! terminals. The screen decides where the frame goes and whether it
+//! is styled; the input source decides where keys come from and runs
+//! the state machine of [`crate::tui::input`]. Tests drive the same
+//! loop with a recording screen and a scripted input source; no test
+//! touches a terminal.
+//!
+//! The loop keeps three pieces of shell state next to the session
+//! core: the [`InputState`] (mode, board cursor, color override), the
+//! capped list of recent events for the panel, and the message line
+//! (the last event summary or the last error text).
+
+use crate::command::{Command, Event};
+use crate::repl;
+use crate::session::{SessionCore, SessionInit};
+use crate::tui::input::{InputMode, InputOutcome, InputState, handle_key};
+use crate::tui::render::{StudyView, render_study};
+use crate::tui::screen::{AltScreen, Screen};
+use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind};
+use std::io::{self, IsTerminal};
+
+/// The maximum number of events the panel keeps.
+///
+/// The panel shows only the newest five. The cap keeps a longer margin
+/// so the list does not churn at the boundary, and it bounds memory for
+/// sessions that run for hours. The oldest events are dropped first.
+const EVENT_CAP: usize = 20;
+
+/// Where the shell's input comes from.
+///
+/// The abstraction exists so the loop can run headless: the full-screen
+/// shell reads real keypresses, the tests read a script. Both feed the
+/// same [`handle_key`] state machine, so the translation rules are
+/// identical on every path.
+```
+
 ### The input source
 
 The trait has two methods. `wait_any_key` exists for the help screen:
@@ -523,14 +623,14 @@ so a resize needs no special handling beyond the next paint.
 
 ### The loop
 
-`study_loop` (lines 130–172) holds three pieces of shell state: the
+`study_loop` (lines 130–174) holds three pieces of shell state: the
 input state, the capped event list, and the message line. One
 iteration is draw, translate, apply. Two match arms intercept
 `Command::Help` and `Command::Quit`: the typed command language
 contains both words, and the session core treats them as no-ops, so
 the loop turns them into the same behavior as the `?` and `q` keys.
 
-src/tui/study.rs, lines 130–172:
+src/tui/study.rs, lines 130–174:
 
 ```rust
 pub fn study_loop<S: Screen, I: InputSource>(
@@ -610,7 +710,7 @@ guard and runs the loop. The `SessionCore` is built here, inside the
 guard's lifetime, so a construction panic still restores the
 terminal.
 
-src/tui/study.rs, lines 105–117:
+src/tui/study.rs, lines 105–118:
 
 ```rust
 pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
@@ -637,7 +737,7 @@ assertions read plain text. `ScriptedInput` plays back a list of key
 events and treats exhaustion as an error, not a silent quit: a
 shorter-than-intended script must fail the test, not pass it.
 
-src/tui/study.rs, lines 305–340:
+src/tui/study.rs, lines 303–310 (excerpt):
 
 ```rust
     /// An input source that plays back a scripted list of keys.

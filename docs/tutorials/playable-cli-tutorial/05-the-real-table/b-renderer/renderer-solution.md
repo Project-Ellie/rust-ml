@@ -77,6 +77,30 @@ prints, and styling is a runtime parameter because the same session
 renders to the alternate screen and to plain pipes. The star-point table
 follows the imports.
 
+src/tui/render.rs, lines 1–19:
+
+```rust
+//! Study-table rendering — pure functions, no I/O.
+//!
+//! One frame of the study table is the board on the left, a side panel on
+//! the right, and an optional command line at the bottom. [`render_study`]
+//! builds that frame from a [`StudyView`]: session state and display
+//! options in, display lines out. Nothing here prints. The caller decides
+//! where the lines go: the alternate screen, a pipe, or a test assertion.
+//!
+//! Styling is a runtime parameter, not a compile-time feature flag. The
+//! same session must render to the full-screen shell (ANSI styling through
+//! crossterm) and to plain pipes and CI logs (no escape sequences). That
+//! choice belongs to the screen, so the parameter is part of the view.
+
+use crate::actor::Occupant;
+use crate::command::Event;
+use crate::notation::algebraic;
+use crate::session::{SessionCore, Snapshot};
+use crossterm::style::Stylize;
+use engine::{Board, Color, Move, Status};
+```
+
 src/tui/render.rs, lines 21–24:
 
 ```rust

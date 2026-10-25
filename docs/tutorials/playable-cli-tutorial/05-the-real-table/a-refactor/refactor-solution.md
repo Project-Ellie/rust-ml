@@ -17,6 +17,24 @@ The module doc (lines 1–10) states why the module exists: the
 conversion used to live in three places, and copies of one logic
 diverge over time.
 
+src/notation.rs, lines 1–13:
+
+```rust
+//! Algebraic notation: the one canonical `h8` ↔ [`Move`] conversion.
+//!
+//! Before this module existed, the conversion lived in three places: a
+//! private parser in `command.rs`, `format_move` in `fmt.rs`, and a
+//! `notation()` helper in the historydemo binary. Copies of one logic
+//! diverge over time. This module is the single implementation; every
+//! caller delegates to it.
+//!
+//! The notation is column letter (`a`–`o`) followed by row number (`1`–`15`),
+//! case-insensitive: `h8` is the center of the 15×15 board.
+
+use engine::Move;
+use thiserror::Error;
+```
+
 The error type comes first. The `Display` text of each variant
 reproduces the strings the old private parser produced, because tests
 assert on them and users read them.
@@ -168,7 +186,7 @@ mod tests {
 Lines 130–182 contain four more tests, one per error variant. Each
 asserts the variant and the exact `Display` text. One of them:
 
-src/notation.rs, lines 141–156:
+src/notation.rs, lines 141–155:
 
 ```rust
     #[test]
@@ -254,7 +272,48 @@ pub mod repl;
 
 The module doc (lines 1–9) states the extraction and its one deliberate
 change: nothing here calls `println!`. The `HELP` text (lines 18–36)
-moved unchanged from sessiondemo and is not quoted.
+moved unchanged from sessiondemo and is quoted above with the header.
+
+src/repl.rs, lines 1–36:
+
+```rust
+//! The line interpreter: one input line in, output lines out.
+//!
+//! This module is the headless core of every line-based front-end. It was
+//! extracted from the sessiondemo binary so that the same code can serve
+//! the demo, the line-mode fallback screen, and tests. The extraction
+//! changes one detail: nothing here calls `println!`. The helpers return
+//! their text as lines and the caller decides where the text goes. A
+//! function that returns lines can be unit-tested and reused; a function
+//! that prints can only be observed through a terminal.
+
+use std::collections::HashMap;
+
+use crate::command::{self, Command};
+use crate::fmt::render_board;
+use crate::notation::algebraic;
+use crate::session::SessionCore;
+
+/// The help text for the line interpreter, shown for `h`, `help`, and `?`.
+///
+/// The raw string ends with a newline, which [`process_line`] accounts for
+/// when it turns the text into lines.
+pub const HELP: &str = r#"Commands (case-insensitive):
+  SQUARE           play a move, e.g. "h8"
+  play SQUARE      same as above
+  step             let the AI play
+  back [N]         go back N plies (default 1)
+  forward [N]      go forward N plies (default 1)
+  var N            choose child variation N
+  take black|white|both      make seat(s) human
+  release black|white|both   release seat(s) to AI
+  sims black|white N         set per-seat simulations
+  info             show AI search info at the cursor
+  new              reset to opening
+  h, help, ?       show this help
+  q, quit, exit    quit
+"#;
+```
 
 The return type of the interpreter. `quit` carries what the old
 `-> bool` return carried; `lines` carries what used to go straight to
@@ -449,7 +508,7 @@ The two loops. The script loop ignores `quit` on purpose, because the
 old code discarded the return value in script mode; the interactive
 loop breaks on `quit` exactly as before.
 
-src/bin/sessiondemo.rs, lines 73–101:
+src/bin/sessiondemo.rs, lines 73–100:
 
 ```rust
             for line in reader.lines() {
@@ -490,7 +549,7 @@ The local `notation()` helper and the eight hardcoded constructors
 runs the canonical parser, so the demo exercises the same code path a
 user types into.
 
-src/bin/historydemo.rs, lines 13–14:
+src/bin/historydemo.rs, lines 14–15:
 
 ```rust
 use cli::notation::{algebraic, parse_algebraic};

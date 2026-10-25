@@ -104,7 +104,7 @@ assumed two things about every shell: a board cursor exists, and the
 normal-mode keys exist. Line mode has neither, so the loop now asks.
 The default is `true`, and `RawInput` and the test doubles keep it.
 
-src/tui/study.rs, lines 68–81:
+src/tui/study.rs, lines 69–80:
 
 ```rust
     /// Whether this source has a normal mode: single keys that act, a
@@ -234,7 +234,7 @@ is sub-chapter d's body unchanged; the `Line` arm constructs the
 fallback pair. Production stdin needs a lock: `StdinLock` implements
 `BufRead`, and `Stdin` itself does not.
 
-src/tui/study.rs, lines 243–265:
+src/tui/study.rs, lines 243–263:
 
 ```rust
 pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
@@ -295,7 +295,7 @@ predicate and shapes two outputs from it: the key table, and the
 dismissal note — canonical mode delivers a line at a time, so the
 line-mode note names the Enter key.
 
-src/tui/study.rs, lines 406–441:
+src/tui/study.rs, lines 406–438:
 
 ```rust
 /// Draw the help screen and wait for one input to dismiss it.
@@ -366,6 +366,24 @@ directions; the predicate distinguishes the sources; and
 `help_frame(false)` drops the key table and changes the note.
 
 ## tests/line_mode.rs (new, 269 lines, 3 tests)
+
+tests/line_mode.rs, lines 1–13:
+
+```rust
+//! The line-mode fallback, end to end: scripted lines through the real
+//! `LineInput` and the real `study_loop`, with the output captured by a
+//! `LineScreen` over an in-memory writer. No terminal is involved.
+
+mod common;
+
+use cli::session::{SessionCore, SessionInit};
+use cli::tui::screen::LineScreen;
+use cli::tui::study::{LineInput, study_loop};
+use engine::Color;
+use std::io::Cursor;
+
+use common::{mv, swap2_core};
+```
 
 The file drives the real `study_loop` with the real `LineInput` and
 the real `LineScreen`; only the streams are in-memory. The helper is

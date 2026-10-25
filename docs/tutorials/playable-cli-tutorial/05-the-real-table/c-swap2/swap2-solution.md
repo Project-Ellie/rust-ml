@@ -168,7 +168,7 @@ The `play` arm and the bare-square fallback both end in the new helper,
 so the two forms stay the same command. The ceremony arms sit between
 `play` and `step`.
 
-src/command.rs, lines 281–311:
+src/command.rs, lines 281–310:
 
 ```rust
         "play" => {
@@ -244,10 +244,39 @@ tests assert the struct variant with `color: None`.
 
 ## src/opening.rs (new, 356 lines)
 
-The module doc (lines 1–20) states the lesson in one paragraph: the
+The module doc (lines 1–18) states the lesson in one paragraph: the
 log is the source of truth; the typestate is a validated projection of
 the truth. `OpeningState` is two fields, and the doc comment explains
 why the phase is not derivable from the log alone.
+
+src/opening.rs, lines 1–24:
+
+```rust
+//! The session-side Swap2 machine: a replay log with the engine's
+//! typestate as its validated projection.
+//!
+//! The engine's `Swap2<State>` typestate makes invalid transitions
+//! impossible at compile time, but every transition consumes `self`.
+//! A typestate value therefore cannot undo, cannot report its stones,
+//! and cannot be stored across commands of different phases. This
+//! module supplies the missing properties at runtime: [`OpeningState`]
+//! keeps a replay log of `(Move, Color)` placements as the source of
+//! truth and rebuilds the typestate from the log whenever the engine
+//! must judge the position. The log is the truth; the typestate is a
+//! validated projection of the truth.
+//!
+//! The rule split: the Swap2 rule fixes only the final stone counts of
+//! each placement round (two Black and one White, then one more Black
+//! and one more White after `more`). The placement order is free. The
+//! default order alternates, black first, within each round; a color
+//! token on `play` overrides the next stone's color.
+
+use engine::{Board, Color, Move, Swap2};
+use engine::{FinalChoice, FirstChoice, Placing2, Placing3};
+use serde::{Deserialize, Serialize};
+
+use crate::command::{CommandError, Event, OpeningPhase};
+```
 
 src/opening.rs, lines 26–37:
 
@@ -312,7 +341,7 @@ src/opening.rs, lines 77–99:
 only after acceptance. The `None` arm is what rejects `play` at a
 choice phase without touching the engine.
 
-src/opening.rs, lines 99–123:
+src/opening.rs, lines 99–122:
 
 ```rust
     /// Place the next stone of the ceremony.
@@ -466,7 +495,7 @@ replays the log into the typestate; the `expect` and `debug_assert`
 messages document invariants rather than handle errors. Only
 `rebuild_placing2` and `rebuild_final_choice` are quoted here.
 
-src/opening.rs, lines 253–271:
+src/opening.rs, lines 253–270:
 
 ```rust
 /// Replay the log into `Swap2<Placing2>`: the first three entries are
@@ -581,7 +610,7 @@ during the ceremony (lines 292–301).
 `execute` gains three arms, and `play`/`back` route by phase. The
 routing comments explain the two dual meanings.
 
-src/session.rs, lines 335–353:
+src/session.rs, lines 336–353:
 
 ```rust
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
@@ -702,6 +731,51 @@ with the override color and without `next` at the right times.
 `color: None`; `play_color` (line 43) passes the token; `swap2_core`
 (line 52) builds a hotseat ceremony session; `event_type` learns the
 four new names (lines 79–82).
+
+tests/opening.rs, lines 1–40:
+
+```rust
+//! Sub-chapter 05c integration tests: the Swap2 opening as a session
+//! phase, driven through the public command language.
+//!
+//! Every test is headless: commands in, events and snapshots out. The
+//! engine's typestate stays the rules authority; these tests assert the
+//! session-level behavior around it — the replay log, the phase
+//! routing, the typed errors, and the handover to the variation tree.
+
+use cli::command::{Command, CommandError, Event, OpeningPhase};
+use cli::session::{SessionCore, SessionInit, Snapshot};
+use engine::{Board, Color, PlayError};
+
+mod common;
+use common::{event_types, mv, play, play_color, swap2_core};
+
+/// Place the first round with the default alternation (black, white,
+/// black) and end it with `done`. Returns the events of `done`.
+fn place_first_round(core: &mut SessionCore) -> Vec<Event> {
+    play(core, 7, 7);
+    play(core, 8, 8);
+    play(core, 9, 9);
+    core.execute(Command::Done).unwrap()
+}
+
+/// Run the second round: `more`, two placements, `done`.
+fn place_second_round(core: &mut SessionCore) {
+    core.execute(Command::More).unwrap();
+    play(core, 5, 5);
+    play(core, 4, 4);
+    core.execute(Command::Done).unwrap();
+}
+
+/// Count the stones of `color` through the public per-cell API.
+/// (`Board::stones` is engine-internal; a test goes cell by cell.)
+fn stone_count(board: &Board, color: Color) -> usize {
+    (0..15)
+        .flat_map(|r| (0..15).map(move |c| mv(r, c)))
+        .filter(|&m| board.stone_at(m) == Some(color))
+        .count()
+}
+```
 
 `tests/opening.rs` (new, 536 lines, 20 tests) drives everything through
 the public API. Two local helpers carry the protocol: `place_first_round`
