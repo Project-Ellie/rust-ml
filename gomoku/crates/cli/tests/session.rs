@@ -7,8 +7,7 @@ use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError, Status};
 
-mod common;
-use common::{mv, play};
+use testkit::{mv, play};
 
 /// Play a list of moves given as a flat array of row/col pairs.
 fn play_some(core: &mut SessionCore, moves: &[u8]) {

@@ -10,8 +10,7 @@ use cli::command::{Command, CommandError, Event, OpeningPhase};
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError};
 
-mod common;
-use common::{event_types, mv, play, play_color, swap2_core};
+use testkit::{event_types, mv, play, play_color, swap2_core};
 
 /// Place the first round with the default alternation (black, white,
 /// black) and end it with `done`. Returns the events of `done`.

@@ -485,7 +485,7 @@ fn parse_required_seat<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::mv;
+    use testkit::mv;
 
     #[test]
     fn parse_quit() {

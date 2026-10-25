@@ -1,14 +1,11 @@
-//! The shared test kit for the `cli` integration tests.
+//! The shared test kit for unit and integration tests.
 //!
-//! Every file in `tests/` gets the helpers it needs from here instead of
-//! defining its own copies. One helper exists once, with one name and one
-//! comment, so a fix or an explanation lands in a single place.
-//!
-//! Each integration-test binary compiles its own copy of this module, and
-//! no binary uses every helper. The module-level `allow` keeps `dead_code`
-//! warnings (promoted to errors by clippy `-D warnings`) from firing on
-//! the helpers a given binary does not use.
-#![allow(dead_code)]
+//! `cli` dev-depends on this crate. The dev-dependency makes the kit
+//! available to the unit tests inside `src/` and to the integration-test
+//! binaries under `tests/`, while normal builds never compile it.
+//! `#[cfg(test)]` must not appear in this crate: the attribute never
+//! crosses crate boundaries, so a `#[cfg(test)]` module inside `cli`
+//! stays invisible to the integration tests.
 
 use cli::actor::{AiConfig, EvaluatorKind};
 use cli::command::{Command, Event};
@@ -17,8 +14,8 @@ use engine::{Color, Move};
 
 /// Build a move from zero-based row and column.
 ///
-/// Test scripts are full of coordinates; the `unwrap` is acceptable here
-/// because a test that constructs an invalid move should fail loudly.
+/// Test scripts are full of coordinates; the `unwrap` is intentional in
+/// tests: a test that constructs an invalid move should fail loudly.
 pub fn mv(r: u8, c: u8) -> Move {
     Move::new(r, c).unwrap()
 }

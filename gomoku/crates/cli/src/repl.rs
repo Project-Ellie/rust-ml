@@ -220,8 +220,8 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::session::SessionInit;
-    use crate::testkit::mv;
     use engine::Color;
+    use testkit::mv;
 
     #[test]
     fn print_state_without_a_ceremony_has_no_swap2_line() {

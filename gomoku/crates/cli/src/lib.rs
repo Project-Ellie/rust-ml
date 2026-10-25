@@ -8,7 +8,3 @@ pub mod session;
 pub mod tui;
 
 pub mod fmt;
-
-// Unit tests share helpers through this kit; integration tests use tests/common/mod.rs.
-#[cfg(test)]
-mod testkit;

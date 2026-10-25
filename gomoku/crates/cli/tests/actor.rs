@@ -8,8 +8,7 @@ use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
 use engine::{Board, Color, Status};
 
-mod common;
-use common::{fast_tactics_config, mv, play};
+use testkit::{fast_tactics_config, mv, play};
 
 #[test]
 fn tactics_ai_takes_win_in_one() {

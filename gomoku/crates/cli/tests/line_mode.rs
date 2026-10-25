@@ -2,15 +2,13 @@
 //! `LineInput` and the real `study_loop`, with the output captured by a
 //! `LineScreen` over an in-memory writer. No terminal is involved.
 
-mod common;
-
 use cli::session::{SessionCore, SessionInit};
 use cli::tui::screen::LineScreen;
 use cli::tui::study::{LineInput, study_loop};
 use engine::Color;
 use std::io::Cursor;
 
-use common::{mv, swap2_core};
+use testkit::{mv, swap2_core};
 
 /// Run the line-mode loop over a script and return the finished core
 /// and the captured transcript.

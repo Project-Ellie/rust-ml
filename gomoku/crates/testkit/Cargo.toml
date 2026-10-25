@@ -1,0 +1,10 @@
+[package]
+name = "testkit"
+description = "The shared test kit for unit and integration tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+engine = { path = "../engine" }
+cli = { path = "../cli" }

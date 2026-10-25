@@ -8,8 +8,7 @@ use cli::command::{Command, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
 use engine::Move;
 
-mod common;
-use common::{event_type, fast_tactics_config, play, step};
+use testkit::{event_type, fast_tactics_config, play, step};
 
 #[test]
 fn scripted_study_transcript() {

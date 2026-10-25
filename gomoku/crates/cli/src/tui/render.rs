@@ -468,7 +468,7 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::session::SessionInit;
-    use crate::testkit::mv;
+    use testkit::mv;
 
     fn play(core: &mut SessionCore, r: u8, c: u8) {
         core.execute(Command::Play {

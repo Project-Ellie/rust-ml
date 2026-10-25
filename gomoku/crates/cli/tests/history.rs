@@ -2,8 +2,7 @@ use cli::history::{ForwardOutcome, History, HistoryError, PlayOutcome};
 use engine::{Board, Color, PlayError, Status};
 use proptest::prelude::*;
 
-mod common;
-use common::mv;
+use testkit::mv;
 
 fn empty_board() -> Board {
     Board::new()
