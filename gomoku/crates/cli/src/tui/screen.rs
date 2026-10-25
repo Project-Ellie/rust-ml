@@ -2,10 +2,12 @@
 //!
 //! One trait, one method. The loop in [`crate::tui::study`] builds a
 //! frame as a `Vec<String>` and hands it to a [`Screen`]; the screen
-//! decides how the lines reach the user. [`AltScreen`] is the
-//! full-screen implementation: crossterm, the alternate screen, and an
-//! RAII guard that restores the terminal on every exit path. The
-//! line-mode fallback of sub-chapter e will be a second implementation.
+//! decides how the lines reach the user. Two implementations exist.
+//! [`AltScreen`] is the full-screen one: crossterm, the alternate
+//! screen, and an RAII guard that restores the terminal on every exit
+//! path. [`LineScreen`] is the fallback for pipes, CI logs, and
+//! redirects: it appends the frame's lines to a writer and nothing
+//! more.
 //!
 //! The trait is deliberately small. A screen does not know about
 //! sessions, commands, or keys; it knows how to draw lines. That is
@@ -118,5 +120,60 @@ impl Screen for AltScreen {
     /// The full-screen shell owns the terminal, so styling is safe.
     fn styled(&self) -> bool {
         true
+    }
+}
+
+/// The line-mode screen: the fallback for pipes, CI, and redirects.
+///
+/// `draw` writes the frame's lines and nothing else: no cursor
+/// positioning, no clearing, no styling (`styled()` keeps the trait's
+/// default `false`). Where [`AltScreen`] repaints the same twenty
+/// terminal rows, `LineScreen` appends every frame below the previous
+/// one, so a session read back from a log shows the frames in the
+/// order they happened. That transcript is what the tests assert byte
+/// for byte.
+///
+/// The type is generic over the writer so tests can capture the output
+/// in a `Vec<u8>`; production constructs it with [`LineScreen::stdout`].
+pub struct LineScreen<W> {
+    out: W,
+}
+
+impl LineScreen<io::Stdout> {
+    /// A screen that prints to stdout.
+    #[must_use]
+    pub fn stdout() -> Self {
+        Self { out: io::stdout() }
+    }
+}
+
+impl<W: Write> LineScreen<W> {
+    /// A screen over any writer.
+    #[must_use]
+    pub fn new(out: W) -> Self {
+        Self { out }
+    }
+
+    /// Give the writer back.
+    ///
+    /// Tests capture the transcript in a `Vec<u8>` and recover it here
+    /// after the loop returned.
+    pub fn into_inner(self) -> W {
+        self.out
+    }
+}
+
+impl<W: Write> Screen for LineScreen<W> {
+    /// Print the frame: one `writeln!` per line, one flush at the end.
+    ///
+    /// The flush mirrors [`AltScreen`]'s batching: the frame goes out
+    /// as one unit, not line by line whenever the buffer happens to
+    /// fill. stdout is line-buffered, but the generic writer (a file,
+    /// a pipe buffer, a `Vec`) makes no such promise.
+    fn draw(&mut self, frame: &[String]) -> io::Result<()> {
+        for line in frame {
+            writeln!(self.out, "{line}")?;
+        }
+        self.out.flush()
     }
 }

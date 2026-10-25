@@ -2,26 +2,35 @@
 //! [`InputSource`].
 //!
 //! The loop is the rhythm from the TUI excursion: draw the frame, wait
-//! for one key, update the state, repeat. It knows nothing about
+//! for one input, update the state, repeat. It knows nothing about
 //! terminals. The screen decides where the frame goes and whether it
-//! is styled; the input source decides where keys come from and runs
-//! the state machine of [`crate::tui::input`]. Tests drive the same
-//! loop with a recording screen and a scripted input source; no test
-//! touches a terminal.
+//! is styled; the input source decides where input comes from. Two
+//! sources exist. [`RawInput`] reads raw-mode keypresses and runs the
+//! state machine of [`crate::tui::input`]. [`LineInput`] reads
+//! complete lines, the fallback for pipes, CI, and redirects. Tests
+//! drive the same loop with a recording screen and scripted input; no
+//! test touches a terminal.
+//!
+//! Both [`InputSource`] implementations live here, next to the trait,
+//! and not in [`crate::tui::input`]: that module is the pure half of
+//! the shell (its own documentation states that it performs no I/O),
+//! and an input source is the I/O edge — [`RawInput`] reads terminal
+//! events, [`LineInput`] reads a byte stream.
 //!
 //! The loop keeps three pieces of shell state next to the session
 //! core: the [`InputState`] (mode, board cursor, color override), the
 //! capped list of recent events for the panel, and the message line
 //! (the last event summary or the last error text).
 
-use crate::command::{Command, Event};
+use crate::command::{self, Command, Event};
 use crate::repl;
 use crate::session::{SessionCore, SessionInit};
 use crate::tui::input::{InputMode, InputOutcome, InputState, handle_key};
 use crate::tui::render::{StudyView, render_study};
-use crate::tui::screen::{AltScreen, Screen};
+use crate::tui::screen::{AltScreen, LineScreen, Screen};
 use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind};
-use std::io::{self, IsTerminal};
+use engine::{Move, Status};
+use std::io::{self, BufRead, IsTerminal};
 
 /// The maximum number of events the panel keeps.
 ///
@@ -32,10 +41,11 @@ const EVENT_CAP: usize = 20;
 
 /// Where the shell's input comes from.
 ///
-/// The abstraction exists so the loop can run headless: the full-screen
-/// shell reads real keypresses, the tests read a script. Both feed the
-/// same [`handle_key`] state machine, so the translation rules are
-/// identical on every path.
+/// The abstraction exists so the loop can run terminal-agnostic: the
+/// full-screen shell reads real keypresses ([`RawInput`]), the
+/// line-mode fallback reads complete lines ([`LineInput`]), and the
+/// tests read a script. All three produce [`InputOutcome`] values, so
+/// the loop below them sees no difference.
 pub trait InputSource {
     /// Wait for the next key and translate it into an outcome.
     ///
@@ -55,6 +65,19 @@ pub trait InputSource {
     /// through the source keeps the discard on the same input path as
     /// every other key.
     fn wait_any_key(&mut self) -> io::Result<()>;
+
+    /// Whether this source has a normal mode: single keys that act, a
+    /// board cursor, and a `:` command line.
+    ///
+    /// The loop asks this question in two places. A `true` answer
+    /// puts the board cursor on the frame and the normal-mode key
+    /// table on the help screen. A `false` answer (the line-mode
+    /// source) omits both: a cursor that no input can move and a key
+    /// table for keys that do not exist would both be false
+    /// statements about the shell.
+    fn has_normal_mode(&self) -> bool {
+        true
+    }
 }
 
 /// The raw-mode input source: one terminal keypress per call.
@@ -71,6 +94,117 @@ impl InputSource for RawInput {
 
     fn wait_any_key(&mut self) -> io::Result<()> {
         read_key_press().map(|_| ())
+    }
+}
+
+/// The line-mode input source: one complete line per call.
+///
+/// `LineInput` is the canonical-mode counterpart of [`RawInput`]. The
+/// terminal driver in canonical mode delivers a line at a time, and
+/// so do pipes, CI logs, and redirected scripts. Each line maps to an
+/// outcome through the shared grammar of [`command::parse`]; the
+/// mapping has no special cases beyond the empty line, because the
+/// grammar already knows `h`/`help`/`?` as `Help` and
+/// `q`/`quit`/`exit` as `Quit`, and the loop intercepts both
+/// commands. What line mode does not have are the cursor-only keys —
+/// arrows and the `d`/`b`/`w`/`m` ceremony keys — because there is no
+/// cursor to move and no normal mode to press them in. The typed
+/// commands (`play h8 white`, `done`, `black`, `white`, `more`,
+/// `back`) cover the ceremony.
+///
+/// The source is generic over the reader so tests can script it from
+/// memory; production reads stdin.
+pub struct LineInput<R> {
+    reader: R,
+}
+
+impl<R: BufRead> LineInput<R> {
+    /// A source over any line reader.
+    ///
+    /// Production passes a locked stdin (`StdinLock` implements
+    /// [`BufRead`]; `Stdin` itself does not). Tests pass an in-memory
+    /// reader such as `Cursor<&str>`.
+    #[must_use]
+    pub fn new(reader: R) -> Self {
+        Self { reader }
+    }
+}
+
+impl<R: BufRead> InputSource for LineInput<R> {
+    fn next_outcome(
+        &mut self,
+        state: &mut InputState,
+        core: &SessionCore,
+    ) -> io::Result<InputOutcome> {
+        // `state` exists for key-driven sources. A line of text
+        // carries its own meaning: there is no cursor to move, no
+        // buffer to edit, and no override to arm.
+        let _ = state;
+        let mut line = String::new();
+        // `read_line` reports 0 bytes at EOF. A piped script ends at
+        // EOF, so EOF means quit — the reference build's line loop
+        // broke on end of input for the same reason.
+        if self.reader.read_line(&mut line)? == 0 {
+            return Ok(InputOutcome::Quit);
+        }
+        Ok(line_outcome(&line, core))
+    }
+
+    fn wait_any_key(&mut self) -> io::Result<()> {
+        // The "any key" of line mode is the Enter key: canonical mode
+        // delivers a line at a time, so one read dismisses the help
+        // screen. EOF dismisses it too.
+        let mut line = String::new();
+        self.reader.read_line(&mut line).map(|_| ())
+    }
+
+    /// Line mode has no normal mode: no single keys, no board cursor,
+    /// no `:` command line.
+    fn has_normal_mode(&self) -> bool {
+        false
+    }
+}
+
+/// Translate one input line into an outcome: the line-mode mapping.
+///
+/// Everything non-empty goes through [`command::parse`]: one grammar
+/// exists, and a second parser here would drift from it, the way the
+/// reference build's two line parsers drifted apart. A parse error
+/// becomes a [`InputOutcome::Message`] with the parser's own text, the
+/// same as on the `:` command line of the full-screen shell.
+fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return empty_line_outcome(core);
+    }
+    match command::parse(trimmed) {
+        Ok(cmd) => InputOutcome::Command(cmd),
+        Err(err) => InputOutcome::Message(err.to_string()),
+    }
+}
+
+/// The empty line, by the reference build's rule: `step` when the
+/// side-to-move seat is AI, nothing otherwise.
+///
+/// This is the surviving half of Enter's normal-mode meaning. Enter at
+/// a human seat plays at the cursor, and a cursor does not exist in
+/// line mode, so that half cannot apply. Two guards come first. A
+/// finished game has nothing to step (the reference's own guard). And
+/// a ceremony in progress refuses `step` — the AI searches game
+/// positions, and ceremony stones are not a game position — so the
+/// empty line stays quiet there instead of answering every Enter with
+/// the `OpeningInProgress` error. The reference predates the
+/// in-session ceremony, so the ceremony guard is this sub-chapter's
+/// extension of its rule.
+fn empty_line_outcome(core: &SessionCore) -> InputOutcome {
+    let board = core.board();
+    if core.snapshot().opening.is_some() || board.status() != Status::Ongoing {
+        return InputOutcome::None;
+    }
+    if core.occupant(board.to_move()).is_ai() {
+        InputOutcome::Command(Command::Step)
+    } else {
+        InputOutcome::None
     }
 }
 
@@ -92,38 +226,73 @@ fn read_key_press() -> io::Result<KeyEvent> {
     }
 }
 
-/// Run the study table on the full screen.
+/// Run the study table.
+///
+/// The selection rule: a terminal gets the full-screen shell
+/// ([`AltScreen`] and [`RawInput`]); anything else gets the line-mode
+/// fallback ([`LineScreen`] and [`LineInput`]). Piped output, CI, and
+/// redirected sessions keep working: the fallback writes plain text
+/// and reads complete lines, so a script drives the same loop as a
+/// terminal.
 ///
 /// `hint`, when given, is the first message on the message line — for
 /// example a note that the session starts inside the Swap2 ceremony.
 ///
 /// # Errors
-/// Returns an error when stdout is not a terminal. The line-mode
-/// fallback for pipes and CI is sub-chapter e; until then the shell
-/// refuses instead of writing escape sequences into a pipe. Also
-/// returns any I/O error from the terminal itself.
+/// Returns any I/O error from the terminal or the streams.
 pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
-    if !io::stdout().is_terminal() {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "the study table needs a terminal; the line-mode fallback is sub-chapter e",
-        ));
-    }
-    // The guard restores the terminal on every exit path, panic
-    // included. The binding must stay alive until the loop returns.
-    let mut screen = AltScreen::enter()?;
-    let mut input = RawInput;
     let mut core = SessionCore::new(init);
-    study_loop(&mut core, &mut screen, &mut input, hint)
+    match select_shell(io::stdout().is_terminal()) {
+        Shell::FullScreen => {
+            // The guard restores the terminal on every exit path,
+            // panic included. The binding must stay alive until the
+            // loop returns.
+            let mut screen = AltScreen::enter()?;
+            let mut input = RawInput;
+            study_loop(&mut core, &mut screen, &mut input, hint)
+        }
+        Shell::Line => {
+            let mut screen = LineScreen::stdout();
+            // `StdinLock` implements `BufRead`; `Stdin` itself does
+            // not. The lock borrows from a static handle, so it lives
+            // as long as the loop needs it.
+            let mut input = LineInput::new(io::stdin().lock());
+            study_loop(&mut core, &mut screen, &mut input, hint)
+        }
+    }
 }
 
-/// The study-table loop: draw, translate one key, apply the outcome,
-/// repeat until quit.
+/// Which shell serves the session.
+///
+/// The enum exists so the selection rule is a pure decision that a
+/// test can pin: the terminal check goes in, the shell choice comes
+/// out, and only [`run`] performs the side effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shell {
+    /// The full-screen shell: alternate screen, raw-mode keys.
+    FullScreen,
+    /// The line-mode fallback: plain output, complete lines.
+    Line,
+}
+
+/// The selection rule as a pure decision.
+///
+/// A terminal gets the full-screen shell; a pipe, a CI log, or a
+/// redirect gets the line-mode fallback. One bit in, one choice out.
+fn select_shell(stdout_is_terminal: bool) -> Shell {
+    if stdout_is_terminal {
+        Shell::FullScreen
+    } else {
+        Shell::Line
+    }
+}
+
+/// The study-table loop: draw, translate one input, apply the
+/// outcome, repeat until quit.
 ///
 /// Everything here is screen-agnostic and terminal-agnostic. `screen`
 /// receives finished frames; `input` produces finished outcomes. The
-/// same loop serves the alternate screen now and the line-mode
-/// fallback in sub-chapter e.
+/// same loop serves the alternate screen and the line-mode fallback.
 ///
 /// # Errors
 /// Propagates I/O errors from the screen and the input source.
@@ -139,7 +308,18 @@ pub fn study_loop<S: Screen, I: InputSource>(
     // text; the caller's hint, when given, is the first message.
     let mut message: Option<String> = hint.map(str::to_string);
     loop {
-        let frame = build_frame(core, &state, &events, message.as_deref(), screen.styled());
+        // The frame shows the board cursor only when the input source
+        // has one to move. The line-mode source has none, so it draws
+        // no marker instead of a marker no key can move.
+        let cursor = input.has_normal_mode().then_some(state.cursor);
+        let frame = build_frame(
+            core,
+            &state,
+            cursor,
+            &events,
+            message.as_deref(),
+            screen.styled(),
+        );
         screen.draw(&frame)?;
         match input.next_outcome(&mut state, core)? {
             InputOutcome::None => {}
@@ -177,20 +357,26 @@ pub fn study_loop<S: Screen, I: InputSource>(
 ///
 /// The view carries what the renderer cannot know: the board cursor
 /// and the color override live in the input state, and the message
-/// line lives in the loop. One bottom line exists: while the command
-/// line is open it shows the buffer; in normal mode it shows the
-/// message, when there is one.
+/// line lives in the loop. `cursor` is `None` when the input source
+/// has no cursor (line mode), and the frame then shows no cursor
+/// marker. One bottom line exists: while the command line is open it
+/// shows the buffer; in normal mode it shows the message, when there
+/// is one.
 fn build_frame(
     core: &SessionCore,
     state: &InputState,
+    cursor: Option<Move>,
     events: &[Event],
     message: Option<&str>,
     styled: bool,
 ) -> Vec<String> {
     let view = StudyView::new(core, events)
-        .cursor(state.cursor)
         .color_override(state.next_color_override)
         .styled(styled);
+    let view = match cursor {
+        Some(mv) => view.cursor(mv),
+        None => view,
+    };
     let view = match &state.mode {
         InputMode::CommandLine(buffer) => view.command_line(buffer),
         InputMode::Normal => match message {
@@ -217,27 +403,37 @@ fn record_events(events: &mut Vec<Event>, message: &mut Option<String>, new_even
     drop(events.drain(..excess));
 }
 
-/// Draw the full-screen help and wait for one key to dismiss it.
+/// Draw the help screen and wait for one input to dismiss it.
 fn show_help<S: Screen, I: InputSource>(screen: &mut S, input: &mut I) -> io::Result<()> {
-    screen.draw(&help_frame())?;
+    screen.draw(&help_frame(input.has_normal_mode()))?;
     input.wait_any_key()
 }
 
-/// The help frame: the typed command language, then the normal-mode
-/// key table, then the dismissal note.
+/// The help frame: the typed command language, then — for a shell
+/// with a normal mode — the normal-mode key table, then the dismissal
+/// note.
 ///
 /// The command-language part reuses [`repl::HELP`], so the help screen
-/// and the line-mode `help` command cannot drift apart. The frame is
+/// and the line-mode `help` command cannot drift apart. The key table
+/// is conditional: in line mode the keys do not exist, and a help
+/// text must not advertise input the shell cannot take. The frame is
 /// unstyled text: it must stay readable on every terminal, and the
 /// help screen has no stones to highlight.
-fn help_frame() -> Vec<String> {
+fn help_frame(normal_mode: bool) -> Vec<String> {
     // `HELP` ends with a newline; `str::lines` drops it, so the blank
-    // separator between the two parts is added explicitly.
+    // separator between the parts is added explicitly.
     let mut lines: Vec<String> = repl::HELP.lines().map(str::to_string).collect();
+    let note = if normal_mode {
+        lines.push(String::new());
+        lines.extend(NORMAL_MODE_KEYS.lines().map(str::to_string));
+        "Press any key to return to the table."
+    } else {
+        // Canonical mode delivers a line at a time, so the dismissing
+        // "key" is Enter.
+        "Press Enter to return to the table."
+    };
     lines.push(String::new());
-    lines.extend(NORMAL_MODE_KEYS.lines().map(str::to_string));
-    lines.push(String::new());
-    lines.push("Press any key to return to the table.".to_string());
+    lines.push(note.to_string());
     lines
 }
 
@@ -263,10 +459,12 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::SeatSel;
     use crate::session::SessionInit;
     use crossterm::event::{KeyCode, KeyModifiers};
     use engine::{Color, Move};
     use std::collections::VecDeque;
+    use std::io::Cursor;
 
     /// A screen that records every frame it is asked to draw.
     ///
@@ -557,5 +755,196 @@ mod tests {
         let keys = vec![key(KeyCode::Enter)];
         let result = run_scripted(core, keys);
         assert!(result.is_err(), "an exhausted script returns an error");
+    }
+
+    // -------------------------------------------------------- line mode
+
+    fn hotseat_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat())
+    }
+
+    #[test]
+    fn the_empty_line_steps_an_ai_seat_and_stays_quiet_for_a_human_seat() {
+        let mut core = hotseat_core();
+        // Both seats human: nothing to step.
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+        assert_eq!(line_outcome("   ", &core), InputOutcome::None);
+
+        // Black to move, Black released to the AI: the empty line steps.
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(
+            line_outcome("", &core),
+            InputOutcome::Command(Command::Step)
+        );
+
+        // White to move and human: quiet again. (`play` does not check
+        // seats; the seat table matters only to `step`.)
+        core.execute(Command::Play {
+            mv: Move::new(7, 7).unwrap(),
+            color: None,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn the_empty_line_stays_quiet_during_the_ceremony() {
+        // An AI Black seat would qualify for a step during play, but
+        // the ceremony refuses step: the AI searches game positions,
+        // and ceremony stones are not a game position.
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn the_empty_line_stays_quiet_after_the_game_ends() {
+        let mut core = hotseat_core();
+        // Black completes five on row 8; White parks on row 1.
+        for (r, c) in [
+            (7, 3),
+            (0, 1),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 3),
+            (7, 6),
+            (0, 4),
+            (7, 7),
+        ] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+                color: None,
+            })
+            .unwrap();
+        }
+        assert_eq!(core.board().status(), Status::Won(Color::Black));
+        // White to move, White released to the AI: without the status
+        // guard the rule would step; a finished game steps nothing.
+        core.execute(Command::Release {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn a_line_maps_through_the_shared_grammar() {
+        let core = hotseat_core();
+        assert_eq!(
+            line_outcome("h8", &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap(),
+                color: None
+            })
+        );
+        // The optional color token covers the ceremony override.
+        assert_eq!(
+            line_outcome("play i8 white", &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 8).unwrap(),
+                color: Some(Color::White)
+            })
+        );
+        // Help and quit need no special cases in the line mapping: the
+        // grammar knows them, and the loop intercepts the commands.
+        for word in ["h", "help", "?", "HELP"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::Command(Command::Help),
+                "{word} maps to Help"
+            );
+        }
+        for word in ["q", "quit", "exit", "QUIT"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::Command(Command::Quit),
+                "{word} maps to Quit"
+            );
+        }
+        // The ceremony vocabulary parses like everything else.
+        assert_eq!(
+            line_outcome("done", &core),
+            InputOutcome::Command(Command::Done)
+        );
+        assert_eq!(
+            line_outcome("black", &core),
+            InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            line_outcome("more", &core),
+            InputOutcome::Command(Command::More)
+        );
+    }
+
+    #[test]
+    fn a_parse_error_is_a_message_with_the_parsers_text() {
+        let core = hotseat_core();
+        let InputOutcome::Message(text) = line_outcome("bogus", &core) else {
+            panic!("a parse error is a message");
+        };
+        assert!(text.contains("Parse error"), "the parser's text: {text}");
+    }
+
+    #[test]
+    fn a_line_reader_yields_outcomes_until_eof_then_quits() {
+        let core = hotseat_core();
+        let mut state = InputState::new();
+        let mut input = LineInput::new(Cursor::new("h8\nquit\n"));
+        assert_eq!(
+            input.next_outcome(&mut state, &core).unwrap(),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap(),
+                color: None
+            })
+        );
+        // The input state is untouched: a line carries its own meaning.
+        assert_eq!(state, InputState::new());
+        assert_eq!(
+            input.next_outcome(&mut state, &core).unwrap(),
+            InputOutcome::Command(Command::Quit)
+        );
+        // The script is exhausted: EOF quits, and keeps quitting.
+        assert_eq!(
+            input.next_outcome(&mut state, &core).unwrap(),
+            InputOutcome::Quit
+        );
+        assert_eq!(
+            input.next_outcome(&mut state, &core).unwrap(),
+            InputOutcome::Quit
+        );
+    }
+
+    #[test]
+    fn the_selection_rule_picks_the_shell_from_the_terminal_check() {
+        assert_eq!(select_shell(true), Shell::FullScreen);
+        assert_eq!(select_shell(false), Shell::Line);
+    }
+
+    #[test]
+    fn the_normal_mode_predicate_distinguishes_the_sources() {
+        assert!(RawInput.has_normal_mode());
+        assert!(ScriptedInput::new(vec![]).has_normal_mode());
+        assert!(!LineInput::new(Cursor::new("")).has_normal_mode());
+    }
+
+    #[test]
+    fn the_help_frame_drops_the_key_table_without_a_normal_mode() {
+        let keyed = help_frame(true).join("\n");
+        assert!(keyed.contains("Normal-mode keys"));
+        assert!(keyed.contains("Press any key to return to the table."));
+
+        let plain = help_frame(false).join("\n");
+        assert!(plain.contains("Commands (case-insensitive):"));
+        assert!(!plain.contains("Normal-mode keys"));
+        assert!(plain.contains("Press Enter to return to the table."));
     }
 }
