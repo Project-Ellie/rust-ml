@@ -5,15 +5,10 @@
 use cli::actor::OccupantKind;
 use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit, Snapshot};
-use engine::{Board, Color, Move, PlayError, Status};
+use engine::{Board, Color, PlayError, Status};
 
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
+mod common;
+use common::{mv, play};
 
 /// Play a list of moves given as a flat array of row/col pairs.
 fn play_some(core: &mut SessionCore, moves: &[u8]) {

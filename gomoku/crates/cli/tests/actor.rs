@@ -3,29 +3,13 @@
 //! These exercises are the Task-3 capstone: releasing a seat to the AI,
 //! stepping it, and inspecting the stored search record.
 
-use cli::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind};
+use cli::actor::{AiConfig, Occupant, OccupantKind};
 use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
-use engine::{Board, Color, Move, Status};
+use engine::{Board, Color, Status};
 
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
-
-fn ai_config_tactics() -> AiConfig {
-    AiConfig {
-        evaluator: EvaluatorKind::Tactics,
-        simulations: 200,
-        c_puct: 1.5,
-        temperature: 0.0,
-        noise_epsilon: 0.0,
-        explicit_selection: false,
-    }
-}
+mod common;
+use common::{fast_tactics_config, mv, play};
 
 #[test]
 fn tactics_ai_takes_win_in_one() {
@@ -48,9 +32,9 @@ fn tactics_ai_takes_win_in_one() {
     assert!(!wins.is_empty(), "There is an immediate win for black.");
 
     let mut core = SessionCore::new(SessionInit {
-        black: Occupant::Ai(ai_config_tactics()),
+        black: Occupant::Ai(fast_tactics_config()),
         white: Occupant::Human,
-        default_config: ai_config_tactics(),
+        default_config: fast_tactics_config(),
         black_sims: None,
         white_sims: None,
         seed: Some(1),
@@ -110,10 +94,10 @@ fn tactics_ai_blocks_opponent_open_four() {
     let mut core = SessionCore::new(SessionInit {
         black: Occupant::Ai(AiConfig {
             simulations: 300,
-            ..ai_config_tactics()
+            ..fast_tactics_config()
         }),
         white: Occupant::Human,
-        default_config: ai_config_tactics(),
+        default_config: fast_tactics_config(),
         black_sims: None,
         white_sims: None,
         seed: Some(1),
@@ -136,7 +120,7 @@ fn same_seed_same_events_and_search_info() {
     let config = AiConfig {
         temperature: 1.0,
         noise_epsilon: 0.25,
-        ..ai_config_tactics()
+        ..fast_tactics_config()
     };
     let init = SessionInit {
         white: Occupant::Ai(config.clone()),
@@ -164,7 +148,7 @@ fn different_sims_per_seat_yield_different_total_visits() {
         white: Occupant::Human,
         default_config: AiConfig {
             simulations: 10, // should be overwritten on both seats
-            ..ai_config_tactics()
+            ..fast_tactics_config()
         },
         black_sims: Some(400),
         white_sims: Some(50),
@@ -238,7 +222,7 @@ fn step_after_game_over_is_error() {
 #[test]
 fn search_info_prior_and_visits_are_sorted_descending() {
     let mut core = SessionCore::new(SessionInit {
-        white: Occupant::Ai(ai_config_tactics()),
+        white: Occupant::Ai(fast_tactics_config()),
         seed: Some(7),
         ..SessionInit::new_hotseat()
     });

@@ -182,12 +182,9 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
 
         "play" => {
             let token = parse_required_token(&mut tokens, "square")?;
-            let (row, col) = parse_algebraic(&token).map_err(CommandError::Parse)?;
+            let mv = parse_move(&token)?;
             ensure_no_more(&mut tokens, "play")?;
-
-            Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("invalid row number: {}", row))
-            })?))
+            Ok(Command::Play(mv))
         }
 
         "step" => {
@@ -239,43 +236,19 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
         }
 
         _ => {
-            let (row, col) = parse_algebraic(first).map_err(CommandError::Parse)?;
+            let mv = parse_move(first)?;
             ensure_no_more(&mut tokens, "play")?;
-
-            Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("invalid row number: {}", row))
-            })?))
+            Ok(Command::Play(mv))
         }
     }
 }
 
-fn parse_algebraic(token: &str) -> Result<(u8, u8), String> {
-    let text = token.trim().to_ascii_lowercase();
-    if text.len() < 2 {
-        return Err(format!(
-            "Expected algebraic square like 'h8', got '{}'",
-            token
-        ));
-    }
-    let col_letter = text.chars().next().unwrap();
-    if !('a'..='o').contains(&col_letter) {
-        return Err(format!(
-            "Expected column letter a-o, got '{}' in '{}'",
-            col_letter, token
-        ));
-    }
-    let row_digits = &text[1..];
-    let row = row_digits.parse::<u8>().map_err(|_| {
-        format!(
-            "Expected row number 1-15, got '{}' in '{}'",
-            row_digits, token
-        )
-    })?;
-    let col = col_letter as u8 - b'a';
-    if !(1..=15).contains(&row) || col > 14 {
-        return Err(format!("square '{}' is off the board", token));
-    }
-    Ok((row - 1, col))
+/// Parse a square token through the canonical notation module.
+///
+/// The notation error is flattened into [`CommandError::Parse`] with its
+/// `Display` text, so the messages the user sees are unchanged.
+fn parse_move(token: &str) -> Result<Move, CommandError> {
+    crate::notation::parse_algebraic(token).map_err(|err| CommandError::Parse(err.to_string()))
 }
 
 fn ensure_no_more<'a>(
