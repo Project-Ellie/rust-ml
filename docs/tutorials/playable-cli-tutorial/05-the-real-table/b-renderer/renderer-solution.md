@@ -150,12 +150,16 @@ pub struct StudyView<'a> {
 }
 ````
 
-The constructor and the setters (lines 55–101) are chainable by taking
-and returning `self`. The cursor setter documents the precedence rule
-where a user of the API will read it.
+The constructor and the three setters (lines 55–101) are chainable by
+taking and returning `self`. The cursor setter documents the precedence
+rule where a user of the API will read it. The command-line setter
+states that the renderer adds the `:` prompt and applies no styling to
+the buffer. The styled setter states that unstyled output is safe to
+pipe and to compare in tests.
 
-src/tui/render.rs, lines 56–67 (the constructor) and 69–79 (one setter;
-`command_line` at 81–90 and `styled` at 92–100 have the same shape):
+src/tui/render.rs, lines 56–67 (the constructor), 69–79 (the cursor
+setter), 81–90 (the command-line setter), and 92–100 (the styled
+setter):
 
 ```rust
     /// A plain view of the session: no cursor, no command line, no
@@ -182,6 +186,31 @@ src/tui/render.rs, lines 56–67 (the constructor) and 69–79 (one setter;
     #[must_use]
     pub fn cursor(mut self, mv: Move) -> Self {
         self.cursor = Some(mv);
+        self
+    }
+```
+
+```rust
+    /// Show `buffer` as the bottom line of the frame, behind a `:` prompt.
+    ///
+    /// The buffer is the text the user typed after opening the command
+    /// line. The renderer adds the prompt and applies no styling, so the
+    /// text is shown verbatim in both modes.
+    #[must_use]
+    pub fn command_line(mut self, buffer: &'a str) -> Self {
+        self.command_line = Some(buffer);
+        self
+    }
+```
+
+```rust
+    /// Turn ANSI styling on (`true`) or off (`false`).
+    ///
+    /// Unstyled output contains no escape sequences, so it is safe to pipe
+    /// into files and to compare in tests.
+    #[must_use]
+    pub fn styled(mut self, styled: bool) -> Self {
+        self.styled = styled;
         self
     }
 ```
@@ -270,9 +299,32 @@ fn study_board_lines(
 ```
 
 The three furniture helpers (lines 163–189): `build_ruler` centers the
-column letters over the width-3 cells; `border` builds the `+---…---+`
-line; `style_gutter` dims the furniture when styled. Only `style_gutter`
-is quoted.
+column letters over the width-3 cells, and `border` builds the
+`+---…---+` line.
+
+src/tui/render.rs, lines 163–172 (the ruler) and 174–177 (the border):
+
+```rust
+/// The column letters above and below the grid.
+fn build_ruler() -> String {
+    let mut ruler = String::with_capacity(53);
+    ruler.push_str("    ");
+    for c in 0..15u8 {
+        ruler.push_str(&format!("{:^3}", (b'a' + c) as char));
+    }
+    ruler.push_str("    ");
+    ruler
+}
+```
+
+```rust
+/// The border line between ruler and grid: 15 cells of 3 characters.
+fn border() -> String {
+    format!("   +{}+   ", "-".repeat(45))
+}
+```
+
+`style_gutter` dims the furniture when styled.
 
 src/tui/render.rs, lines 179–189:
 
@@ -426,12 +478,79 @@ count, and `path_tail_string` prints the last eight moves in algebraic
 notation, prefixed with `...` when earlier moves are elided and `(root)`
 on an empty board.
 
+src/tui/render.rs, lines 295–302 (`panel_line`), 304–311
+(`seat_label`), and 313–334 (`path_tail_string`):
+
+```rust
+/// A panel line, dimmed when styled.
+fn panel_line(text: &str, styled: bool) -> String {
+    if styled {
+        text.dark_grey().to_string()
+    } else {
+        text.to_string()
+    }
+}
+```
+
+```rust
+/// How a seat appears in the panel: `Human`, or `AI(N)` with the seat's
+/// simulation count.
+fn seat_label(occupant: &Occupant) -> String {
+    match occupant {
+        Occupant::Human => "Human".to_string(),
+        Occupant::Ai(cfg) => format!("AI({})", cfg.simulations),
+    }
+}
+```
+
+```rust
+/// The tail of the current line, in algebraic notation.
+///
+/// The full path can grow past the panel's width, so only the last eight
+/// moves are shown, prefixed with `...` when earlier moves are elided.
+fn path_tail_string(board: &Board) -> String {
+    let moves = board.moves();
+    if moves.is_empty() {
+        return "(root)".to_string();
+    }
+    let tail: Vec<String> = moves
+        .iter()
+        .rev()
+        .take(8)
+        .rev()
+        .map(|m| algebraic(*m))
+        .collect();
+    if moves.len() > tail.len() {
+        format!("... {}", tail.join(" "))
+    } else {
+        tail.join(" ")
+    }
+}
+```
+
 ### The tests
 
 The tests (lines 336–544) are in-module because the functions are pure.
-The shared kit's `mv` and one local helper (`play`) build sessions —
-`play` takes cli types, so the unit-test build cannot import it from
-the kit crate (sub-chapter a states the two-versions rule) —
+The module header imports `mv` from the shared kit. `play` is a local
+helper because it takes cli types, so the unit-test build cannot import
+it from the kit crate (sub-chapter a states the two-versions rule).
+
+src/tui/render.rs, lines 336–345 (the test module header and the `play`
+helper):
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::Command;
+    use crate::session::SessionInit;
+    use testkit::mv;
+
+    fn play(core: &mut SessionCore, r: u8, c: u8) {
+        core.execute(Command::Play(mv(r, c))).unwrap();
+    }
+```
+
 `strip_ansi` normalizes styled lines for the equivalence test.
 
 src/tui/render.rs, lines 347–368:
@@ -461,13 +580,161 @@ src/tui/render.rs, lines 347–368:
     }
 ```
 
-Six tests check the board and the panel contents: star points on empty
-cells (370–382), the last-move marker and the byte offsets of the width-3
-grid (384–396), seats, ply, and side to move (398–417), the game-result
-line (419–442), the branch options with their 0-based numbers
-(444–464), and the recent events (466–478). The cursor test also covers
-the precedence rule: on the last move's square, the angle brackets
-replace the square brackets.
+Six tests check the board and the panel contents. The first checks the
+star points: board row 7 is frame line 9, and an empty board shows
+` + ` at columns d, h, and l.
+
+src/tui/render.rs, lines 370–382:
+
+```rust
+    #[test]
+    fn star_points_appear_on_empty_cells() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let frame = render_study(&StudyView::new(&core, &[]));
+        // Frame lines 0 and 1 are the ruler and the border, so board row 7
+        // is line 9. Row 7 is a star-point row: an empty board shows
+        // " + " at columns d, h, and l.
+        let row7 = &frame[2 + 7];
+        assert!(
+            row7.matches(" + ").count() >= 3,
+            "expected star points on row 7, got: {row7}"
+        );
+    }
+```
+
+The second checks the last-move marker and the byte offsets of the
+width-3 grid: four gutter bytes, then three bytes per column, so h8
+starts at byte 25.
+
+src/tui/render.rs, lines 384–396:
+
+```rust
+    #[test]
+    fn the_last_move_is_bracketed() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        play(&mut core, 7, 7); // h8, a star point
+        play(&mut core, 7, 8); // i8
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let row7 = &frame[2 + 7];
+        // Four gutter bytes, then three bytes per column: h8 starts at
+        // byte 25. The stone covers the star point, and only the last
+        // move gets brackets.
+        assert_eq!(&row7[25..28], " x ");
+        assert_eq!(&row7[28..31], "[o]");
+    }
+```
+
+The third checks the seats, the ply, and the side to move, before and
+after one play.
+
+src/tui/render.rs, lines 398–417:
+
+```rust
+    #[test]
+    fn the_panel_shows_seats_ply_and_side_to_move() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("Black: Human"), "panel shows Black seat");
+        assert!(text.contains("White: Human"), "panel shows White seat");
+        assert!(text.contains("Ply: 0"), "panel shows the initial ply");
+        assert!(
+            text.contains("To move: Black"),
+            "panel shows the side to move"
+        );
+
+        play(&mut core, 7, 7);
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("Ply: 1"), "panel updates the ply");
+        assert!(text.contains("To move: White"), "panel updates the side");
+        assert!(text.contains("h8"), "path tail shows the move");
+    }
+```
+
+The fourth checks the game-result line: a completed five reads
+`Game over: Black wins`, and a finished game has no side to move.
+
+src/tui/render.rs, lines 419–442:
+
+```rust
+    #[test]
+    fn the_panel_shows_the_game_result() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        // Black completes five on row 8; White parks on row 1.
+        let script = [
+            (7, 3),
+            (0, 1),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 3),
+            (7, 6),
+            (0, 4),
+            (7, 7),
+        ];
+        for &(r, c) in &script {
+            play(&mut core, r, c);
+        }
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("Game over: Black wins"));
+        // A finished game has no side to move.
+        assert!(!text.contains("To move:"));
+    }
+```
+
+The fifth checks the branch options with their 0-based numbers.
+
+src/tui/render.rs, lines 444–464:
+
+```rust
+    #[test]
+    fn the_panel_lists_branch_options() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        // Main line h8 h7; back one and branch to i8, then return to the
+        // branch point.
+        play(&mut core, 7, 7);
+        play(&mut core, 6, 7);
+        core.execute(Command::Back { n: 1 }).unwrap();
+        play(&mut core, 7, 8);
+        core.execute(Command::Back { n: 1 }).unwrap();
+
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(
+            text.contains("2 variations:"),
+            "panel lists the branches, got: {text}"
+        );
+        // The numbers are the 0-based index the `var` command takes.
+        assert!(text.contains("[0] h7"), "panel shows the first branch");
+        assert!(text.contains("[1] i8"), "panel shows the second branch");
+    }
+```
+
+The sixth checks the recent events and the `(none)` line on an empty
+list.
+
+src/tui/render.rs, lines 466–478:
+
+```rust
+    #[test]
+    fn the_panel_lists_recent_events() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        let events = core.execute(Command::Play(mv(7, 7))).unwrap();
+        let frame = render_study(&StudyView::new(&core, &events));
+        let text = frame.join("\n");
+        assert!(text.contains("Last events:"));
+        assert!(text.contains("Moved h8 by Human"));
+
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("  (none)"), "no events reads as (none)");
+    }
+```
+
+The cursor test also covers the precedence rule: on the last move's
+square, the angle brackets replace the square brackets.
 
 src/tui/render.rs, lines 480–499:
 
@@ -494,11 +761,27 @@ src/tui/render.rs, lines 480–499:
     }
 ```
 
-The command-line test (501–509) asserts that the buffer adds exactly one
-bottom line, `:` included. The equivalence test closes the module. It
-exercises every styled element at once — stones, star points, gutters,
-the last move, the cursor, and the panel lines — and asserts all three
-legs of the styling contract.
+The command-line test asserts that the buffer adds exactly one bottom
+line, `:` included.
+
+src/tui/render.rs, lines 501–509:
+
+```rust
+    #[test]
+    fn the_command_line_is_the_bottom_line() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let bare = render_study(&StudyView::new(&core, &[]));
+        let with_line = render_study(&StudyView::new(&core, &[]).command_line("play h8"));
+        // The command line adds exactly one line: the buffer behind ':'.
+        assert_eq!(with_line.len(), bare.len() + 1);
+        assert_eq!(with_line.last().unwrap(), ":play h8");
+    }
+```
+
+The equivalence test closes the module. It exercises every styled
+element at once — stones, star points, gutters, the last move, the
+cursor, and the panel lines — and asserts all three legs of the styling
+contract.
 
 src/tui/render.rs, lines 511–543:
 
