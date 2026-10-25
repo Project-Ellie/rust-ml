@@ -7,6 +7,7 @@
 
 use crate::actor::OccupantKind;
 use crate::history::HistoryError;
+use crate::notation::parse_algebraic;
 use engine::{Color, Move, PlayError, Status};
 use std::fmt;
 use thiserror::Error;
@@ -182,12 +183,10 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
 
         "play" => {
             let token = parse_required_token(&mut tokens, "square")?;
-            let (row, col) = parse_algebraic(&token).map_err(CommandError::Parse)?;
+            let mv = parse_algebraic(&token).map_err(|err| CommandError::Parse(err.to_string()))?;
             ensure_no_more(&mut tokens, "play")?;
 
-            Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("invalid row number: {}", row))
-            })?))
+            Ok(Command::Play(mv))
         }
 
         "step" => {
@@ -239,43 +238,12 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
         }
 
         _ => {
-            let (row, col) = parse_algebraic(first).map_err(CommandError::Parse)?;
+            let mv = parse_algebraic(first).map_err(|err| CommandError::Parse(err.to_string()))?;
             ensure_no_more(&mut tokens, "play")?;
 
-            Ok(Command::Play(Move::new(row, col).ok_or_else(|| {
-                CommandError::Parse(format!("invalid row number: {}", row))
-            })?))
+            Ok(Command::Play(mv))
         }
     }
-}
-
-fn parse_algebraic(token: &str) -> Result<(u8, u8), String> {
-    let text = token.trim().to_ascii_lowercase();
-    if text.len() < 2 {
-        return Err(format!(
-            "Expected algebraic square like 'h8', got '{}'",
-            token
-        ));
-    }
-    let col_letter = text.chars().next().unwrap();
-    if !('a'..='o').contains(&col_letter) {
-        return Err(format!(
-            "Expected column letter a-o, got '{}' in '{}'",
-            col_letter, token
-        ));
-    }
-    let row_digits = &text[1..];
-    let row = row_digits.parse::<u8>().map_err(|_| {
-        format!(
-            "Expected row number 1-15, got '{}' in '{}'",
-            row_digits, token
-        )
-    })?;
-    let col = col_letter as u8 - b'a';
-    if !(1..=15).contains(&row) || col > 14 {
-        return Err(format!("square '{}' is off the board", token));
-    }
-    Ok((row - 1, col))
 }
 
 fn ensure_no_more<'a>(
@@ -365,11 +333,7 @@ fn parse_required_seat<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::Move;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use testkit::mv;
 
     #[test]
     fn parse_quit() {

@@ -1,0 +1,9 @@
+[package]
+name = "testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cli = { path = "../cli" }
+engine = { path = "../engine" }

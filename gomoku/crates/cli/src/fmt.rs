@@ -37,5 +37,5 @@ pub fn render_board(board: &Board, last_move: Option<Move>) -> String {
 /// Format a move as algebraic notation (`h8`).
 #[must_use]
 pub fn format_move(mv: Move) -> String {
-    format!("{}{}", (b'a' + mv.col()) as char, mv.row() + 1)
+    crate::notation::algebraic(mv)
 }

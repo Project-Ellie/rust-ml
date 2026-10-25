@@ -3,29 +3,11 @@
 //! These exercises are the Task-3 capstone: releasing a seat to the AI,
 //! stepping it, and inspecting the stored search record.
 
-use cli::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind};
+use cli::actor::{AiConfig, Occupant, OccupantKind};
 use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
-use engine::{Board, Color, Move, Status};
-
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
-
-fn ai_config_tactics() -> AiConfig {
-    AiConfig {
-        evaluator: EvaluatorKind::Tactics,
-        simulations: 200,
-        c_puct: 1.5,
-        temperature: 0.0,
-        noise_epsilon: 0.0,
-        explicit_selection: false,
-    }
-}
+use engine::{Board, Color, Status};
+use testkit::{ai_config_tactics, mv, play};
 
 #[test]
 fn tactics_ai_takes_win_in_one() {

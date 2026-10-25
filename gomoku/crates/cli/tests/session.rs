@@ -5,23 +5,8 @@
 use cli::actor::OccupantKind;
 use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit, Snapshot};
-use engine::{Board, Color, Move, PlayError, Status};
-
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
-
-/// Play a list of moves given as a flat array of row/col pairs.
-fn play_some(core: &mut SessionCore, moves: &[u8]) {
-    let (coords, _) = moves.as_chunks::<2>();
-    for [r, c] in coords.iter() {
-        play(core, *r, *c);
-    }
-}
+use engine::{Board, Color, PlayError, Status};
+use testkit::{mv, play, play_some};
 
 #[test]
 fn hotseat_game_to_black_win_emits_game_over_and_blocks_further_play() {

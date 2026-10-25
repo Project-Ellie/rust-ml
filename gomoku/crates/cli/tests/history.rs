@@ -1,26 +1,7 @@
 use cli::history::{ForwardOutcome, History, HistoryError, PlayOutcome};
-use engine::{Board, Color, Move, PlayError, Status};
+use engine::{Color, PlayError, Status};
 use proptest::prelude::*;
-
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn empty_board() -> Board {
-    Board::new()
-}
-
-fn opening_board() -> Board {
-    Board::from_position(&[mv(7, 7), mv(6, 8)], &[mv(6, 7)], Color::White).unwrap()
-}
-
-fn replay_cursor_path(history: &History) -> Board {
-    let mut board = empty_board();
-    for &m in history.board().moves() {
-        board.play(m).unwrap();
-    }
-    board
-}
+use testkit::{empty_board, mv, opening_board, replay_cursor_path};
 
 #[test]
 fn new_history_has_empty_root() {

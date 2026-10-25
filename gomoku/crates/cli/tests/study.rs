@@ -3,46 +3,11 @@
 //! Take/release seats mid-game, per-seat sims, and the AI-vs-AI opening
 //! schedule are all exercised as scripted command transcripts.
 
-use cli::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind};
+use cli::actor::{AiConfig, Occupant, OccupantKind};
 use cli::command::{Command, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
 use engine::Move;
-
-fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
-
-fn step(core: &mut SessionCore) -> Vec<Event> {
-    core.execute(Command::Step).unwrap()
-}
-
-fn event_type(ev: &Event) -> &'static str {
-    match ev {
-        Event::Moved { .. } => "Moved",
-        Event::Branched { .. } => "Branched",
-        Event::CursorMoved { .. } => "CursorMoved",
-        Event::BranchPoint { .. } => "BranchPoint",
-        Event::SeatChanged { .. } => "SeatChanged",
-        Event::ConfigChanged { .. } => "ConfigChanged",
-        Event::GameOver { .. } => "GameOver",
-        Event::Reset => "Reset",
-    }
-}
-
-fn default_ai_config() -> AiConfig {
-    AiConfig {
-        evaluator: EvaluatorKind::Tactics,
-        simulations: 200,
-        c_puct: 1.5,
-        temperature: 0.0,
-        noise_epsilon: 0.0,
-        explicit_selection: false,
-    }
-}
+use testkit::{default_ai_config, event_type, play, step};
 
 #[test]
 fn scripted_study_transcript() {

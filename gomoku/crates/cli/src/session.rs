@@ -541,11 +541,13 @@ impl SessionCore {
 mod tests {
     use super::*;
     use engine::PlayError;
+    use testkit::mv;
 
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
-
+    // NOTE: `play`/`play_some` stay local. They take `&mut SessionCore`,
+    // and in this crate's own unit-test build `testkit`'s `SessionCore`
+    // (from the `cli` rlib it links) is a different type to rustc than
+    // this crate's `SessionCore`, so the testkit versions cannot be
+    // called from here. Integration tests use `testkit::{play, play_some}`.
     fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
         core.execute(Command::Play(mv(r, c))).unwrap()
     }
