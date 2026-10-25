@@ -240,6 +240,34 @@ impl SessionCore {
         self.search_info.get(&self.history.cursor())
     }
 
+    /// The occupant of the Black seat.
+    #[must_use]
+    pub fn black(&self) -> &Occupant {
+        &self.black
+    }
+
+    /// The occupant of the White seat.
+    #[must_use]
+    pub fn white(&self) -> &Occupant {
+        &self.white
+    }
+
+    /// The default AI configuration, applied when a seat is released to
+    /// the AI.
+    #[must_use]
+    pub fn default_config(&self) -> &AiConfig {
+        &self.default_config
+    }
+
+    /// The occupant of the seat for `color`.
+    #[must_use]
+    pub fn occupant(&self, color: Color) -> &Occupant {
+        match color {
+            Color::Black => &self.black,
+            Color::White => &self.white,
+        }
+    }
+
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
             Command::Play(mv) => self.execute_play(mv),
@@ -474,13 +502,6 @@ impl SessionCore {
                 f(self, Color::Black);
                 f(self, Color::White);
             }
-        }
-    }
-
-    fn occupant(&self, color: Color) -> &Occupant {
-        match color {
-            Color::Black => &self.black,
-            Color::White => &self.white,
         }
     }
 
@@ -760,6 +781,16 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err, CommandError::ZeroSims);
+    }
+
+    #[test]
+    fn seat_accessors_report_the_occupants() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        assert_eq!(core.black(), &Occupant::Human);
+        assert_eq!(core.white(), &Occupant::Human);
+        assert_eq!(core.occupant(Color::Black), core.black());
+        assert_eq!(core.occupant(Color::White), core.white());
+        assert_eq!(core.default_config(), &AiConfig::default());
     }
 
     #[test]
