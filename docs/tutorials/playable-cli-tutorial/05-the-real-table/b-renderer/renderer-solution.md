@@ -56,7 +56,7 @@ src/session.rs, lines 243–269:
 One unit test reads all four. It lives in the existing session test
 module.
 
-src/session.rs, lines 786–794:
+src/session.rs, lines 783–791:
 
 ```rust
     #[test]
@@ -70,7 +70,7 @@ src/session.rs, lines 786–794:
     }
 ```
 
-## src/tui/render.rs (new, 547 lines)
+## src/tui/render.rs (new, 544 lines)
 
 The module doc (lines 1–12) states the two rules of the module: nothing
 prints, and styling is a runtime parameter because the same session
@@ -428,11 +428,11 @@ on an empty board.
 
 ### The tests
 
-The tests (lines 336–547) are in-module because the functions are pure.
-Two local helpers (`mv`, `play`) build sessions; `strip_ansi`
-normalizes styled lines for the equivalence test.
+The tests (lines 336–544) are in-module because the functions are pure.
+One local helper (`play`) and the unit-test kit's `mv` build sessions;
+`strip_ansi` normalizes styled lines for the equivalence test.
 
-src/tui/render.rs, lines 350–371:
+src/tui/render.rs, lines 347–368:
 
 ```rust
     /// Remove ANSI escape sequences from a line.
@@ -460,14 +460,14 @@ src/tui/render.rs, lines 350–371:
 ```
 
 Six tests check the board and the panel contents: star points on empty
-cells (373–385), the last-move marker and the byte offsets of the width-3
-grid (387–399), seats, ply, and side to move (401–420), the game-result
-line (422–445), the branch options with their 0-based numbers
-(447–467), and the recent events (469–481). The cursor test also covers
+cells (370–382), the last-move marker and the byte offsets of the width-3
+grid (384–396), seats, ply, and side to move (398–417), the game-result
+line (419–442), the branch options with their 0-based numbers
+(444–464), and the recent events (466–478). The cursor test also covers
 the precedence rule: on the last move's square, the angle brackets
 replace the square brackets.
 
-src/tui/render.rs, lines 483–502:
+src/tui/render.rs, lines 480–499:
 
 ```rust
     #[test]
@@ -492,13 +492,13 @@ src/tui/render.rs, lines 483–502:
     }
 ```
 
-The command-line test (504–512) asserts that the buffer adds exactly one
+The command-line test (501–509) asserts that the buffer adds exactly one
 bottom line, `:` included. The equivalence test closes the module. It
 exercises every styled element at once — stones, star points, gutters,
 the last move, the cursor, and the panel lines — and asserts all three
 legs of the styling contract.
 
-src/tui/render.rs, lines 514–546:
+src/tui/render.rs, lines 511–543:
 
 ```rust
     #[test]
@@ -546,9 +546,9 @@ From `gomoku/`, after the sub-chapter:
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.
 
-A note on size: `render.rs` is 547 lines, past the chapter's
+A note on size: `render.rs` is 544 lines, past the chapter's
 approximate 250-line budget. The in-module tests account for lines
-336–547. The renderer itself is 335 lines, most of them comments, which
+336–544. The renderer itself is 335 lines, most of them comments, which
 the chapter's commenting standard requires. Board and panel stay in one
 file because they share the cell and gutter helpers and the styling
 contract; splitting them would separate one concern into two files.

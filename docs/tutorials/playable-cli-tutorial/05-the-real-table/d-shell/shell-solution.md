@@ -529,7 +529,7 @@ The bottom-line rule in `render_study` (lines 170–178): the command
 line while it is open, else the message when there is one. One bottom
 line exists; the mode decides its content.
 
-The four new tests (lines 653–746): ceremony placements render as
+The four new tests (lines 650–743): ceremony placements render as
 stones with byte offsets (the same technique as the last-move test),
 the panel shows phase/stones/next color/guidance and drops the
 game-state lines, a choice phase shows no `Next:` line, and the

@@ -11,7 +11,7 @@
 > `cargo fmt --all -- --check` all pass from `gomoku/`, and the two
 > scripted demo transcripts are byte-identical before and after.
 
-## src/notation.rs (new, 182 lines)
+## src/notation.rs (new, 179 lines)
 
 The module doc (lines 1–10) states why the module exists: the
 conversion used to live in three places, and copies of one logic
@@ -144,19 +144,18 @@ pub fn algebraic(mv: Move) -> String {
 ```
 
 The unit tests cover the corners, the center, case-insensitivity, the
-round-trip, and every error variant with its exact message. The first
-block shows the module opening and the value tests.
+round-trip, and every error variant with its exact message. The module
+opening imports `mv` from the unit-test kit (`src/testkit.rs`, quoted
+below) instead of defining a local copy. The first block shows the
+module opening and the value tests.
 
-src/notation.rs, lines 99–129:
+src/notation.rs, lines 99–126:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn mv(r: u8, c: u8) -> Move {
-        Move::new(r, c).unwrap()
-    }
+    use crate::testkit::mv;
 
     #[test]
     fn parses_edge_and_center_squares() {
@@ -183,10 +182,10 @@ mod tests {
     }
 ```
 
-Lines 130–182 contain four more tests, one per error variant. Each
+Lines 127–179 contain four more tests, one per error variant. Each
 asserts the variant and the exact `Display` text. One of them:
 
-src/notation.rs, lines 141–155:
+src/notation.rs, lines 138–152:
 
 ```rust
     #[test]
@@ -261,12 +260,63 @@ pub fn format_move(mv: Move) -> String {
 
 ## src/lib.rs
 
-Two lines added, in alphabetical order with the other modules:
+Two module lines added, in alphabetical order with the other modules,
+plus the test-kit registration at the end of the file:
 
 ```rust
 pub mod notation;
 pub mod repl;
 ```
+
+```rust
+// Unit tests share helpers through this kit; integration tests use tests/common/mod.rs.
+#[cfg(test)]
+mod testkit;
+```
+
+## src/testkit.rs (new, 24 lines)
+
+The unit-test counterpart of `tests/common/mod.rs`. The module doc
+states the two-worlds rule. Unit tests share helpers through this
+module. Integration tests share helpers through `tests/common/mod.rs`.
+Rust's test architecture compiles the two worlds separately: a unit
+test cannot import from `tests/`, and an integration-test binary
+cannot reach a `#[cfg(test)]` module. A helper that both worlds need
+exists once per world, with the same name, body, and comment.
+
+src/testkit.rs, lines 1–24:
+
+```rust
+//! The shared test kit for the `cli` unit tests.
+//!
+//! Tests live in two worlds that cannot see each other:
+//!
+//! - Unit tests (`#[cfg(test)] mod tests` inside `src/`) share helpers
+//!   through this module.
+//! - Integration tests (the binaries under `tests/`) share helpers
+//!   through `tests/common/mod.rs`.
+//!
+//! Rust's test architecture compiles the two worlds separately: a unit
+//! test cannot import from `tests/`, and an integration-test binary
+//! cannot reach a `#[cfg(test)]` module inside the crate. A helper that
+//! both worlds need therefore exists once per world — `mv` here and in
+//! `tests/common/mod.rs` — with the same name, body, and comment.
+
+use engine::Move;
+
+/// Build a move from zero-based row and column.
+///
+/// Test scripts are full of coordinates; the `unwrap` is intentional in
+/// tests: a test that constructs an invalid move should fail loudly.
+pub(crate) fn mv(r: u8, c: u8) -> Move {
+    Move::new(r, c).unwrap()
+}
+```
+
+`command.rs`, `notation.rs`, and `session.rs` delete their local `mv`
+and import the kit (`use crate::testkit::mv;`). Sub-chapters b–f add
+unit tests to `render.rs`, `opening.rs`, and `repl.rs`; those modules
+import the kit from the start.
 
 ## src/repl.rs (new, 175 lines)
 

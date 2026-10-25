@@ -63,7 +63,8 @@ tests, and a size that fits one study session.
 |---|---|---|
 | Algebraic notation (`h8` ↔ `Move`) | `src/notation.rs` (one canonical implementation) | a |
 | Line interpreter (`process_line`, `print_state`, `print_search_info` from sessiondemo) | `src/repl.rs` (library code; output not bound to stdout) | a |
-| Test helpers (`mv`, `play`, `step`, `event_type`, config builders) | `tests/common/mod.rs` (one shared kit) | a |
+| Unit-test helpers (`mv`) | `src/testkit.rs` (one shared kit, `#[cfg(test)]`) | a |
+| Integration-test helpers (`mv`, `play`, `step`, `event_type`, config builders) | `tests/common/mod.rs` (one shared kit) | a |
 | Study-table rendering (pure: state in, lines out) | `src/tui/render.rs` | b |
 | Swap2 opening (engine typestate + session replay log) | `src/session.rs` + new commands in `src/command.rs` | c |
 | Full-screen shell (alternate screen, frame painting) | `src/tui/study.rs` + `src/tui/screen.rs` | d |
@@ -131,6 +132,10 @@ reusable parts; this sub-chapter extracts them.*
   difference from `AiConfig::default()`: the test configuration uses
   200 simulations (the default is 400) to keep the test suite fast.
   One builder, one comment, instead of two copies with different names.
+- `src/testkit.rs` — the unit-test kit, gated `#[cfg(test)]`: the `mv`
+  constructor for the unit-test modules. Unit tests cannot import from
+  `tests/`; the two test worlds cannot see each other, so `mv` exists
+  once per world.
 - Own tests: notation round-trips and error cases; repl behavior tests
   that cover what sessiondemo exercised implicitly.
 - Gate: the full existing test suite passes with unchanged behavior.
@@ -250,8 +255,10 @@ second copy of the loop.*
    Both paths produce the same `Command` values and execute in the
    same session core. Every input path is testable without a terminal.
 2. **Duplication is removed by extraction.** One loop, one parser, one
-   notation module, one test kit, two implementations of a deliberately
-   small `Screen` trait.
+   notation module, one test kit per test world, two implementations
+   of a deliberately small `Screen` trait. The two test worlds cannot
+   see each other: unit tests share helpers through `src/testkit.rs`,
+   integration tests through `tests/common/mod.rs`.
 3. **The engine Swap2 typestate is reused.** The session wraps it
    behind a replay log. This gives compile-time-validated transitions
    and undo. The Swap2 protocol is not re-implemented in the cli crate.

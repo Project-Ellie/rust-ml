@@ -52,7 +52,8 @@ Three facts from the current code motivate the work:
 3. `tests/actor.rs`, `tests/session.rs`, `tests/study.rs`, and
    `tests/history.rs` each define `mv`; three of them define `play`;
    two define an AI-config builder under two different names
-   (`ai_config_tactics`, `default_ai_config`) with the same body.
+   (`ai_config_tactics`, `default_ai_config`) with the same body. The
+   unit-test modules in `src/` each define their own `mv` too.
 
 The design paper's budget applies: no source file in this chapter
 exceeds approximately 250 lines. If a file grows past the budget, it
@@ -73,7 +74,13 @@ contains more than one concern; split it.
    handling, the input loop, and the printing of the returned lines.
 6. Create `tests/common/mod.rs` with the shared helpers and make all
    four test files use it.
-7. Prove that nothing changed: the full test suite passes, and the two
+7. Create `src/testkit.rs` with the unit-test `mv` and import it in
+   the unit-test modules instead of defining a local copy. Tests live
+   in two worlds that cannot see each other: unit tests
+   (`#[cfg(test)] mod tests` inside `src/`) share helpers through
+   `src/testkit.rs`; integration tests (the binaries in `tests/`)
+   share helpers through `tests/common/mod.rs`.
+8. Prove that nothing changed: the full test suite passes, and the two
    scripted demo runs produce byte-identical output.
 
 ## Mental mapping
@@ -201,6 +208,16 @@ The `info` command stays a repl-level special case: it reads search
 state and changes nothing, so it does not go through
 `command::parse`.
 
+### `src/testkit.rs` (new)
+
+```rust
+pub(crate) fn mv(r: u8, c: u8) -> Move;
+```
+
+The unit-test counterpart of the integration kit, gated `#[cfg(test)]`
+and registered in `src/lib.rs`. It starts with one helper: the move
+constructor that the unit-test modules each define locally today.
+
 ### `tests/common/mod.rs` (new)
 
 ```rust
@@ -223,7 +240,8 @@ imports only `mv`.
   `notation::parse_algebraic` and maps the error into
   `CommandError::Parse`.
 * `src/fmt.rs`: `format_move` delegates to `notation::algebraic`.
-* `src/lib.rs`: `pub mod notation;` and `pub mod repl;`.
+* `src/lib.rs`: `pub mod notation;` and `pub mod repl;`, plus the
+  `#[cfg(test)] mod testkit;` registration.
 * `src/bin/historydemo.rs`: one `sq()` helper parses demo squares
   through `notation::parse_algebraic`; formatting uses
   `notation::algebraic`. The local `notation()` and the eight
@@ -263,8 +281,9 @@ Run from `gomoku/`.
    `lib.rs`. Run the gates.
 3. **Extract the repl.** Create `src/repl.rs`, slim sessiondemo down
    to its shell, wire `lib.rs`. Run the gates.
-4. **Unify the test kit.** Create `tests/common/mod.rs`, convert the
-   four test files. Run the gates.
+4. **Unify the test kits.** Create `tests/common/mod.rs` and
+   `src/testkit.rs`, convert the four integration test files and the
+   unit-test modules with a local `mv`. Run the gates.
 5. **Prove byte-identical behavior.** Capture the transcripts again
    and diff:
 
@@ -291,12 +310,12 @@ Plus the transcript capture and diff from the checklist.
 
 ## Done when
 
-* `src/notation.rs`, `src/repl.rs`, and `tests/common/mod.rs` exist
-  with the contracts above.
+* `src/notation.rs`, `src/repl.rs`, `tests/common/mod.rs`, and
+  `src/testkit.rs` exist with the contracts above.
 * `command.rs`, `fmt.rs`, `lib.rs`, both demo binaries, and all four
   test files delegate to the new modules.
 * No source file exceeds approximately 250 lines. (Result here:
-  `notation.rs` 182, `repl.rs` 175.)
+  `notation.rs` 179, `repl.rs` 175.)
 * All three gates pass.
 * Both transcript diffs are empty.
 

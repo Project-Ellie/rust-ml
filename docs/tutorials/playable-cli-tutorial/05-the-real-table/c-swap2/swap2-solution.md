@@ -236,13 +236,13 @@ fn parse_optional_color<'a>(
 }
 ```
 
-The parser tests: `parse_play_with_color_token` (lines 542–571) covers
+The parser tests: `parse_play_with_color_token` (lines 538–567) covers
 the token on both `play` forms, case-insensitivity, and the two error
-shapes; `parse_swap2_commands` (lines 573–593) covers the four new
+shapes; `parse_swap2_commands` (lines 569–589) covers the four new
 commands and their extra-argument errors. The two pre-existing `play`
 tests assert the struct variant with `color: None`.
 
-## src/opening.rs (new, 356 lines)
+## src/opening.rs (new, 353 lines)
 
 The module doc (lines 1–18) states the lesson in one paragraph: the
 log is the source of truth; the typestate is a validated projection of
@@ -305,7 +305,7 @@ The one rule with a sharp edge: the alternation restarts per round. The
 fourth stone overall is the first stone of round two and defaults to
 black. A global parity rule is wrong at exactly that stone; the
 in-module test `the_default_color_alternates_per_round_starting_with_black`
-(lines 305–322) pins the restart.
+(lines 302–319) pins the restart.
 
 src/opening.rs, lines 77–99:
 
@@ -518,7 +518,7 @@ fn rebuild_placing2(log: &[(Move, Color)]) -> Swap2<Placing2> {
 }
 ```
 
-The in-module tests (lines 297–356) pin the alternation restart, the
+The in-module tests (lines 297–353) pin the alternation restart, the
 undo-to-phase rule, and the snapshot mirror.
 
 ## src/session.rs
@@ -721,7 +721,7 @@ fn opening_line(opening: &OpeningSnapshot) -> String {
 }
 ```
 
-Two in-module tests (lines 219–282) pin both sides of the contract:
+Two in-module tests (lines 219–279) pin both sides of the contract:
 ordinary sessions print no swap2 line, and a ceremony prints the line
 with the override color and without `next` at the right times.
 
