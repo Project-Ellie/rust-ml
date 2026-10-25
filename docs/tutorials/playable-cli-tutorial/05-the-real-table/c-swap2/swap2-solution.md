@@ -727,12 +727,12 @@ with the override color and without `next` at the right times.
 
 ## The test kit and the tests
 
-`tests/common/mod.rs`: `play` builds the struct variant with
-`color: None`; `play_color` (line 43) passes the token; `swap2_core`
-(line 52) builds a hotseat ceremony session; `event_type` learns the
-four new names (lines 79–82).
+`crates/testkit/src/lib.rs`: `play` builds the struct variant with
+`color: None` (lines 27–33); `play_color` (line 40) passes the token;
+`swap2_core` (line 49) builds a hotseat ceremony session;
+`event_type` learns the four new names (lines 75–78).
 
-tests/opening.rs, lines 1–40:
+tests/opening.rs, lines 1–39:
 
 ```rust
 //! Sub-chapter 05c integration tests: the Swap2 opening as a session
@@ -747,8 +747,7 @@ use cli::command::{Command, CommandError, Event, OpeningPhase};
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError};
 
-mod common;
-use common::{event_types, mv, play, play_color, swap2_core};
+use testkit::{event_types, mv, play, play_color, swap2_core};
 
 /// Place the first round with the default alternation (black, white,
 /// black) and end it with `done`. Returns the events of `done`.

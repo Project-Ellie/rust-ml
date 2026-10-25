@@ -11,9 +11,10 @@ in three places: a private parser in `command.rs`, a formatter in
 `fmt.rs`, and a second formatter plus eight hardcoded square
 constructors in historydemo. The sessiondemo binary contains the line
 interpreter, where no test can reach it. Four test files each define
-their own copies of the same helpers. This sub-chapter extracts all
-three into one place each: `src/notation.rs`, `src/repl.rs`, and
-`tests/common/mod.rs`.
+their own copies of the same helpers, and the unit-test modules in
+`src/` each define one more copy. This sub-chapter extracts all
+three into one place each: `src/notation.rs`, `src/repl.rs`, and one
+shared test-kit crate, `crates/testkit`.
 
 The sub-chapter teaches one skill: refactoring without behavior change.
 The proof is not an argument about the code. The proof is the unchanged
@@ -27,7 +28,7 @@ test suite plus two demo transcripts that stay byte-identical.
 | **Canonical implementation** | The one place where a piece of logic lives. Every other use delegates to it. |
 | **Line interpreter** | The function that takes one input line and a session core, and produces output lines plus a quit flag. |
 | **`LineOutcome`** | The return type of the line interpreter: the output lines and the quit flag. |
-| **Test kit** | `tests/common/mod.rs`: the helpers every integration test file shares. |
+| **Test kit** | The `testkit` crate (`crates/testkit`): the helpers every unit test and integration test share. |
 | **Golden transcript** | The captured output of a scripted demo run, used as a before/after reference. |
 
 ## Context
@@ -53,7 +54,8 @@ Three facts from the current code motivate the work:
    `tests/history.rs` each define `mv`; three of them define `play`;
    two define an AI-config builder under two different names
    (`ai_config_tactics`, `default_ai_config`) with the same body. The
-   unit-test modules in `src/` each define their own `mv` too.
+   unit-test modules in `src/` each define their own `mv` too. A
+   correction to one copy does not reach the others.
 
 The design paper's budget applies: no source file in this chapter
 exceeds approximately 250 lines. If a file grows past the budget, it
@@ -72,15 +74,12 @@ contains more than one concern; split it.
    `print_search_info` out of sessiondemo, and change the printing
    helpers to return lines. sessiondemo keeps `main`, argument
    handling, the input loop, and the printing of the returned lines.
-6. Create `tests/common/mod.rs` with the shared helpers and make all
-   four test files use it.
-7. Create `src/testkit.rs` with the unit-test `mv` and import it in
-   the unit-test modules instead of defining a local copy. Tests live
-   in two worlds that cannot see each other: unit tests
-   (`#[cfg(test)] mod tests` inside `src/`) share helpers through
-   `src/testkit.rs`; integration tests (the binaries in `tests/`)
-   share helpers through `tests/common/mod.rs`.
-8. Prove that nothing changed: the full test suite passes, and the two
+6. Create the `crates/testkit` workspace crate: a manifest with path
+   dependencies on `engine` and `cli`, a `src/lib.rs` with the shared
+   helpers as plain `pub fn`, and a dev-dependency from cli on the
+   kit. Unit tests and integration tests both import the kit with
+   `use testkit::{...}`.
+7. Prove that nothing changed: the full test suite passes, and the two
    scripted demo runs produce byte-identical output.
 
 ## Mental mapping
@@ -123,25 +122,47 @@ The same argument applies to `process_line`. It returns a
 prints, and the `interactive` flag keeps its exact old meaning: it
 controls only whether `quit` is acknowledged with `Bye.`.
 
-### One test kit, compiled four times
+### The test kit is a crate
 
-Cargo builds every file in `tests/` as a separate binary. A file at
-`tests/common/mod.rs` is not a test target; it is a module that test
-files import with `mod common;`. Each test binary compiles its own copy
-of the module.
+Cargo compiles tests in two worlds. Unit tests (`#[cfg(test)] mod
+tests` inside `src/`) build together with the crate under test.
+Integration tests (the binaries under `tests/`) build against the
+crate's public API. A module inside `cli` cannot serve both worlds:
+`#[cfg(test)]` gates code to the defining crate's own test build, and
+the attribute never crosses a crate boundary. A `#[cfg(test)]` helper
+inside the kit would vanish for every consumer — the compiler reports
+E0432, unresolved import. So the kit carries no `#[cfg(test)]` at all;
+every helper is a plain `pub fn`.
 
-That has one sharp edge: no test binary uses every helper, so every
-binary would warn about dead code, and `clippy -D warnings` turns the
-warning into an error. The kit carries a module-level
-`#![allow(dead_code)]` for exactly this reason. The allowance is
-documented in the module, because an unexplained `allow` reads as an
-accident.
+The kit is therefore its own workspace crate, `crates/testkit`, and
+cli dev-depends on it. The dev-dependency edge is the shipping
+boundary: dev-dependencies are available to unit tests, integration
+tests, examples, and benches, and never to normal builds. No attribute
+provides this property; the edge does. Cargo also permits the
+resulting cycle: `testkit` depends on `cli` normally, because the
+helpers take cli types, while cli dev-depends on `testkit`.
 
-The kit also ends the config-builder duplication. There is one builder,
-`fast_tactics_config`, with one comment that records the deliberate
-divergence from `AiConfig::default()`: 200 simulations instead of 400,
-to keep the test suite fast. Before the kit, two names and two copies
-existed; the reason for the number lived nowhere.
+One limitation follows. A kit helper whose signature mentions cli
+types compiles against the cli rlib the kit links. In cli's own
+unit-test build, rustc sees two versions of crate cli — the rlib and
+the crate under test — and the types do not unify (E0308). Those
+helpers (`play`, `step`, `event_type`, `event_types`,
+`fast_tactics_config`) are callable from the integration tests only.
+Helpers over engine types (`mv`) work everywhere. Consequence: the `src/session.rs` unit tests keep small
+local `play`/`play_some` wrappers, with a `NOTE` comment that records
+the reason. This is the one accepted exception to the
+no-local-copies rule.
+
+The crate needs no `#![allow(dead_code)]`. The public items of a
+library crate are not dead code, whether or not one consumer calls
+them.
+
+The kit also ends the config-builder duplication. There is one
+builder, `fast_tactics_config`, with one comment that records the
+deliberate divergence from `AiConfig::default()`: 200 simulations
+instead of 400, to keep the test suite fast. Before the kit, two
+names and two copies existed; the reason for the number lived
+nowhere.
 
 ### Error text is an interface
 
@@ -208,17 +229,18 @@ The `info` command stays a repl-level special case: it reads search
 state and changes nothing, so it does not go through
 `command::parse`.
 
-### `src/testkit.rs` (new)
+### `crates/testkit` (new)
 
-```rust
-pub(crate) fn mv(r: u8, c: u8) -> Move;
+A new workspace member. The manifest carries path dependencies on
+`engine` and `cli`; the workspace `members` list gains
+`crates/testkit`; cli's manifest gains the dev-dependency edge:
+
+```toml
+[dev-dependencies]
+testkit = { path = "../testkit" }
 ```
 
-The unit-test counterpart of the integration kit, gated `#[cfg(test)]`
-and registered in `src/lib.rs`. It starts with one helper: the move
-constructor that the unit-test modules each define locally today.
-
-### `tests/common/mod.rs` (new)
+`src/lib.rs` holds the shared helpers, all plain `pub fn`:
 
 ```rust
 pub fn mv(r: u8, c: u8) -> Move;
@@ -229,9 +251,19 @@ pub fn event_types(events: &[Event]) -> Vec<&'static str>;
 pub fn fast_tactics_config() -> AiConfig;
 ```
 
-Plus the module-level `#![allow(dead_code)]` with its comment.
-`tests/history.rs` drives `History` directly, not `SessionCore`; it
-imports only `mv`.
+No `#[cfg(test)]` anywhere in the crate: the attribute gates code to
+the defining crate's own test build and never crosses a crate
+boundary. The dev-dependency edge — not an attribute — keeps the kit
+out of normal builds.
+
+One accepted exception to the no-local-copies rule: helpers whose
+signatures mention cli types (`play`, `step`) cannot be called from
+cli's own unit tests, because the unit-test build sees two versions
+of crate cli and the types do not unify. The `src/session.rs` unit
+tests keep small local `play`/`play_some` wrappers with a `NOTE`
+comment that records this reason. Helpers over engine types (`mv`)
+work everywhere. `tests/history.rs` drives `History` directly, not
+`SessionCore`; it imports only `mv`.
 
 ### Changes in existing files
 
@@ -240,8 +272,8 @@ imports only `mv`.
   `notation::parse_algebraic` and maps the error into
   `CommandError::Parse`.
 * `src/fmt.rs`: `format_move` delegates to `notation::algebraic`.
-* `src/lib.rs`: `pub mod notation;` and `pub mod repl;`, plus the
-  `#[cfg(test)] mod testkit;` registration.
+* `src/lib.rs`: `pub mod notation;` and `pub mod repl;`. The kit
+  needs no registration: it is a crate, not a module.
 * `src/bin/historydemo.rs`: one `sq()` helper parses demo squares
   through `notation::parse_algebraic`; formatting uses
   `notation::algebraic`. The local `notation()` and the eight
@@ -249,8 +281,8 @@ imports only `mv`.
 * `src/bin/sessiondemo.rs`: keeps `main`, `parse_seed`, the two input
   loops, and a `print_lines` helper. Everything else moved to `repl`.
 * `tests/actor.rs`, `tests/session.rs`, `tests/study.rs`,
-  `tests/history.rs`: `mod common;` plus the imports they need; the
-  local copies are deleted.
+  `tests/history.rs`: import what they need with
+  `use testkit::{...}`; the local copies are deleted.
 
 ## Solution (opt-in)
 
@@ -281,10 +313,23 @@ Run from `gomoku/`.
    `lib.rs`. Run the gates.
 3. **Extract the repl.** Create `src/repl.rs`, slim sessiondemo down
    to its shell, wire `lib.rs`. Run the gates.
-4. **Unify the test kits.** Create `tests/common/mod.rs` and
-   `src/testkit.rs`, convert the four integration test files and the
-   unit-test modules with a local `mv`. Run the gates.
-5. **Prove byte-identical behavior.** Capture the transcripts again
+4. **Create the testkit crate.** Create `crates/testkit/` with its
+   manifest (path dependencies on `engine` and `cli`) and a
+   `src/lib.rs` with the six shared helpers as plain `pub fn` — no
+   `#[cfg(test)]` anywhere in the crate. Register the crate in the
+   workspace `members` list and add `testkit = { path =
+   "../testkit" }` to cli's `[dev-dependencies]`. Build the
+   workspace.
+5. **Convert the integration tests.** In each of the four test files,
+   delete the local helper copies and import the kit with
+   `use testkit::{...}`. Run the gates.
+6. **Convert the unit tests.** In each `src/` test module with a
+   local `mv`, delete the copy and import `use testkit::mv;`. Keep
+   the small local `play`/`play_some` wrappers in `src/session.rs`:
+   helpers whose signatures mention cli types cannot be called from
+   cli's own unit-test build (the two-versions limitation in the
+   low-level design). Run the gates.
+7. **Prove byte-identical behavior.** Capture the transcripts again
    and diff:
 
    ```text
@@ -310,10 +355,12 @@ Plus the transcript capture and diff from the checklist.
 
 ## Done when
 
-* `src/notation.rs`, `src/repl.rs`, `tests/common/mod.rs`, and
-  `src/testkit.rs` exist with the contracts above.
+* `src/notation.rs`, `src/repl.rs`, and `crates/testkit` exist with
+  the contracts above.
 * `command.rs`, `fmt.rs`, `lib.rs`, both demo binaries, and all four
-  test files delegate to the new modules.
+  test files delegate to the new modules and the kit crate.
+* `cargo test -p cli` is green, and no local helper copies remain —
+  except the documented `src/session.rs` wrappers.
 * No source file exceeds approximately 250 lines. (Result here:
   `notation.rs` 179, `repl.rs` 175.)
 * All three gates pass.

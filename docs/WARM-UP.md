@@ -305,7 +305,15 @@ Two further tutorial tracks are written and verified, ready to work:
   tutorial + solution document pairs live in `05-the-real-table/`;
   the code is the learner's work, sub-chapter by sub-chapter. A
   complete reference implementation of the redesign is preserved on
-  the branch `reference/chapter-05-redesign` (152 cli tests green).
+  the branch `reference/chapter-05-redesign` (152 cli tests green;
+  tip 0aab090). The branch tip carries the testkit-crate approach:
+  one workspace crate `crates/testkit`, pulled into cli as a
+  dev-dependency, replaces the earlier two-kit split
+  (`src/testkit.rs` + `tests/common/mod.rs`), and the chapter-05
+  docs are amended to it. **Progress on main (2026-10-25)**: main at
+  d1a208b has the finished sub-chapter a (notation/fmt/repl
+  extraction + the testkit crate) landed as the owner's workspace
+  state. Next: sub-chapter b.
 
 ## How the tutorials work (respect the pedagogy)
 

@@ -367,14 +367,12 @@ directions; the predicate distinguishes the sources; and
 
 ## tests/line_mode.rs (new, 269 lines, 3 tests)
 
-tests/line_mode.rs, lines 1–13:
+tests/line_mode.rs, lines 1–11:
 
 ```rust
 //! The line-mode fallback, end to end: scripted lines through the real
 //! `LineInput` and the real `study_loop`, with the output captured by a
 //! `LineScreen` over an in-memory writer. No terminal is involved.
-
-mod common;
 
 use cli::session::{SessionCore, SessionInit};
 use cli::tui::screen::LineScreen;
@@ -382,14 +380,14 @@ use cli::tui::study::{LineInput, study_loop};
 use engine::Color;
 use std::io::Cursor;
 
-use common::{mv, swap2_core};
+use testkit::{mv, swap2_core};
 ```
 
 The file drives the real `study_loop` with the real `LineInput` and
 the real `LineScreen`; only the streams are in-memory. The helper is
 the whole harness:
 
-tests/line_mode.rs, lines 15–26:
+tests/line_mode.rs, lines 13–24:
 
 ```rust
 /// Run the line-mode loop over a script and return the finished core
@@ -410,13 +408,13 @@ fn run_line_script(mut core: SessionCore, script: &str) -> (SessionCore, String)
 
 The first test runs a two-move hotseat session with an illegal repeat
 of the first move, the help screen dismissed with Enter, and quit,
-and asserts equality against `TWO_MOVE_TRANSCRIPT` (lines 36–158):
+and asserts equality against `TWO_MOVE_TRANSCRIPT` (lines 34–156):
 122 lines, six frames (initial, one per processed line, the help
 frame, the frame after the dismissal). The constant is not quoted
 here; it is ordinary renderer output, and the doc comment above it
 carries a warning worth repeating:
 
-tests/line_mode.rs, lines 28–36:
+tests/line_mode.rs, lines 26–34:
 
 ```rust
 /// The exact transcript of [`the_two_move_transcript_is_byte_exact`],
@@ -448,7 +446,7 @@ and override placements, a `back`, the count-validated `done`,
 appear in protocol order in the transcript, asserted by scanning
 forward from the last hit:
 
-tests/line_mode.rs, lines 218–230:
+tests/line_mode.rs, lines 216–228:
 
 ```rust
     // The phases appear in protocol order across the frames.

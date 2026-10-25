@@ -63,8 +63,7 @@ tests, and a size that fits one study session.
 |---|---|---|
 | Algebraic notation (`h8` ↔ `Move`) | `src/notation.rs` (one canonical implementation) | a |
 | Line interpreter (`process_line`, `print_state`, `print_search_info` from sessiondemo) | `src/repl.rs` (library code; output not bound to stdout) | a |
-| Unit-test helpers (`mv`) | `src/testkit.rs` (one shared kit, `#[cfg(test)]`) | a |
-| Integration-test helpers (`mv`, `play`, `step`, `event_type`, config builders) | `tests/common/mod.rs` (one shared kit) | a |
+| Test helpers (`mv`, `play`, `step`, `event_type`, config builders) | `crates/testkit` (one shared crate, a dev-dependency of cli) | a |
 | Study-table rendering (pure: state in, lines out) | `src/tui/render.rs` | b |
 | Swap2 opening (engine typestate + session replay log) | `src/session.rs` + new commands in `src/command.rs` | c |
 | Full-screen shell (alternate screen, frame painting) | `src/tui/study.rs` + `src/tui/screen.rs` | d |
@@ -126,16 +125,14 @@ reusable parts; this sub-chapter extracts them.*
   `Vec<String>` instead of calling `println!` directly. The same code
   then serves the demo binary and the line-mode fallback in
   sub-chapter e. Sessiondemo keeps only argument handling and printing.
-- `tests/common/mod.rs` — the shared test kit: `mv`, `play`, `step`,
-  `event_type`, one AI-config builder, and event-assertion helpers. All
-  four existing test files use it. The kit documents one deliberate
+- `crates/testkit` — the shared test kit as one workspace crate:
+  `mv`, `play`, `step`, `event_type`, one AI-config builder, and
+  event-assertion helpers, all plain `pub fn`. cli dev-depends on the
+  kit, so unit tests and integration tests import it alike, and normal
+  builds never compile it. The kit documents one deliberate
   difference from `AiConfig::default()`: the test configuration uses
   200 simulations (the default is 400) to keep the test suite fast.
   One builder, one comment, instead of two copies with different names.
-- `src/testkit.rs` — the unit-test kit, gated `#[cfg(test)]`: the `mv`
-  constructor for the unit-test modules. Unit tests cannot import from
-  `tests/`; the two test worlds cannot see each other, so `mv` exists
-  once per world.
 - Own tests: notation round-trips and error cases; repl behavior tests
   that cover what sessiondemo exercised implicitly.
 - Gate: the full existing test suite passes with unchanged behavior.
@@ -255,10 +252,21 @@ second copy of the loop.*
    Both paths produce the same `Command` values and execute in the
    same session core. Every input path is testable without a terminal.
 2. **Duplication is removed by extraction.** One loop, one parser, one
-   notation module, one test kit per test world, two implementations
-   of a deliberately small `Screen` trait. The two test worlds cannot
-   see each other: unit tests share helpers through `src/testkit.rs`,
-   integration tests through `tests/common/mod.rs`.
+   notation module, one test kit, two implementations of a deliberately
+   small `Screen` trait. The test kit is one workspace crate,
+   `crates/testkit`, pulled into cli as a dev-dependency. Three rules
+   shape it. `#[cfg(test)]` gates code to the defining crate's own
+   test build and never crosses a crate boundary, so the kit carries
+   no `cfg(test)`; the dev-dependency edge, not an attribute, keeps
+   the kit out of normal builds. Cargo permits the resulting cycle:
+   testkit depends on cli (the helpers take cli types) while cli
+   dev-depends on testkit. And helpers whose signatures mention cli
+   types cannot be called from cli's own unit tests — the unit-test
+   build sees two versions of crate cli, and the types do not unify —
+   so helpers over engine types work everywhere, and the
+   `src/session.rs` unit tests keep small local `play`/`play_some`
+   wrappers as the one accepted exception to the no-local-copies
+   rule.
 3. **The engine Swap2 typestate is reused.** The session wraps it
    behind a replay log. This gives compile-time-validated transitions
    and undo. The Swap2 protocol is not re-implemented in the cli crate.

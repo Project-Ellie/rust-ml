@@ -299,9 +299,9 @@ to before; the demo scripts prove it.
 - `src/command.rs` unit tests cover the new syntax: the color token on
   both `play` forms, the four new commands, and their argument
   errors.
-- `tests/common/mod.rs`: `play` builds the struct variant; new helpers
-  `play_color` and `swap2_core`; `event_type` knows the four new
-  events.
+- `crates/testkit/src/lib.rs`: `play` builds the struct variant; new
+  helpers `play_color` and `swap2_core`; `event_type` knows the four
+  new events.
 
 ## Solution (opt-in)
 

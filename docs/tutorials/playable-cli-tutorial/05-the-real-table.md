@@ -37,7 +37,7 @@ next to the tutorial (`refactor-solution.md`, and so on).
 
 | sub-chapter | what it teaches |
 |---|---|
-| [a — Refactor](05-the-real-table/a-refactor/refactor.md) | Extraction without behavior change: one notation module, one repl core, one shared test kit. |
+| [a — Refactor](05-the-real-table/a-refactor/refactor.md) | Extraction without behavior change: one notation module, one repl core, one shared test-kit crate. |
 | [b — The renderer](05-the-real-table/b-renderer/renderer.md) | Rendering as a pure function: session state in, lines out. |
 | [c — Swap2 as a session phase](05-the-real-table/c-swap2/swap2.md) | The opening as session state: a replay log with the engine's typestate as its validated projection. |
 | [d — The alternate-screen shell](05-the-real-table/d-shell/shell.md) | The TUI as a renderer plus an input-translation layer: modal input, an RAII guard, one loop. |

@@ -145,9 +145,9 @@ pub fn algebraic(mv: Move) -> String {
 
 The unit tests cover the corners, the center, case-insensitivity, the
 round-trip, and every error variant with its exact message. The module
-opening imports `mv` from the unit-test kit (`src/testkit.rs`, quoted
-below) instead of defining a local copy. The first block shows the
-module opening and the value tests.
+opening imports `mv` from the shared test kit (the `testkit` crate,
+quoted below) instead of defining a local copy. The first block shows
+the module opening and the value tests.
 
 src/notation.rs, lines 99–126:
 
@@ -155,7 +155,7 @@ src/notation.rs, lines 99–126:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::mv;
+    use testkit::mv;
 
     #[test]
     fn parses_edge_and_center_squares() {
@@ -260,63 +260,247 @@ pub fn format_move(mv: Move) -> String {
 
 ## src/lib.rs
 
-Two module lines added, in alphabetical order with the other modules,
-plus the test-kit registration at the end of the file:
+Two module lines added, in alphabetical order with the other modules.
+The test kit needs no registration here: the kit is a separate crate,
+not a module of `cli`.
+
+src/lib.rs, lines 1–9:
 
 ```rust
+pub mod actor;
+pub mod command;
+pub mod history;
 pub mod notation;
 pub mod repl;
+pub mod session;
+pub mod tui;
+
+pub mod fmt;
 ```
 
-```rust
-// Unit tests share helpers through this kit; integration tests use tests/common/mod.rs.
-#[cfg(test)]
-mod testkit;
+## crates/testkit (new)
+
+The shared test kit is one workspace crate. Before this sub-chapter,
+the four integration test files each defined their own copies of the
+helpers, and the unit-test modules in `src/` each defined another
+copy of `mv`. The crate ends the duplication for both worlds at once.
+
+The manifest makes the kit a normal package with path dependencies on
+`engine` and `cli`:
+
+crates/testkit/Cargo.toml, lines 1–10:
+
+```toml
+[package]
+name = "testkit"
+description = "The shared test kit for unit and integration tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+engine = { path = "../engine" }
+cli = { path = "../cli" }
 ```
 
-## src/testkit.rs (new, 24 lines)
+cli in turn dev-depends on the kit:
 
-The unit-test counterpart of `tests/common/mod.rs`. The module doc
-states the two-worlds rule. Unit tests share helpers through this
-module. Integration tests share helpers through `tests/common/mod.rs`.
-Rust's test architecture compiles the two worlds separately: a unit
-test cannot import from `tests/`, and an integration-test binary
-cannot reach a `#[cfg(test)]` module. A helper that both worlds need
-exists once per world, with the same name, body, and comment.
+```toml
+[dev-dependencies]
+testkit = { path = "../testkit" }
+```
 
-src/testkit.rs, lines 1–24:
+Three rules shape the crate.
+
+1. **`#[cfg(test)]` never crosses a crate boundary.** The attribute
+   gates code to the defining crate's own test build. A `#[cfg(test)]`
+   helper inside the kit crate would vanish for every consumer (the
+   compiler reports E0432, unresolved import). Every helper in the kit
+   is therefore a plain `pub fn`.
+2. **The dev-dependency edge is the shipping boundary.** Because cli
+   dev-depends on `testkit`, the kit is available to unit tests,
+   integration tests, examples, and benches — and never to normal
+   builds. No attribute provides this property; the edge does. Cargo
+   also permits the resulting cycle: `testkit` depends on `cli` (the
+   helpers take cli types) while cli dev-depends on `testkit`.
+3. **Helpers over cli types do not unify inside cli's own unit
+   tests.** In the unit-test build, rustc sees two versions of crate
+   cli: the rlib the kit links against, and the crate under test. A
+   kit helper that takes `&mut SessionCore` therefore does not
+   type-check inside a `src/` unit test (E0308); such helpers serve
+   the integration tests only. Helpers over engine types (`mv`) work
+   everywhere. The `src/session.rs` unit tests keep small local
+   `play`/`play_some` wrappers, with a `NOTE` comment that records
+   this reason — the one accepted exception to the no-local-copies
+   rule.
+
+The kit also ends the config-builder duplication. There is one
+builder, `fast_tactics_config`, with one comment that records the
+deliberate divergence from `AiConfig::default()`: 200 simulations
+instead of 400, to keep the test suite fast. Before the kit, two
+names and two copies existed; the reason for the number lived
+nowhere.
+
+The module doc states rules 1 and 2 where a reader of the crate will
+look for them:
+
+crates/testkit/src/lib.rs, lines 1–13:
 
 ```rust
-//! The shared test kit for the `cli` unit tests.
+//! The shared test kit for unit and integration tests.
 //!
-//! Tests live in two worlds that cannot see each other:
-//!
-//! - Unit tests (`#[cfg(test)] mod tests` inside `src/`) share helpers
-//!   through this module.
-//! - Integration tests (the binaries under `tests/`) share helpers
-//!   through `tests/common/mod.rs`.
-//!
-//! Rust's test architecture compiles the two worlds separately: a unit
-//! test cannot import from `tests/`, and an integration-test binary
-//! cannot reach a `#[cfg(test)]` module inside the crate. A helper that
-//! both worlds need therefore exists once per world — `mv` here and in
-//! `tests/common/mod.rs` — with the same name, body, and comment.
+//! `cli` dev-depends on this crate. The dev-dependency makes the kit
+//! available to the unit tests inside `src/` and to the integration-test
+//! binaries under `tests/`, while normal builds never compile it.
+//! `#[cfg(test)]` must not appear in this crate: the attribute never
+//! crosses crate boundaries, so a `#[cfg(test)]` module inside `cli`
+//! stays invisible to the integration tests.
 
-use engine::Move;
+use cli::actor::{AiConfig, EvaluatorKind};
+use cli::command::{Command, Event};
+use cli::session::{SessionCore, SessionInit};
+use engine::{Color, Move};
+```
 
+One note before the helper quotes: they show the kit as it stands at
+the end of the chapter on the reference branch. Sub-chapter c turns
+`Command::Play` into a struct variant with a color token and adds
+`play_color` and `swap2_core`; after this sub-chapter, `play` builds
+the tuple variant `Command::Play(mv(r, c))`, and the two Swap2
+helpers do not exist yet.
+
+The move builder and the first session driver. The `unwrap` in `play`
+is intentional: a test that plays an illegal move should fail loudly,
+and the panic points at the test script.
+
+crates/testkit/src/lib.rs, lines 15–33:
+
+```rust
 /// Build a move from zero-based row and column.
 ///
 /// Test scripts are full of coordinates; the `unwrap` is intentional in
 /// tests: a test that constructs an invalid move should fail loudly.
-pub(crate) fn mv(r: u8, c: u8) -> Move {
+pub fn mv(r: u8, c: u8) -> Move {
     Move::new(r, c).unwrap()
+}
+
+/// Play one stone and return the events the session emitted.
+///
+/// Tests that use this helper expect the move to be legal; an illegal move
+/// panics through the `unwrap`, which points at the test script.
+pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
+    core.execute(Command::Play {
+        mv: mv(r, c),
+        color: None,
+    })
+    .unwrap()
+}
+```
+
+The Swap2 helpers (sub-chapter c adds them). `play_color` passes the
+override token; `swap2_core` builds a hotseat session that starts
+inside the opening ceremony.
+
+crates/testkit/src/lib.rs, lines 35–51:
+
+```rust
+/// Place one stone with an explicit color token: the Swap2 override.
+///
+/// Legal only during the opening; outside it the session returns the
+/// typed `ColorOverrideOutsideOpening` error and the `unwrap` fails the
+/// test, which is the intent.
+pub fn play_color(core: &mut SessionCore, r: u8, c: u8, color: Color) -> Vec<Event> {
+    core.execute(Command::Play {
+        mv: mv(r, c),
+        color: Some(color),
+    })
+    .unwrap()
+}
+
+/// A hotseat session that starts inside the Swap2 opening ceremony.
+pub fn swap2_core() -> SessionCore {
+    SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
+}
+```
+
+The AI driver and the event-name helpers. The `unwrap` in `step` is
+intentional too: a test that steps a human seat should fail loudly.
+Many assertions care only about which things happened, not about the
+payload; comparing variant names keeps those assertions short.
+`event_types` is the plural convenience:
+`assert_eq!(event_types(&events), ["Moved", "GameOver"])`.
+
+crates/testkit/src/lib.rs, lines 53–88:
+
+```rust
+/// Let the AI play the side to move and return the events.
+///
+/// The seat must be AI-occupied; otherwise `Step` returns an error and the
+/// `unwrap` fails the test, which is the intent.
+pub fn step(core: &mut SessionCore) -> Vec<Event> {
+    core.execute(Command::Step).unwrap()
+}
+
+/// The name of an event's variant.
+///
+/// Many assertions care only about which things happened, not about the
+/// payload. Comparing variant names keeps those assertions short.
+pub fn event_type(ev: &Event) -> &'static str {
+    match ev {
+        Event::Moved { .. } => "Moved",
+        Event::Branched { .. } => "Branched",
+        Event::CursorMoved { .. } => "CursorMoved",
+        Event::BranchPoint { .. } => "BranchPoint",
+        Event::SeatChanged { .. } => "SeatChanged",
+        Event::ConfigChanged { .. } => "ConfigChanged",
+        Event::GameOver { .. } => "GameOver",
+        Event::Reset => "Reset",
+        Event::StonePlaced { .. } => "StonePlaced",
+        Event::StoneRemoved { .. } => "StoneRemoved",
+        Event::OpeningPhaseChanged { .. } => "OpeningPhaseChanged",
+        Event::OpeningFinished { .. } => "OpeningFinished",
+    }
+}
+
+/// The variant names of a whole event batch, in order.
+///
+/// Use this to assert an exact expected sequence:
+/// `assert_eq!(event_types(&events), ["Moved", "GameOver"])`.
+pub fn event_types(events: &[Event]) -> Vec<&'static str> {
+    events.iter().map(event_type).collect()
+}
+```
+
+The one AI-config builder. The comment records the deliberate
+divergence: 200 simulations instead of the default 400.
+
+crates/testkit/src/lib.rs, lines 90–106:
+
+```rust
+/// The AI configuration shared by the integration tests.
+///
+/// Deliberate divergence from [`AiConfig::default`]: the tests run 200
+/// simulations instead of the default 400, to keep the test suite fast.
+/// Every other field matches the default. One builder with this comment
+/// replaces the per-file copies (`ai_config_tactics`, `default_ai_config`)
+/// that existed before this kit.
+pub fn fast_tactics_config() -> AiConfig {
+    AiConfig {
+        evaluator: EvaluatorKind::Tactics,
+        simulations: 200,
+        c_puct: 1.5,
+        temperature: 0.0,
+        noise_epsilon: 0.0,
+        explicit_selection: false,
+    }
 }
 ```
 
 `command.rs`, `notation.rs`, and `session.rs` delete their local `mv`
-and import the kit (`use crate::testkit::mv;`). Sub-chapters b–f add
-unit tests to `render.rs`, `opening.rs`, and `repl.rs`; those modules
-import the kit from the start.
+and import the kit (`use testkit::mv;`). Sub-chapters b–f add unit
+tests to `render.rs`, `opening.rs`, and `repl.rs`; those modules
+import the kit from the start. The `src/session.rs` unit tests keep
+their local `play`/`play_some` wrappers, under rule 3 above.
 
 ## src/repl.rs (new, 175 lines)
 
@@ -625,125 +809,12 @@ fn sq(token: &str) -> Move {
 }
 ```
 
-## tests/common/mod.rs (new, 83 lines)
-
-The module doc explains the one non-obvious part: why a shared module
-needs `#![allow(dead_code)]`.
-
-tests/common/mod.rs, lines 1–16:
-
-```rust
-//! The shared test kit for the `cli` integration tests.
-//!
-//! Every file in `tests/` gets the helpers it needs from here instead of
-//! defining its own copies. One helper exists once, with one name and one
-//! comment, so a fix or an explanation lands in a single place.
-//!
-//! Each integration-test binary compiles its own copy of this module, and
-//! no binary uses every helper. The module-level `allow` keeps `dead_code`
-//! warnings (promoted to errors by clippy `-D warnings`) from firing on
-//! the helpers a given binary does not use.
-#![allow(dead_code)]
-
-use cli::actor::{AiConfig, EvaluatorKind};
-use cli::command::{Command, Event};
-use cli::session::SessionCore;
-use engine::Move;
-```
-
-The move helpers. These bodies existed in three test files each.
-
-tests/common/mod.rs, lines 18–40:
-
-```rust
-/// Build a move from zero-based row and column.
-///
-/// Test scripts are full of coordinates; the `unwrap` is acceptable here
-/// because a test that constructs an invalid move should fail loudly.
-pub fn mv(r: u8, c: u8) -> Move {
-    Move::new(r, c).unwrap()
-}
-
-/// Play one stone and return the events the session emitted.
-///
-/// Tests that use this helper expect the move to be legal; an illegal move
-/// panics through the `unwrap`, which points at the test script.
-pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
-}
-
-/// Let the AI play the side to move and return the events.
-///
-/// The seat must be AI-occupied; otherwise `Step` returns an error and the
-/// `unwrap` fails the test, which is the intent.
-pub fn step(core: &mut SessionCore) -> Vec<Event> {
-    core.execute(Command::Step).unwrap()
-}
-```
-
-The event-name helpers. `event_type` is the moved copy from
-`tests/study.rs`; `event_types` is new, the plural convenience.
-
-tests/common/mod.rs, lines 42–65:
-
-```rust
-/// The name of an event's variant.
-///
-/// Many assertions care only about which things happened, not about the
-/// payload. Comparing variant names keeps those assertions short.
-pub fn event_type(ev: &Event) -> &'static str {
-    match ev {
-        Event::Moved { .. } => "Moved",
-        Event::Branched { .. } => "Branched",
-        Event::CursorMoved { .. } => "CursorMoved",
-        Event::BranchPoint { .. } => "BranchPoint",
-        Event::SeatChanged { .. } => "SeatChanged",
-        Event::ConfigChanged { .. } => "ConfigChanged",
-        Event::GameOver { .. } => "GameOver",
-        Event::Reset => "Reset",
-    }
-}
-
-/// The variant names of a whole event batch, in order.
-///
-/// Use this to assert an exact expected sequence:
-/// `assert_eq!(event_types(&events), ["Moved", "GameOver"])`.
-pub fn event_types(events: &[Event]) -> Vec<&'static str> {
-    events.iter().map(event_type).collect()
-}
-```
-
-The one AI-config builder. The comment records the deliberate
-divergence: 200 simulations instead of the default 400.
-
-tests/common/mod.rs, lines 67–83:
-
-```rust
-/// The AI configuration shared by the integration tests.
-///
-/// Deliberate divergence from [`AiConfig::default`]: the tests run 200
-/// simulations instead of the default 400, to keep the test suite fast.
-/// Every other field matches the default. One builder with this comment
-/// replaces the per-file copies (`ai_config_tactics`, `default_ai_config`)
-/// that existed before this kit.
-pub fn fast_tactics_config() -> AiConfig {
-    AiConfig {
-        evaluator: EvaluatorKind::Tactics,
-        simulations: 200,
-        c_puct: 1.5,
-        temperature: 0.0,
-        noise_epsilon: 0.0,
-        explicit_selection: false,
-    }
-}
-```
-
 ## The four test files
 
 Each test file deletes its local copies and imports the kit. The new
 headers:
 
-tests/actor.rs, lines 6–12 (the local `mv`, `play`, and
+tests/actor.rs, lines 6–11 (the local `mv`, `play`, and
 `ai_config_tactics` are deleted; all uses of `ai_config_tactics()`
 became `fast_tactics_config()`):
 
@@ -753,32 +824,34 @@ use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
 use engine::{Board, Color, Status};
 
-mod common;
-use common::{fast_tactics_config, mv, play};
+use testkit::{fast_tactics_config, mv, play};
 ```
 
-tests/session.rs, lines 10–11 (`play_some` stays; it is the one helper
+tests/session.rs, lines 9–11 (`play_some` stays; it is the one helper
 no other file uses):
 
 ```rust
-mod common;
-use common::{mv, play};
+
+use testkit::{mv, play};
+
 ```
 
-tests/study.rs, lines 11–12 (the local `mv`, `play`, `step`,
+tests/study.rs, lines 10–12 (the local `mv`, `play`, `step`,
 `event_type`, and `default_ai_config` are deleted):
 
 ```rust
-mod common;
-use common::{event_type, fast_tactics_config, play, step};
+
+use testkit::{event_type, fast_tactics_config, play, step};
+
 ```
 
-tests/history.rs, lines 5–6 (this file drives `History` directly, so it
+tests/history.rs, lines 4–6 (this file drives `History` directly, so it
 shares only `mv`):
 
 ```rust
-mod common;
-use common::mv;
+
+use testkit::mv;
+
 ```
 
 ## Verification

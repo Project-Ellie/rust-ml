@@ -429,7 +429,9 @@ on an empty board.
 ### The tests
 
 The tests (lines 336–544) are in-module because the functions are pure.
-One local helper (`play`) and the unit-test kit's `mv` build sessions;
+The shared kit's `mv` and one local helper (`play`) build sessions —
+`play` takes cli types, so the unit-test build cannot import it from
+the kit crate (sub-chapter a states the two-versions rule) —
 `strip_ansi` normalizes styled lines for the equivalence test.
 
 src/tui/render.rs, lines 347–368:
