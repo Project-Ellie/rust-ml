@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use crate::command::{self, Command};
 use crate::fmt::render_board;
 use crate::notation::algebraic;
+use crate::opening::OpeningSnapshot;
 use crate::session::SessionCore;
 
 /// The help text for the line interpreter, shown for `h`, `help`, and `?`.
@@ -33,6 +34,13 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit
+
+Swap2 opening (sessions started with swap2):
+  play SQUARE [black|white]   place the next stone (defaults alternate, black first)
+  back [N]         remove the last placement(s)
+  done             end the current placement round
+  black | white    choose that color at a choice phase
+  more             decline the first choice and place two more stones
 "#;
 
 /// The result of processing one input line.
@@ -120,6 +128,13 @@ pub fn print_state(core: &SessionCore, header: &str) -> Vec<String> {
         "ply {}  status {:?}  black {:?}  white {:?}",
         snapshot.ply, snapshot.status, snapshot.black, snapshot.white
     ));
+    // During the ceremony the rendered board is empty, because
+    // placements are not game moves. One line carries the ceremony
+    // state instead; the full-screen renderer will draw the stones
+    // from the same snapshot field.
+    if let Some(opening) = &snapshot.opening {
+        lines.push(opening_line(opening));
+    }
     if !snapshot.branch_options.is_empty() {
         let opts: Vec<String> = snapshot
             .branch_options
@@ -134,6 +149,32 @@ pub fn print_state(core: &SessionCore, header: &str) -> Vec<String> {
     lines.push(render_board(&core.board(), snapshot.last_move));
     lines.push(String::new());
     lines
+}
+
+/// The one state line of a ceremony in progress: phase, placements in
+/// order, and the color the next `play` defaults to.
+///
+/// At a choice phase there is no next stone, so the `next` part is
+/// left out. The line appears only in Swap2 sessions; ordinary
+/// transcripts are byte-identical to before.
+fn opening_line(opening: &OpeningSnapshot) -> String {
+    let stones = if opening.placements.is_empty() {
+        "(none)".to_string()
+    } else {
+        opening
+            .placements
+            .iter()
+            .map(|(mv, color)| format!("{}:{color:?}", algebraic(*mv)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    match opening.default_next_color {
+        Some(color) => format!(
+            "swap2 {:?}  stones: {stones}  next: {color:?}",
+            opening.phase
+        ),
+        None => format!("swap2 {:?}  stones: {stones}", opening.phase),
+    }
 }
 
 /// The lines that describe the AI search stored at the cursor: root value,
@@ -172,4 +213,70 @@ pub fn print_search_info(core: &SessionCore) -> Vec<String> {
         }
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::Command;
+    use crate::session::SessionInit;
+    use engine::{Color, Move};
+
+    fn mv(r: u8, c: u8) -> Move {
+        Move::new(r, c).unwrap()
+    }
+
+    #[test]
+    fn print_state_without_a_ceremony_has_no_swap2_line() {
+        // The byte-stability contract: ordinary sessions print exactly
+        // what they printed before the Swap2 sub-chapter.
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let lines = print_state(&core, "");
+        assert!(lines.iter().all(|line| !line.contains("swap2")));
+    }
+
+    #[test]
+    fn print_state_reports_the_ceremony_on_one_line() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        let lines = print_state(&core, "");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "swap2 Placing3  stones: (none)  next: Black"),
+            "fresh ceremony line missing: {lines:?}"
+        );
+
+        core.execute(Command::Play {
+            mv: mv(7, 7),
+            color: Some(Color::White),
+        })
+        .unwrap();
+        let lines = print_state(&core, "");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "swap2 Placing3  stones: h8:White  next: White"),
+            "override placement line: {lines:?}"
+        );
+
+        core.execute(Command::Play {
+            mv: mv(8, 8),
+            color: None,
+        })
+        .unwrap();
+        core.execute(Command::Play {
+            mv: mv(9, 9),
+            color: None,
+        })
+        .unwrap();
+        core.execute(Command::Done).unwrap_err(); // 1 black + 2 white
+        // At a choice phase the line drops the `next` part.
+        let lines = print_state(&core, "");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("swap2 Placing3") && line.contains("h8:White")),
+            "still placing after a rejected done: {lines:?}"
+        );
+    }
 }

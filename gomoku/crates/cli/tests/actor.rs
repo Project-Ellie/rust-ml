@@ -39,6 +39,7 @@ fn tactics_ai_takes_win_in_one() {
         white_sims: None,
         seed: Some(1),
         opening: board,
+        swap2: false,
     });
 
     let events = core.execute(Command::Step).unwrap();
@@ -102,6 +103,7 @@ fn tactics_ai_blocks_opponent_open_four() {
         white_sims: None,
         seed: Some(1),
         opening: board,
+        swap2: false,
     });
 
     let events = core.execute(Command::Step).unwrap();
@@ -154,6 +156,7 @@ fn different_sims_per_seat_yield_different_total_visits() {
         white_sims: Some(50),
         seed: Some(1),
         opening: Board::new(),
+        swap2: false,
     });
 
     core.execute(Command::Release {
@@ -212,7 +215,11 @@ fn step_after_game_over_is_error() {
         (7, 7),
     ];
     for &(r, c) in &script {
-        core.execute(Command::Play(mv(r, c))).unwrap();
+        core.execute(Command::Play {
+            mv: mv(r, c),
+            color: None,
+        })
+        .unwrap();
     }
     assert_eq!(core.board().status(), Status::Won(Color::Black));
     let err = core.execute(Command::Step).unwrap_err();

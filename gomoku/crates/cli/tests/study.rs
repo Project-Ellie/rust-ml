@@ -163,6 +163,7 @@ fn per_seat_sims_reach_search() {
         white_sims: Some(400),
         seed: Some(1),
         opening: engine::Board::new(),
+        swap2: false,
     });
 
     core.execute(Command::Release {

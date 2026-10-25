@@ -12,8 +12,8 @@
 
 use cli::actor::{AiConfig, EvaluatorKind};
 use cli::command::{Command, Event};
-use cli::session::SessionCore;
-use engine::Move;
+use cli::session::{SessionCore, SessionInit};
+use engine::{Color, Move};
 
 /// Build a move from zero-based row and column.
 ///
@@ -28,7 +28,29 @@ pub fn mv(r: u8, c: u8) -> Move {
 /// Tests that use this helper expect the move to be legal; an illegal move
 /// panics through the `unwrap`, which points at the test script.
 pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
+    core.execute(Command::Play {
+        mv: mv(r, c),
+        color: None,
+    })
+    .unwrap()
+}
+
+/// Place one stone with an explicit color token: the Swap2 override.
+///
+/// Legal only during the opening; outside it the session returns the
+/// typed `ColorOverrideOutsideOpening` error and the `unwrap` fails the
+/// test, which is the intent.
+pub fn play_color(core: &mut SessionCore, r: u8, c: u8, color: Color) -> Vec<Event> {
+    core.execute(Command::Play {
+        mv: mv(r, c),
+        color: Some(color),
+    })
+    .unwrap()
+}
+
+/// A hotseat session that starts inside the Swap2 opening ceremony.
+pub fn swap2_core() -> SessionCore {
+    SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
 }
 
 /// Let the AI play the side to move and return the events.
@@ -53,6 +75,10 @@ pub fn event_type(ev: &Event) -> &'static str {
         Event::ConfigChanged { .. } => "ConfigChanged",
         Event::GameOver { .. } => "GameOver",
         Event::Reset => "Reset",
+        Event::StonePlaced { .. } => "StonePlaced",
+        Event::StoneRemoved { .. } => "StoneRemoved",
+        Event::OpeningPhaseChanged { .. } => "OpeningPhaseChanged",
+        Event::OpeningFinished { .. } => "OpeningFinished",
     }
 }
 

@@ -53,7 +53,12 @@ fn hotseat_game_to_black_win_emits_game_over_and_blocks_further_play() {
     );
 
     // The table is closed: further play is rejected.
-    let err = core.execute(Command::Play(mv(0, 0))).unwrap_err();
+    let err = core
+        .execute(Command::Play {
+            mv: mv(0, 0),
+            color: None,
+        })
+        .unwrap_err();
     assert_eq!(err, CommandError::GameOver);
 }
 
@@ -62,7 +67,12 @@ fn illegal_move_returns_error_and_leaves_state_unchanged() {
     let mut core = SessionCore::new(SessionInit::new_hotseat());
     play(&mut core, 7, 7);
     let snapshot_before = core.snapshot();
-    let err = core.execute(Command::Play(mv(7, 7))).unwrap_err();
+    let err = core
+        .execute(Command::Play {
+            mv: mv(7, 7),
+            color: None,
+        })
+        .unwrap_err();
     assert_eq!(err, CommandError::IllegalMove(PlayError::Occupied));
     assert_eq!(core.snapshot(), snapshot_before);
 }
@@ -256,6 +266,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
             white: OccupantKind::Ai,
             status,
             last_move: Some(mv(7, 7)),
+            opening: None,
         });
     }
 
@@ -267,6 +278,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
         white: OccupantKind::Human,
         status: Status::Ongoing,
         last_move: None,
+        opening: None,
     });
 }
 
@@ -279,6 +291,7 @@ fn snapshot_json_wire_format_is_stable() {
         white: OccupantKind::Ai,
         status: Status::Won(Color::Black),
         last_move: Some(mv(7, 7)),
+        opening: None,
     };
     let value = serde_json::to_value(&snapshot).unwrap();
     assert_eq!(
