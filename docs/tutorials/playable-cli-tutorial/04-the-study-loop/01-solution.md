@@ -8,6 +8,12 @@
 
 ## `gomoku/crates/cli/src/actor.rs`
 
+**New in this chapter:** `Occupant::is_human` / `is_ai`, and the
+`explicit_selection: bool` field on `AiConfig` (with
+`#[serde(default)]`) — the flag that lets the opening schedule apply
+only when the user did not set temperature/noise explicitly. The rest
+is unchanged from chapter 03.
+
 ```rust
 //! Seat occupants and AI configuration.
 //!
@@ -176,6 +182,11 @@ pub enum EvaluatorKind {
 ```
 
 ## `gomoku/crates/cli/src/session.rs`
+
+**New in this chapter:** named `SessionInit` constructors (`hotseat`,
+`hotseat_from_opening`, `versus_ai`, `ai_vs_ai`) and the opening
+schedule hook (`opening_schedule_active`). The chapter-03 search
+plumbing is unchanged.
 
 ```rust
 //! Session core — headless state machine.
@@ -998,6 +1009,9 @@ mod tests {
 
 ## `gomoku/crates/cli/src/bin/sessiondemo.rs`
 
+**New in this chapter:** `parse_seed` and forwarding the seed into
+`SessionInit`. The rest is unchanged from chapter 03.
+
 ```rust
 //! Chapter-02 capstone: a headless REPL over the session core.
 //!
@@ -1191,6 +1205,9 @@ fn print_state(core: &SessionCore, header: &str) {
 ```
 
 ## `gomoku/crates/cli/tests/study.rs`
+
+**New in this chapter:** the whole file — the study-loop integration
+tests from the TDD checklist.
 
 ```rust
 //! Task-4 capstone: the study loop.
@@ -1459,6 +1476,10 @@ fn take_and_release_are_idempotent() {
 ```
 
 ## `gomoku/crates/cli/tests/actor.rs`
+
+**New in this chapter:** one mechanical line — the
+`explicit_selection: false` field initialization in the existing
+`AiConfig` literals. Quoted in full for completeness.
 
 ```rust
 //! Headless tests for AI seats and `SearchInfo`.
@@ -1741,6 +1762,8 @@ fn search_info_prior_and_visits_are_sorted_descending() {
 ```
 
 ## `gomoku/crates/cli/study_demo.txt`
+
+**New in this chapter:** the whole file — the capstone script.
 
 ```text
 release both

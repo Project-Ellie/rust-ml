@@ -22,6 +22,9 @@ literals — so this file does not quote them:
 
 ## `gomoku/crates/cli/src/game.rs`
 
+**New in this chapter:** the whole module — `GameRecord` with
+`from_psq`, `GameError`, and the header / move-line parsing helpers.
+
 ```rust
 //! Game record loading — Piskvork `.psq` files.
 //!
@@ -218,6 +221,11 @@ fn starts_like_a_move(line: &str) -> bool {
 ```
 
 ## `gomoku/crates/cli/src/session.rs`
+
+**New in this chapter:** `GameStudy`, the `SessionInit::game`
+constructor, `build_history` (replays the record into a fresh
+`History`), and `SessionCore::game()`. No new commands — a record
+needs only navigation. The chapter-07 core is unchanged.
 
 ```rust
 //! Session core — headless state machine.
@@ -1260,6 +1268,10 @@ mod tests {
 
 ## `gomoku/crates/cli/src/main.rs`
 
+**New in this chapter:** `PlayArgs` gains `--game`, and
+`build_game_init` constructs the record `SessionInit`. The chapter-07
+front-end is otherwise unchanged; only the changed items are quoted.
+
 ```rust
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use engine::{Board, Color};
@@ -1607,6 +1619,10 @@ fn player_color_to_engine(color: PlayerColor) -> Color {
 
 ## `gomoku/crates/cli/src/bin/sessiondemo.rs`
 
+**New in this chapter:** `build_init` handles `--game` before
+`--puzzle`, and `print_state` shows `game <file stem>  <N> plies`
+when a record is loaded. The rest is unchanged from chapter 07.
+
 ```rust
 //! Chapter-02 capstone: a headless REPL over the session core.
 //!
@@ -1874,6 +1890,10 @@ fn print_state(core: &SessionCore, header: &str) {
 ```
 
 ## `gomoku/crates/cli/src/tui/render.rs`
+
+**New in this chapter:** one side-panel line, consistent with the
+puzzle line: `Game: <file stem> · <N> plies`. The rest is unchanged
+from chapter 07.
 
 ```rust
 //! Board rendering — pure functions, no I/O.
@@ -2793,6 +2813,8 @@ mod tests {
 
 ## `gomoku/crates/cli/src/lib.rs`
 
+**New in this chapter:** one line — `pub mod game;`.
+
 ```rust
 //! Terminal Gomoku client library.
 //!
@@ -2813,6 +2835,9 @@ pub mod tui;
 ```
 
 ## `gomoku/crates/cli/tests/game.rs`
+
+**New in this chapter:** the whole file — the `.psq` parser tests from
+the TDD checklist.
 
 ```rust
 //! Parser tests for Piskvork `.psq` game records (spec amendment
@@ -3012,6 +3037,9 @@ fn move_after_the_game_ended_is_rejected() {
 ```
 
 ## `gomoku/crates/cli/tests/session.rs`
+
+**New in this chapter:** six game-record session tests appended to the
+existing suite. The earlier tests are unchanged.
 
 ```rust
 //! Headless integration tests for the session core.
@@ -3615,6 +3643,9 @@ fn new_resets_to_the_fully_replayed_game() {
 
 ## `gomoku/crates/cli/tests/fixtures/mini-game.psq`
 
+**New in this chapter:** the whole file — a minimal record fixture for
+the tests.
+
 ```text
 Piskvorky 15x15, 11:11, 0
 7,8,0
@@ -3637,6 +3668,8 @@ PISQ7.zip
 ```
 
 ## `gomoku/crates/cli/game_demo.txt`
+
+**New in this chapter:** the whole file — the capstone script.
 
 ```text
 # game_demo.txt — studying a recorded game at the table.

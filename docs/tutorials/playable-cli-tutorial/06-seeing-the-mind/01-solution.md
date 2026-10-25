@@ -26,6 +26,8 @@ The following files are identical to their chapter-05 versions:
 
 ## `gomoku/crates/cli/src/tui/mod.rs`
 
+**New in this chapter:** one line — `pub mod overlay;`.
+
 ```rust
 //! Terminal rendering helpers and the study-table front-end.
 //!
@@ -40,6 +42,10 @@ pub mod study;
 ```
 
 ## `gomoku/crates/cli/src/tui/overlay.rs`
+
+**New in this chapter:** the whole file — `PolicyOverlay`,
+`OverlayCell`, `overlay_cell`, `heatmap_bg`, the styled/plain cell
+renderers, and `value_strip`. Pure functions, no I/O.
 
 ```rust
 //! Policy overlay and value strip — pure functions, no I/O.
@@ -453,6 +459,10 @@ mod tests {
 ```
 
 ## `gomoku/crates/cli/src/tui/study.rs`
+
+**New in this chapter:** `ShellState` gains `policy_overlay` and
+`show_value_strip`, plus the key handling that toggles them. The
+chapter-05 shell structure is unchanged.
 
 ```rust
 //! The study-table screen — the real table (chapter 05).
@@ -1037,6 +1047,10 @@ mod tests {
 ```
 
 ## `gomoku/crates/cli/src/tui/render.rs`
+
+**New in this chapter:** `render_study_with_overlays` (the composed
+entry point used by both screen modes) and `render_policy_board_for_test`.
+The chapter-05 renderers are unchanged.
 
 ```rust
 //! Board rendering — pure functions, no I/O.

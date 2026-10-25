@@ -24,6 +24,10 @@
 
 ## `src/command.rs`
 
+**New in this chapter:** the whole file — chapter 01's slice-0 stub
+becomes the full command language: `Command`, `SeatSel`, `Event`,
+`CommandError`, and the `parse` function with its helpers.
+
 ````rust
 //! Command language and events.
 //!
@@ -580,6 +584,11 @@ mod tests {
 ````
 
 ## `src/session.rs`
+
+**New in this chapter:** the whole file — `SessionCore` (the headless
+state machine), `SessionInit`, `Snapshot`, and the per-command
+executors. The serde impls on `Snapshot` are the seam for a future
+JSON/REST front-end; no chapter in this tutorial exercises them.
 
 ````rust
 //! Session core — headless state machine.
@@ -1166,6 +1175,10 @@ mod tests {
 
 ## `src/actor.rs`
 
+**New in this chapter:** the whole file — `Occupant`, `OccupantKind`,
+`AiConfig`, and `EvaluatorKind`, defined now so chapter 03 adds only
+behavior.
+
 ````rust
 //! Seat occupants and AI configuration.
 //!
@@ -1251,6 +1264,9 @@ pub enum EvaluatorKind {
 
 ## `src/fmt.rs`
 
+**New in this chapter:** the whole file — algebraic move formatting
+and the ASCII board renderer, shared by the demo binaries.
+
 ````rust
 //! Small text-formatting helpers shared by the demo binaries.
 //!
@@ -1296,6 +1312,8 @@ pub fn format_move(mv: Move) -> String {
 ````
 
 ## `src/bin/sessiondemo.rs`
+
+**New in this chapter:** the whole file — the headless REPL capstone.
 
 ````rust
 //! Chapter-02 capstone: a headless REPL over the session core.
@@ -1447,6 +1465,9 @@ fn print_state(core: &SessionCore, header: &str) {
 ````
 
 ## `tests/session.rs`
+
+**New in this chapter:** the whole file — the eight integration tests
+from the TDD checklist.
 
 ````rust
 //! Headless integration tests for the session core.

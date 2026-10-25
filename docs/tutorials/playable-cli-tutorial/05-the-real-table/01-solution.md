@@ -25,6 +25,12 @@ longer exist — they were deleted in chapter 01's slice 0.)
 
 # `gomoku/crates/cli/src/main.rs`
 
+**New in this chapter:** the full clap front-end — `Mode`,
+`PlayArgs`/`SearchArgs`, `run_play` / `run_selfplay`,
+`validate_search_args`, `ai_config_from`, `build_play_init`. Replaces
+the chapter-01 skeleton whose handlers only printed a placeholder.
+Only the changed items are quoted below, not the whole file.
+
 ```rust
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use engine::{Board, Color};
@@ -262,6 +268,10 @@ fn player_color_to_engine(color: PlayerColor) -> Color {
 ```
 
 # `gomoku/crates/cli/src/tui/study.rs`
+
+**New in this chapter:** the whole file — the study-table shell:
+`run` / `run_with_swap2` entry points, the alternate-screen and
+line-mode loops, and the Swap2 opening flow.
 
 ```rust
 //! The study-table screen — the real table (chapter 05).
@@ -732,6 +742,10 @@ mod tests {
 ```
 
 # `gomoku/crates/cli/src/tui/render.rs`
+
+**New in this chapter:** the study-table rendering additions
+(`render_study` and helpers). The chapter-01 board renderer is
+unchanged; only the new items are quoted.
 
 ```rust
 //! Board rendering — pure functions, no I/O.
@@ -1400,6 +1414,8 @@ mod tests {
 
 # `gomoku/crates/cli/src/tui/mod.rs`
 
+**New in this chapter:** one line — `pub mod study;`.
+
 ```rust
 //! Terminal rendering helpers and the study-table front-end.
 //!
@@ -1413,6 +1429,10 @@ pub mod study;
 ```
 
 # `gomoku/crates/cli/src/session.rs`
+
+**New in this chapter:** public read accessors the shell needs
+(`black()`, `white()`, `default_config()`, `occupant()`). Everything
+else is unchanged from chapter 04; only the changed items are quoted.
 
 ```rust
 //! Session core — headless state machine.

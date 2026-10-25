@@ -11,6 +11,9 @@
 
 ## `gomoku/crates/cli/tests/acceptance.rs`
 
+**New in this chapter:** the whole file — the acceptance suite is the
+chapter's deliverable.
+
 ```rust
 //! Task-7 acceptance tests: proof, not vibes.
 //!
@@ -350,6 +353,9 @@ fn sims_vs_strength_measured() {
 ```
 
 ## `gomoku/crates/cli/src/lib.rs`
+
+**New in this chapter:** the final module list — shown here so you can
+verify your crate root matches the finished tutorial state.
 
 ```rust
 //! Terminal Gomoku client library.

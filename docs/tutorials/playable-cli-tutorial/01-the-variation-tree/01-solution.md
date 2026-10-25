@@ -10,6 +10,11 @@
 
 ## `gomoku/crates/cli/Cargo.toml`
 
+Everything in this chapter's solution is new — chapter 01 is the
+foundation. Slice 0 builds the crate split and clap skeleton; slice 1
+builds the variation tree. Per-file notes say which slice a file
+belongs to.
+
 ```toml
 [package]
 name = "cli"

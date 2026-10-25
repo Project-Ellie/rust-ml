@@ -10,6 +10,10 @@
 
 ## `gomoku/crates/cli/Cargo.toml`
 
+**New in this chapter:** the `mcts` dependency and the `engine`
+dev-dependency with the `testutil` feature. Everything else is
+unchanged from chapter 02.
+
 The changes from chapter 02 are the `mcts` dependency and the `engine`
 dev-dependency with the `testutil` feature:
 
@@ -55,7 +59,7 @@ proptest.workspace = true
 
 ## `gomoku/crates/cli/src/actor.rs`
 
-Only `SearchInfo` (with `from_search`) is new in this chapter;
+**New in this chapter:** only `SearchInfo` (with `from_search`).
 `Occupant`, `OccupantKind`, `AiConfig`, and `EvaluatorKind` already
 exist from chapter 02 and are quoted for completeness.
 
@@ -206,6 +210,12 @@ pub enum EvaluatorKind {
 ````
 
 ## `gomoku/crates/cli/src/session.rs`
+
+**New in this chapter:** `execute_step` (the mcts composition),
+real `execute_release` / `execute_set_sims` bodies, the `search_info`
+map keyed by history node, `search_info()`, and the seeded `StdRng`
+now consumed by move selection and Dirichlet noise. `SessionInit`,
+`Snapshot`, and the navigation executors are unchanged from chapter 02.
 
 ````rust
 //! Session core — headless state machine.
@@ -953,6 +963,10 @@ mod tests {
 
 ## `gomoku/crates/cli/src/command.rs`
 
+**New in this chapter:** only the error enum —
+`StepRequiresAi { seat: Color }` replaces the chapter-02 stub. Commands,
+events, and the parser are unchanged.
+
 ````rust
 //! Command language and events.
 //!
@@ -1513,6 +1527,10 @@ mod tests {
 
 ## `gomoku/crates/cli/src/bin/sessiondemo.rs`
 
+**New in this chapter:** the `info` command branch in `process_line`
+and the `print_search_info` helper. The rest is unchanged from
+chapter 02.
+
 ````rust
 //! Chapter-02 capstone: a headless REPL over the session core.
 //!
@@ -1696,6 +1714,9 @@ fn print_state(core: &SessionCore, header: &str) {
 ````
 
 ## `gomoku/crates/cli/tests/actor.rs`
+
+**New in this chapter:** the whole file — the seven headless AI-seat
+tests from the TDD checklist.
 
 ````rust
 //! Headless tests for AI seats and `SearchInfo`.
@@ -1977,6 +1998,8 @@ fn search_info_prior_and_visits_are_sorted_descending() {
 ````
 
 ## `gomoku/crates/cli/demo_script.txt`
+
+**New in this chapter:** the whole file — the capstone script.
 
 ````text
 release white
