@@ -1,8 +1,10 @@
 # `cli` — terminal Gomoku front-end
 
-A human-vs-human terminal UI on the `engine` boards. It is deliberately
-thin: the CLI owns rendering, input parsing, and the Swap2/puzzle
-workflows; the engine owns rules and tactics.
+The `cli` crate is split into a headless library (variation-tree
+history, command language, session core, seat actors, the Swap2
+opening) and the thin `gomoku` binary. The terminal front-end is the
+study table: two seats, human or AI in any combination, on a
+persistent variation tree.
 
 ## Build
 
@@ -18,100 +20,125 @@ The `naive-engine` feature is on by default; it pulls in the engine's
 cargo build -p cli --no-default-features
 ```
 
-## Hotseat play (Swap2 opening)
+## Play at the study table
 
 ```bash
-cargo run -p cli
+cargo run -p cli --bin gomoku                      # Swap2 opening, then the study table
+cargo run -p cli --bin gomoku -- play              # same, spelled out
+cargo run -p cli --bin gomoku -- play --no-swap2   # start from an empty board
+cargo run -p cli --bin gomoku -- play --ai tactics # the AI takes White
+cargo run -p cli --bin gomoku -- play --ai tactics --color white  # the AI takes Black
 ```
 
-Player A places two Black stones and one White stone. Player B then
-chooses:
+With no AI flag both seats are human. `--color` selects the human seat
+and requires `--ai`.
 
-- `b` — play Black,
-- `w` — play White, or
-- `a` — add one Black and one White stone, after which Player A picks a
-color.
+### The Swap2 opening
 
-After the opening the two parties alternate normally.
+Unless `--no-swap2` is given, the session opens with the Swap2
+ceremony. Player A places three stones (two Black, one White). Player B
+then chooses a color or declines with `more`, places one Black and one
+White stone, and Player A chooses. The finished opening becomes the
+root of the variation tree; White moves first.
 
-Keys (any phase):
+Ceremony commands:
+
+| command | action |
+|---------|--------|
+| `play <square> [black\|white]` | place the next stone (the color token overrides the default alternation) |
+| `back` | remove the last placement |
+| `done` | end the current placement round |
+| `black` / `white` | choose that color at a choice phase |
+| `more` | decline the first choice and place two more stones |
+
+### The full-screen shell
+
+On a terminal the table runs full-screen with modal input. In normal
+mode single keys act:
 
 | key | action |
 |-----|--------|
-| `<row> <col>` | play at 0-based coordinates, e.g. `7 7` |
-| `u` | undo |
-| `t` | toggle TSS (threat-space search) forced-win overlay |
-| `new` | restart |
+| arrows, `hjkl` | move the board cursor |
+| Enter | play at the cursor (human seat), step the AI (AI seat); during Swap2 placement: place the next stone |
+| `u` | undo: remove a Swap2 placement / go back one ply |
+| `d` | Swap2 placement: end the round |
+| `b`, `w` | Swap2 placement: select the next stone's color; Swap2 choice: choose that color |
+| `m` | Swap2 first choice: place two more stones |
+| `:` | open the command line (Esc cancels, Enter executes) |
+| `?` | show the help screen |
 | `q` | quit |
 
-Flags:
+The `:` command line accepts the full typed language below.
+
+### Study commands
+
+The typed command language works on the `:` command line and in line
+mode:
+
+| command | action |
+|---------|--------|
+| `<square>` or `play <square>` | play a move, e.g. `h8` |
+| `step` | let the AI play the side to move |
+| `back [N]` / `forward [N]` | walk the variation tree |
+| `var N` | choose child variation N |
+| `take black\|white\|both` | make seat(s) human |
+| `release black\|white\|both` | release seat(s) to the AI |
+| `sims black\|white N` | set per-seat simulations |
+| `new` | reset to the opening |
+| `h`, `help`, `?` | show help |
+| `q`, `quit`, `exit` | leave |
+
+An empty line steps the AI when the side-to-move seat is AI.
+
+### Line mode
+
+When stdout is not a terminal — a pipe, CI, a redirect — the same
+session runs as plain text: each frame is printed below the previous
+one and complete lines are read. Scripts drive the same session as a
+terminal:
 
 ```bash
-cargo run -p cli -- --engine naive    # use the reference engine
-cargo run -p cli -- --engine fast     # default
-cargo run -p cli -- --plain           # scrolling mode (debugging/piping)
-cargo run -p cli -- --no-swap2        # start from an empty board
+printf 'h8\nq\n' | cargo run -q -p cli --bin gomoku -- play --no-swap2
 ```
 
-## Puzzle examination mode
+End of input quits the session.
+
+### Search flags
+
+`play` and `selfplay` share the search flags:
+
+| flag | default | meaning |
+|------|---------|---------|
+| `--sims N` | 400 | MCTS simulations per move |
+| `--c-puct F` | 1.5 | PUCT exploration constant |
+| `--temperature F` | 0.0 | move-selection temperature |
+| `--noise F` | 0.0 | Dirichlet noise weight |
+| `--black-sims N` | — | override the Black seat's simulations |
+| `--white-sims N` | — | override the White seat's simulations |
+| `--seed N` | random | seed for reproducible sessions |
+
+When neither `--temperature` nor `--noise` is given, AI-vs-AI sessions
+from an empty board use an opening schedule for the first ten plies
+(temperature 1.0 with Dirichlet noise) to vary the opening. Passing
+either flag explicitly disables the schedule.
+
+## Self-play
 
 ```bash
-cargo run -p cli -- --puzzle ../data/puzzles/files/vcf-material-763.json
+cargo run -p cli --bin gomoku -- selfplay --sims 400 --seed 42
 ```
 
-Load a puzzle file and browse its samples. Each sample is displayed at
-the puzzle position; you can play moves, undo, and redo from there.
-Both front-ends are interactive: the default uses the alternate
-screen; add `--plain` for the scrolling variant (debugging/piping).
+Both seats are AI; press Enter to step. `--color` is not valid here:
+no human seat exists.
 
-### Sidecar convention (parser trust gate)
-
-A puzzle data file may only be loaded if a sidecar file sits next to it.
-For `foo.json` the sidecar is `foo.parser`. Its first non-`#`-comment
-line names the parser that has been verified for that format. The gate
-is deliberate: a format must be re-adjudicated before the CLI trusts it.
-
-The sidecar for the verified material set is already present:
-
-```text
-data/puzzles/files/vcf-material-763.parser
-```
-
-### Registering a new parser
-
-1. Verify the JSON schema and coordinate system of the new puzzle set.
-2. Add a sidecar `foo.parser` containing the new parser identifier.
-3. Implement the parser in `src/puzzle.rs` and add it to the match
-   expression in `puzzle::load`.
-4. Update this README with the new format.
-
-Do not create sidecars for unverified formats.
-
-### Puzzle keys
-
-| key | action |
-|-----|--------|
-| `<row> <col>` | play a move from the puzzle position |
-| `s` | step forward through the claimed solution line (unverified — illustration only) |
-| `u` | undo (stops at the puzzle root) |
-| `r` | redo |
-| `n` | next puzzle (wraps around) |
-| `p` | previous puzzle (wraps around) |
-| `t` | toggle TSS overlay |
-| `new` | reset the current puzzle |
-| `q` | quit |
-
-Flags:
+## Headless demos
 
 ```bash
-cargo run -p cli -- --puzzle ../data/puzzles/files/vcf-material-763.json --index 5
+cargo run -p cli --bin historydemo    # scripted walk through the variation tree
+cargo run -p cli --bin sessiondemo    # headless REPL over the session core
 ```
-
-`--index` is 0-based and defaults to 0.
 
 ## Coordinate system
 
-All board input uses 0-based row and column: `0 0` is the top-left
-corner, `7 7` is the centre. The `vcf-material-v1` file format stores
-coordinates as `[x, y]` where `x` is the column and `y` is the row; the
-parser maps them to `Move::new(y, x)`.
+All board input uses algebraic notation: columns `a`–`o` (left to
+right), rows `1`–`15` (top to bottom); `h8` is the centre.
