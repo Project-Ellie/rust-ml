@@ -1,7 +1,9 @@
 # Chapter 05 redesign — the study table as a sub-project
 
-Status: implemented on main (sub-chapters a–f, 152 cli tests green).
-This paper remains the architecture contract for the sub-chapters.
+Status: the documents are on main. The code is the learner's work,
+sub-chapter by sub-chapter. A complete reference implementation is
+preserved on the branch `reference/chapter-05-redesign` (152 cli
+tests green). This paper remains the architecture contract.
 
 Decided (2026-10, with the owner):
 

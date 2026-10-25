@@ -11,7 +11,6 @@
 //! ```
 
 use cli::history::{ForwardOutcome, History, PlayOutcome};
-use cli::notation::{algebraic, parse_algebraic};
 use engine::{Board, Color, Move};
 
 fn main() {
@@ -22,7 +21,7 @@ fn main() {
     print_step(&history, "start: empty board, root cursor");
 
     // Six-move main line.
-    let main_line = [sq("h8"), sq("h7"), sq("i8"), sq("i7"), sq("j8"), sq("j7")];
+    let main_line = [h8(), h7(), i8(), i7(), j8(), j7()];
     for mv in main_line {
         match history.play(mv) {
             Ok(PlayOutcome::Moved(_)) => {}
@@ -37,7 +36,7 @@ fn main() {
     print_step(&history, "back 3");
 
     // Branch to a different move.
-    let branch = sq("h9");
+    let branch = h9();
     history.play(branch).unwrap();
     print_step(&history, "branch: h9");
 
@@ -53,7 +52,7 @@ fn main() {
                 "    choices: {}\n",
                 choices
                     .iter()
-                    .map(|&m| algebraic(m))
+                    .map(|&m| notation(m))
                     .collect::<Vec<_>>()
                     .join(" ")
             );
@@ -63,10 +62,10 @@ fn main() {
 
     // Choose the second variation (h9).
     let chosen = history.var(1).unwrap();
-    print_step(&history, &format!("var 1 -> {}", algebraic(chosen)));
+    print_step(&history, &format!("var 1 -> {}", notation(chosen)));
 
     // Extend the branch.
-    let extension = sq("i9");
+    let extension = i9();
     history.play(extension).unwrap();
     print_step(&history, "extend: i9");
 
@@ -92,7 +91,7 @@ fn path_string(history: &History) -> String {
         board
             .moves()
             .iter()
-            .map(|&m| algebraic(m))
+            .map(|&m| notation(m))
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -117,10 +116,33 @@ fn render_board(board: &Board) -> String {
     lines.join("\n")
 }
 
-/// Parse a demo square through the canonical notation module.
-///
-/// The demo uses the same parser as the command language, so a typo in a
-/// square fails here with the same message a user would see.
-fn sq(token: &str) -> Move {
-    parse_algebraic(token).expect("demo squares are valid algebraic notation")
+fn notation(mv: Move) -> String {
+    let col = (b'a' + mv.col()) as char;
+    let row = mv.row() + 1;
+    format!("{col}{row}")
+}
+
+fn h8() -> Move {
+    Move::new(7, 7).unwrap()
+}
+fn h7() -> Move {
+    Move::new(6, 7).unwrap()
+}
+fn i8() -> Move {
+    Move::new(7, 8).unwrap()
+}
+fn i7() -> Move {
+    Move::new(6, 8).unwrap()
+}
+fn j8() -> Move {
+    Move::new(7, 9).unwrap()
+}
+fn j7() -> Move {
+    Move::new(6, 9).unwrap()
+}
+fn h9() -> Move {
+    Move::new(8, 7).unwrap()
+}
+fn i9() -> Move {
+    Move::new(8, 8).unwrap()
 }

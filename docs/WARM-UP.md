@@ -301,14 +301,11 @@ Two further tutorial tracks are written and verified, ready to work:
   **Progress on main (2026-10-20)**: chapters 01–04 are implemented
   (variation tree, command language, AI seats via mcts, study loop
   with the opening schedule). Chapter 05 was redesigned as a
-  six-part sub-project — design paper and TUI excursion in
-  `05-the-real-table/00-*.md` — and implemented in full: a-refactor
-  (notation + repl extraction, shared test kit), b-renderer (pure
-  study-table renderer), c-swap2 (engine typestate behind a session
-  replay log; command-driven ceremony), d-shell (alternate screen,
-  vim-style modal input, pure input state machine), e-fallback
-  (line mode behind the same Screen/InputSource traits), f-binary
-  (the real clap front-end). `cargo test -p cli`: 152 green.
+  six-part sub-project — design paper, TUI excursion, and the six
+  tutorial + solution document pairs live in `05-the-real-table/`;
+  the code is the learner's work, sub-chapter by sub-chapter. A
+  complete reference implementation of the redesign is preserved on
+  the branch `reference/chapter-05-redesign` (152 cli tests green).
 
 ## How the tutorials work (respect the pedagogy)
 

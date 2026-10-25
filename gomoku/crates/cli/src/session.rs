@@ -8,7 +8,6 @@ use crate::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind, SearchInfo};
 use crate::command::{Command, CommandError, Event, SeatSel};
 use crate::history::NodeId as HistoryNodeId;
 use crate::history::{ForwardOutcome, History, PlayOutcome};
-use crate::opening::{OpeningSnapshot, OpeningState};
 use engine::{Board, Color, Move, Status};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -31,10 +30,6 @@ pub struct SessionInit {
     pub seed: Option<u64>,
     /// opening board, the root of the variation tree
     pub opening: Board,
-    /// Start inside the Swap2 opening ceremony instead of at an empty
-    /// tree. Requires `opening` to be an empty board; [`SessionCore::new`]
-    /// asserts this.
-    pub swap2: bool,
 }
 
 impl SessionInit {
@@ -61,7 +56,6 @@ impl SessionInit {
             white_sims: None,
             seed: None,
             opening: Board::new(),
-            swap2: false,
         }
     }
 
@@ -76,21 +70,7 @@ impl SessionInit {
             white_sims: None,
             seed: None,
             opening: opening.clone(),
-            swap2: false,
         }
-    }
-
-    /// Enable or disable the Swap2 opening ceremony.
-    ///
-    /// A ceremony requires an empty `opening` board: ceremony stone
-    /// counts can differ by two mid-round, which no valid game board
-    /// can hold. [`SessionCore::new`] asserts the combination, because
-    /// mixing a ceremony with a preset position is a programming
-    /// error, not user input.
-    #[must_use]
-    pub fn with_swap2(mut self, swap2: bool) -> Self {
-        self.swap2 = swap2;
-        self
     }
 
     /// One human seat and one AI seat on an empty board.
@@ -111,7 +91,6 @@ impl SessionInit {
             white_sims: None,
             seed: None,
             opening: Board::new(),
-            swap2: false,
         }
     }
 
@@ -128,7 +107,6 @@ impl SessionInit {
             white_sims: None,
             seed: Some(seed),
             opening: Board::new(),
-            swap2: false,
         }
     }
 }
@@ -148,27 +126,18 @@ pub struct Snapshot {
     pub status: Status,
     /// most recent move
     pub last_move: Option<Move>,
-    /// the Swap2 ceremony state, `None` when no ceremony is in progress
-    pub opening: Option<OpeningSnapshot>,
 }
 
 impl Serialize for Snapshot {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        // The `opening` field is written only while a ceremony is in
-        // progress, so the wire format of an ordinary session is
-        // byte-identical to before the Swap2 sub-chapter.
-        let field_count = if self.opening.is_some() { 7 } else { 6 };
-        let mut state = serializer.serialize_struct("Snapshot", field_count)?;
+        let mut state = serializer.serialize_struct("Snapshot", 6)?;
         state.serialize_field("ply", &self.ply)?;
         state.serialize_field("branch_options", &self.branch_options)?;
         state.serialize_field("black", &self.black)?;
         state.serialize_field("white", &self.white)?;
         state.serialize_field("status", &status_as_str(self.status))?;
         state.serialize_field("last_move", &self.last_move)?;
-        if let Some(opening) = &self.opening {
-            state.serialize_field("opening", opening)?;
-        }
         state.end()
     }
 }
@@ -183,9 +152,6 @@ impl<'de> Deserialize<'de> for Snapshot {
             white: OccupantKind,
             status: String,
             last_move: Option<Move>,
-            // `Option` fields are implicitly optional on the wire: a
-            // snapshot written before this field existed still parses.
-            opening: Option<OpeningSnapshot>,
         }
         let helper = SnapshotHelper::deserialize(deserializer)?;
         Ok(Snapshot {
@@ -195,7 +161,6 @@ impl<'de> Deserialize<'de> for Snapshot {
             white: helper.white,
             status: status_from_str(&helper.status).map_err(serde::de::Error::custom)?,
             last_move: helper.last_move,
-            opening: helper.opening,
         })
     }
 }
@@ -229,29 +194,11 @@ pub struct SessionCore {
     rng: StdRng,
     init: SessionInit,
     search_info: HashMap<HistoryNodeId, SearchInfo>,
-    /// The Swap2 ceremony state; `None` outside the ceremony. While
-    /// this is `Some`, the variation tree still holds the (empty)
-    /// initial board: ceremony placements are not game moves and enter
-    /// the tree only as the finished opening board.
-    opening: Option<OpeningState>,
 }
 
 impl SessionCore {
     /// Create a new session from the given initial state.
-    ///
-    /// # Panics
-    /// Panics when `init.swap2` is set on a non-empty opening board.
-    /// That combination is a programming error, not user input, so it
-    /// is an assert rather than a typed error.
     pub fn new(init: SessionInit) -> Self {
-        // A Swap2 ceremony is not a game position: its stone counts can
-        // differ by two mid-round, which no valid `Board` can hold. A
-        // ceremony on top of a preset opening would mix two sources of
-        // truth, so the combination is rejected at construction.
-        assert!(
-            !init.swap2 || init.opening == Board::new(),
-            "swap2 requires an empty opening board"
-        );
         let seed = init.seed.unwrap_or_else(rand::random::<u64>);
         let rng = StdRng::seed_from_u64(seed);
         Self {
@@ -262,11 +209,6 @@ impl SessionCore {
             black_sims: init.black_sims,
             white_sims: init.white_sims,
             rng,
-            opening: if init.swap2 {
-                Some(OpeningState::new())
-            } else {
-                None
-            },
             init,
             search_info: HashMap::new(),
         }
@@ -285,16 +227,9 @@ impl SessionCore {
             white: self.white.kind(),
             status: self.history.board().status(),
             last_move: self.history.board().moves().last().copied(),
-            opening: self.opening.as_ref().map(OpeningState::snapshot),
         }
     }
 
-    /// The board at the cursor.
-    ///
-    /// During a Swap2 ceremony this is the (empty) initial board:
-    /// ceremony placements are not game moves, and their mid-round
-    /// counts can be illegal in a game position, which no valid `Board`
-    /// can hold. The stones in play are in `snapshot().opening`.
     #[must_use]
     pub fn board(&self) -> Board {
         self.history.board()
@@ -305,37 +240,9 @@ impl SessionCore {
         self.search_info.get(&self.history.cursor())
     }
 
-    /// The occupant of the Black seat.
-    #[must_use]
-    pub fn black(&self) -> &Occupant {
-        &self.black
-    }
-
-    /// The occupant of the White seat.
-    #[must_use]
-    pub fn white(&self) -> &Occupant {
-        &self.white
-    }
-
-    /// The default AI configuration, applied when a seat is released to
-    /// the AI.
-    #[must_use]
-    pub fn default_config(&self) -> &AiConfig {
-        &self.default_config
-    }
-
-    /// The occupant of the seat for `color`.
-    #[must_use]
-    pub fn occupant(&self, color: Color) -> &Occupant {
-        match color {
-            Color::Black => &self.black,
-            Color::White => &self.white,
-        }
-    }
-
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
-            Command::Play { mv, color } => self.execute_play(mv, color),
+            Command::Play(mv) => self.execute_play(mv),
             Command::Back { n } => self.execute_back(n),
             Command::Forward { n } => self.execute_forward(n),
             Command::Var { index } => self.execute_var(index),
@@ -344,51 +251,12 @@ impl SessionCore {
             Command::Step => self.execute_step(),
             Command::Release { seat } => self.execute_release(seat),
             Command::SetSims { seat, n } => self.execute_set_sims(seat, n),
-            Command::Done => self.execute_done(),
-            Command::ChooseColor { color } => self.execute_choose_color(color),
-            Command::More => self.execute_more(),
 
             Command::Help | Command::Quit => Ok(vec![]),
         }
     }
 
-    /// Route `done` into the ceremony, or reject it outside one.
-    fn execute_done(&mut self) -> Result<Vec<Event>, CommandError> {
-        match &mut self.opening {
-            Some(opening) => opening.done(),
-            None => Err(CommandError::NotInOpening),
-        }
-    }
-
-    /// Route `more` into the ceremony, or reject it outside one.
-    fn execute_more(&mut self) -> Result<Vec<Event>, CommandError> {
-        match &mut self.opening {
-            Some(opening) => opening.more(),
-            None => Err(CommandError::NotInOpening),
-        }
-    }
-
-    /// Choosing a color ends the ceremony: the engine hands back the
-    /// finished opening board, which becomes the root of a fresh
-    /// variation tree, and the normal command set takes over.
-    fn execute_choose_color(&mut self, color: Color) -> Result<Vec<Event>, CommandError> {
-        let Some(opening) = &self.opening else {
-            return Err(CommandError::NotInOpening);
-        };
-        let board = opening.choose(color)?;
-        self.history = History::from_opening(&board);
-        self.opening = None;
-        Ok(vec![Event::OpeningFinished { chosen: color }])
-    }
-
     fn execute_step(&mut self) -> Result<Vec<Event>, CommandError> {
-        // The AI searches game positions. Ceremony stones are not a
-        // game position, and a move searched now would be discarded
-        // when the ceremony finishes and resets the tree. Refuse
-        // instead.
-        if self.opening.is_some() {
-            return Err(CommandError::OpeningInProgress);
-        }
         let board = self.history.board();
         if board.status() != Status::Ongoing {
             return Err(CommandError::GameOver);
@@ -513,20 +381,7 @@ impl SessionCore {
         Ok(())
     }
 
-    pub fn execute_play(
-        &mut self,
-        mv: Move,
-        color: Option<Color>,
-    ) -> Result<Vec<Event>, CommandError> {
-        // Phase routing: during the ceremony `play` places a stone (the
-        // color token is the override); afterwards `play` is a tree
-        // move and the token is a typed error.
-        if let Some(opening) = &mut self.opening {
-            return opening.place(mv, color);
-        }
-        if color.is_some() {
-            return Err(CommandError::ColorOverrideOutsideOpening);
-        }
+    pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
         let board = self.history.board();
         if board.status() != Status::Ongoing {
             return Err(CommandError::GameOver);
@@ -556,11 +411,6 @@ impl SessionCore {
     }
 
     pub fn execute_back(&mut self, n: u32) -> Result<Vec<Event>, CommandError> {
-        // `back` is phase-dependent: it removes placements during the
-        // ceremony and navigates the variation tree afterwards.
-        if let Some(opening) = &mut self.opening {
-            return opening.undo(n);
-        }
         let _moved = self.history.back(n);
         Ok(vec![Event::CursorMoved {
             ply: self.history.ply(),
@@ -627,6 +477,13 @@ impl SessionCore {
         }
     }
 
+    fn occupant(&self, color: Color) -> &Occupant {
+        match color {
+            Color::Black => &self.black,
+            Color::White => &self.white,
+        }
+    }
+
     fn occupant_mut(&mut self, color: Color) -> &mut Occupant {
         match color {
             Color::Black => &mut self.black,
@@ -649,14 +506,6 @@ impl SessionCore {
         self.black_sims = self.init.black_sims;
         self.white_sims = self.init.white_sims;
         self.search_info.clear();
-        // `new` returns the session to its initial phase. A Swap2
-        // session started in the ceremony, so it resets into the
-        // ceremony.
-        self.opening = if self.init.swap2 {
-            Some(OpeningState::new())
-        } else {
-            None
-        };
         // Keep the same RNG; reset does not reseed.
     }
 
@@ -698,11 +547,7 @@ mod tests {
     }
 
     fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-        core.execute(Command::Play {
-            mv: mv(r, c),
-            color: None,
-        })
-        .unwrap()
+        core.execute(Command::Play(mv(r, c))).unwrap()
     }
 
     // Play a list of moves that come as array of u8, interpreted in pairs
@@ -763,12 +608,7 @@ mod tests {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
         play(&mut core, 7, 7);
         let snapshot_before = core.snapshot();
-        let err = core
-            .execute(Command::Play {
-                mv: mv(7, 7),
-                color: None,
-            })
-            .unwrap_err();
+        let err = core.execute(Command::Play(mv(7, 7))).unwrap_err();
         assert_eq!(err, CommandError::IllegalMove(PlayError::Occupied));
         assert_eq!(core.snapshot(), snapshot_before);
     }
@@ -920,16 +760,6 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err, CommandError::ZeroSims);
-    }
-
-    #[test]
-    fn seat_accessors_report_the_occupants() {
-        let core = SessionCore::new(SessionInit::new_hotseat());
-        assert_eq!(core.black(), &Occupant::Human);
-        assert_eq!(core.white(), &Occupant::Human);
-        assert_eq!(core.occupant(Color::Black), core.black());
-        assert_eq!(core.occupant(Color::White), core.white());
-        assert_eq!(core.default_config(), &AiConfig::default());
     }
 
     #[test]

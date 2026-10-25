@@ -1,9 +1,10 @@
 use cli::history::{ForwardOutcome, History, HistoryError, PlayOutcome};
-use engine::{Board, Color, PlayError, Status};
+use engine::{Board, Color, Move, PlayError, Status};
 use proptest::prelude::*;
 
-mod common;
-use common::mv;
+fn mv(r: u8, c: u8) -> Move {
+    Move::new(r, c).unwrap()
+}
 
 fn empty_board() -> Board {
     Board::new()

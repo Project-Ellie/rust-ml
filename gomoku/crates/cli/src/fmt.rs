@@ -35,11 +35,7 @@ pub fn render_board(board: &Board, last_move: Option<Move>) -> String {
 }
 
 /// Format a move as algebraic notation (`h8`).
-///
-/// The canonical implementation is [`crate::notation::algebraic`]. This
-/// helper stays so the call sites that predate the notation module keep
-/// working unchanged.
 #[must_use]
 pub fn format_move(mv: Move) -> String {
-    crate::notation::algebraic(mv)
+    format!("{}{}", (b'a' + mv.col()) as char, mv.row() + 1)
 }
