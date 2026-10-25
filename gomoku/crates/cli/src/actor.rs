@@ -103,6 +103,18 @@ impl Occupant {
             Occupant::Ai(_) => OccupantKind::Ai,
         }
     }
+
+    /// Returns `true` if this seat is occupied by a human.
+    #[must_use]
+    pub fn is_human(&self) -> bool {
+        matches!(self, Occupant::Human)
+    }
+
+    /// Returns `true` if this seat is occupied by an AI.
+    #[must_use]
+    pub fn is_ai(&self) -> bool {
+        matches!(self, Occupant::Ai(_))
+    }
 }
 
 /// Search configuration for an AI seat.
@@ -118,6 +130,12 @@ pub struct AiConfig {
     pub temperature: f32,
     /// Dirichlet noise mix fraction (0.0 disables noise).
     pub noise_epsilon: f32,
+    /// Whether `temperature` and `noise_epsilon` were set explicitly by the
+    /// user (e.g. via CLI flags). When `false` and both values are at their
+    /// defaults (0.0), an AI-vs-AI line from an empty root may use the
+    /// opening schedule instead.
+    #[serde(default)]
+    pub explicit_selection: bool,
 }
 
 impl Default for AiConfig {
@@ -127,6 +145,8 @@ impl Default for AiConfig {
     /// - c_puct 1.5
     /// - deterministic move selection (temperature 0.0)
     /// - no Dirichlet noise
+    /// - selection parameters are not explicit, so the opening schedule may
+    ///   apply in AI-vs-AI from an empty root
     fn default() -> Self {
         Self {
             evaluator: EvaluatorKind::Tactics,
@@ -134,6 +154,7 @@ impl Default for AiConfig {
             c_puct: 1.5,
             temperature: 0.0,
             noise_epsilon: 0.0,
+            explicit_selection: false,
         }
     }
 }

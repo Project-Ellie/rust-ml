@@ -33,9 +33,21 @@ pub struct SessionInit {
 }
 
 impl SessionInit {
-    /// start the hot-seat sesssion on an empty board
+    /// Start a hotseat session on an empty board.
     #[must_use]
     pub fn new_hotseat() -> Self {
+        Self::hotseat()
+    }
+
+    /// Start a hotseat session from a custom opening position.
+    #[must_use]
+    pub fn new_hotseat_from_opening(opening: &Board) -> Self {
+        Self::hotseat_from_opening(opening)
+    }
+
+    /// Human vs human on an empty board.
+    #[must_use]
+    pub fn hotseat() -> Self {
         Self {
             black: Occupant::Human,
             white: Occupant::Human,
@@ -47,8 +59,9 @@ impl SessionInit {
         }
     }
 
+    /// Human vs human from a custom opening position.
     #[must_use]
-    pub fn new_hotseat_from_opening(opening: &Board) -> Self {
+    pub fn hotseat_from_opening(opening: &Board) -> Self {
         Self {
             black: Occupant::Human,
             white: Occupant::Human,
@@ -57,6 +70,43 @@ impl SessionInit {
             white_sims: None,
             seed: None,
             opening: opening.clone(),
+        }
+    }
+
+    /// One human seat and one AI seat on an empty board.
+    ///
+    /// `human_color` is the human seat; the opposite seat is AI using
+    /// `ai_config`.
+    #[must_use]
+    pub fn versus_ai(human_color: Color, ai_config: AiConfig) -> Self {
+        let (black, white) = match human_color {
+            Color::Black => (Occupant::Human, Occupant::Ai(ai_config.clone())),
+            Color::White => (Occupant::Ai(ai_config.clone()), Occupant::Human),
+        };
+        Self {
+            black,
+            white,
+            default_config: ai_config,
+            black_sims: None,
+            white_sims: None,
+            seed: None,
+            opening: Board::new(),
+        }
+    }
+
+    /// AI vs AI on an empty board.
+    ///
+    /// `config` configures both seats. `seed` makes the session reproducible.
+    #[must_use]
+    pub fn ai_vs_ai(config: AiConfig, seed: u64) -> Self {
+        Self {
+            black: Occupant::Ai(config.clone()),
+            white: Occupant::Ai(config.clone()),
+            default_config: config,
+            black_sims: None,
+            white_sims: None,
+            seed: Some(seed),
+            opening: Board::new(),
         }
     }
 }
@@ -141,7 +191,6 @@ pub struct SessionCore {
     default_config: AiConfig,
     black_sims: Option<u32>,
     white_sims: Option<u32>,
-    #[allow(dead_code)]
     rng: StdRng,
     init: SessionInit,
     search_info: HashMap<HistoryNodeId, SearchInfo>,
@@ -220,27 +269,33 @@ impl SessionCore {
             }
         };
 
-        let mut evaluator = Self::make_evaluator(&config.evaluator);
+        let mut effective_config = config.clone();
+        if self.opening_schedule_active(side) {
+            effective_config.temperature = 1.0;
+            effective_config.noise_epsilon = 0.25;
+        }
+
+        let mut evaluator = Self::make_evaluator(&effective_config.evaluator);
         let search_cfg = mcts::SearchConfig {
-            simulations: config.simulations,
-            c_puct: config.c_puct,
+            simulations: effective_config.simulations,
+            c_puct: effective_config.c_puct,
         };
 
         let mut outcome = mcts::search(&board, &mut *evaluator, &search_cfg);
 
-        if config.noise_epsilon > 0.0 {
+        if effective_config.noise_epsilon > 0.0 {
             mcts::add_dirichlet_noise(
                 &mut outcome.tree,
                 outcome.root,
-                config.noise_epsilon,
+                effective_config.noise_epsilon,
                 0.3,
                 &mut self.rng,
             );
         }
 
-        let info = SearchInfo::from_search(&outcome, &board, &config);
+        let info = SearchInfo::from_search(&outcome, &board, &effective_config);
         let visits = mcts::visit_distribution(&outcome.tree, outcome.root);
-        let mv = mcts::select_move(&visits, config.temperature, &mut self.rng)
+        let mv = mcts::select_move(&visits, effective_config.temperature, &mut self.rng)
             .expect("AI must select a move from a non-empty distribution");
 
         let old_cursor = self.history.cursor();
@@ -450,6 +505,7 @@ impl SessionCore {
         self.default_config = self.init.default_config.clone();
         self.black_sims = self.init.black_sims;
         self.white_sims = self.init.white_sims;
+        self.search_info.clear();
         // Keep the same RNG; reset does not reseed.
     }
 
@@ -458,6 +514,26 @@ impl SessionCore {
             // Currently, there's only one. Will have two more, soon.
             EvaluatorKind::Tactics => Box::new(mcts::TacticsEvaluator::new()),
         }
+    }
+
+    /// [experiment] Opening schedule for AI-vs-AI from an empty root.
+    ///
+    /// When the user has not explicitly configured temperature or
+    /// Dirichlet noise, the first 10 plies of each line use temperature
+    /// 1.0 with ε = 0.25 / α = 0.3 Dirichlet noise to introduce opening
+    /// variety. After ply 10 (and for any explicitly configured session)
+    /// the configured values are used verbatim.
+    ///
+    /// The schedule is keyed to the cursor ply along the current path, so
+    /// branching back into the first 10 plies re-enters the schedule.
+    fn opening_schedule_active(&self, _side: Color) -> bool {
+        self.init.opening == Board::new()
+            && self.black.is_ai()
+            && self.white.is_ai()
+            && !self.default_config.explicit_selection
+            && self.default_config.temperature == 0.0
+            && self.default_config.noise_epsilon == 0.0
+            && self.history.ply() < 10
     }
 }
 

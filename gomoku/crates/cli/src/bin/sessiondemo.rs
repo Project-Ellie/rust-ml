@@ -40,14 +40,24 @@ const HELP: &str = r#"Commands (case-insensitive):
   q, quit, exit    quit
 "#;
 
+fn parse_seed(args: &[String]) -> Option<u64> {
+    args.iter()
+        .position(|a| a == "--seed")
+        .and_then(|i| args.get(i + 1).and_then(|s| s.parse::<u64>().ok()))
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let script_path = args
         .iter()
         .position(|a| a == "--script")
         .and_then(|i| args.get(i + 1));
+    let seed = parse_seed(&args);
 
-    let init = SessionInit::new_hotseat();
+    let init = SessionInit {
+        seed,
+        ..SessionInit::new_hotseat()
+    };
     let mut core = SessionCore::new(init);
 
     print_state(&core, "Session started. Type 'h' for help.");

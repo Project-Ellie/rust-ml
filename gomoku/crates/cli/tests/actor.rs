@@ -23,6 +23,7 @@ fn ai_config_tactics() -> AiConfig {
         c_puct: 1.5,
         temperature: 0.0,
         noise_epsilon: 0.0,
+        explicit_selection: false,
     }
 }
 
