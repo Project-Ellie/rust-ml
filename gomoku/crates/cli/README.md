@@ -45,7 +45,7 @@ Ceremony commands:
 
 | command | action |
 |---------|--------|
-| `play <square> [black\|white]` | place the next stone (the color token overrides the default alternation) |
+| `play <square>` | place the next stone (colors alternate, black first) |
 | `back` | remove the last placement |
 | `done` | end the current placement round |
 | `black` / `white` | choose that color at a choice phase |
@@ -62,7 +62,7 @@ mode single keys act:
 | Enter | play at the cursor (human seat), step the AI (AI seat); during Swap2 placement: place the next stone |
 | `u` | undo: remove a Swap2 placement / go back one ply |
 | `d` | Swap2 placement: end the round |
-| `b`, `w` | Swap2 placement: select the next stone's color; Swap2 choice: choose that color |
+| `b`, `w` | Swap2 choice: choose that color (no effect during placement) |
 | `m` | Swap2 first choice: place two more stones |
 | `:` | open the command line (Esc cancels, Enter executes) |
 | `?` | show the help screen |
