@@ -240,16 +240,19 @@ impl SessionCore {
         self.search_info.get(&self.history.cursor())
     }
 
+    /// Who plays Black: a human at the keys or the AI.
     #[must_use]
     pub fn black(&self) -> &Occupant {
         &self.black
     }
 
+    /// Who plays White.
     #[must_use]
     pub fn white(&self) -> &Occupant {
         &self.white
     }
 
+    /// The AI configuration every AI seat plays with.
     #[must_use]
     pub fn default_config(&self) -> &AiConfig {
         &self.default_config
@@ -492,7 +495,9 @@ impl SessionCore {
         }
     }
 
-    fn occupant(&self, color: Color) -> &Occupant {
+    /// Who occupies the seat of `color`: a human or the AI.
+    #[must_use]
+    pub fn occupant(&self, color: Color) -> &Occupant {
         match color {
             Color::Black => &self.black,
             Color::White => &self.white,

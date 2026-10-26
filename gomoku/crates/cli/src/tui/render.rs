@@ -117,7 +117,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
     for i in 0..rows {
         let left = board_lines.get(i).map(String::as_str).unwrap_or("");
         let right = panel_lines.get(i).map(String::as_str).unwrap_or("");
-        out.push(format!("{left} {right}"));
+        out.push(format!("{left}  {right}"));
     }
     // The command line is the last line of the frame, so the user's text
     // always appears at the bottom of the screen.
@@ -169,7 +169,7 @@ fn build_ruler() -> String {
     ruler
 }
 
-/// The border line between ruler and grid:: 15 cells of 3 characters each.
+/// The border line between ruler and grid: 15 cells of 3 characters each.
 fn border() -> String {
     format!("   +{}+   ", "-".repeat(45))
 }
@@ -299,7 +299,7 @@ fn panel_line(text: &str, styled: bool) -> String {
 }
 
 /// How a seat appears in the panel: `Human` or `AI(N)` with the seat's
-/// simulation count
+/// simulation count.
 fn seat_label(occupant: &Occupant) -> String {
     match occupant {
         Occupant::Human => "Human".to_string(),
@@ -307,6 +307,8 @@ fn seat_label(occupant: &Occupant) -> String {
     }
 }
 
+/// The last eight moves in algebraic notation, `...`-prefixed when earlier
+/// moves are elided; `(root)` on an empty board.
 fn path_tail_string(board: &Board) -> String {
     let moves = board.moves();
     if moves.is_empty() {
@@ -393,6 +395,14 @@ mod tests {
             !text.contains("[x]"),
             "the cursor marker replaces the last-move marker"
         );
+    }
+
+    #[test]
+    fn the_panel_starts_after_a_two_space_gap() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let frame = render_study(&StudyView::new(&core, &[]));
+        // 53 board columns, a two-space gap, then the panel header.
+        assert_eq!(&frame[0][53..], "  -- Study table --");
     }
 
     #[test]
