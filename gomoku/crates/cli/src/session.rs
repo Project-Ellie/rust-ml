@@ -240,6 +240,21 @@ impl SessionCore {
         self.search_info.get(&self.history.cursor())
     }
 
+    #[must_use]
+    pub fn black(&self) -> &Occupant {
+        &self.black
+    }
+
+    #[must_use]
+    pub fn white(&self) -> &Occupant {
+        &self.white
+    }
+
+    #[must_use]
+    pub fn default_config(&self) -> &AiConfig {
+        &self.default_config
+    }
+
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
             Command::Play(mv) => self.execute_play(mv),
@@ -779,5 +794,15 @@ mod tests {
             assert_eq!(ev_a, ev_b);
         }
         assert_eq!(a.snapshot(), b.snapshot());
+    }
+
+    #[test]
+    fn seat_accessors_read_their_properties() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        assert_eq!(core.black(), &Occupant::Human);
+        assert_eq!(core.white(), &Occupant::Human);
+        assert_eq!(core.occupant(Color::White), core.white());
+        assert_eq!(core.occupant(Color::Black), core.black());
+        assert_eq!(core.default_config(), &AiConfig::default());
     }
 }
