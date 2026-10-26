@@ -51,7 +51,6 @@ pub struct StudyView<'a> {
     cursor: Option<Move>,
     command_line: Option<&'a str>,
     message: Option<&'a str>,
-    color_override: Option<Color>,
     styled: bool,
 }
 
@@ -66,7 +65,6 @@ impl<'a> StudyView<'a> {
             cursor: None,
             command_line: None,
             message: None,
-            color_override: None,
             styled: false,
         }
     }
@@ -106,18 +104,6 @@ impl<'a> StudyView<'a> {
         self
     }
 
-    /// Report `color` as the selected color of the next Swap2 stone.
-    ///
-    /// The selection lives in the shell's input state, not in the
-    /// session, so the renderer must be told. At a placement phase the
-    /// panel shows the override when one is set, else the ceremony's
-    /// default color. Outside a placement phase the value is ignored.
-    #[must_use]
-    pub fn color_override(mut self, color: Option<Color>) -> Self {
-        self.color_override = color;
-        self
-    }
-
     /// Turn ANSI styling on (`true`) or off (`false`).
     ///
     /// Unstyled output contains no escape sequences, so it is safe to pipe
@@ -152,14 +138,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         view.cursor,
         view.styled,
     );
-    let panel_lines = render_side_panel(
-        core,
-        &board,
-        &snapshot,
-        view.recent_events,
-        view.color_override,
-        view.styled,
-    );
+    let panel_lines = render_side_panel(core, &board, &snapshot, view.recent_events, view.styled);
     let rows = board_lines.len().max(panel_lines.len());
     let mut out = Vec::with_capacity(rows + 1);
     for i in 0..rows {
@@ -307,7 +286,6 @@ fn render_side_panel(
     board: &Board,
     snapshot: &Snapshot,
     recent_events: &[Event],
-    color_override: Option<Color>,
     styled: bool,
 ) -> Vec<String> {
     let mut lines = Vec::new();
@@ -319,7 +297,7 @@ fn render_side_panel(
     // is empty, so ply and side-to-move would describe a game that has
     // not started. The ceremony block takes their place.
     match &snapshot.opening {
-        Some(opening) => ceremony_lines(&mut lines, opening, color_override),
+        Some(opening) => ceremony_lines(&mut lines, opening),
         None => position_lines(&mut lines, board, snapshot),
     }
     lines.push(String::new());
@@ -376,11 +354,7 @@ fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
 /// user needs them: a placement phase shows the placement keys, a
 /// choice phase shows the choice keys. The guidance strings match the
 /// key table in the help screen word for word.
-fn ceremony_lines(
-    lines: &mut Vec<String>,
-    opening: &OpeningSnapshot,
-    color_override: Option<Color>,
-) {
+fn ceremony_lines(lines: &mut Vec<String>, opening: &OpeningSnapshot) {
     lines.push(format!("Swap2: {:?}", opening.phase));
     let stones = if opening.placements.is_empty() {
         "(none)".to_string()
@@ -395,19 +369,14 @@ fn ceremony_lines(
     lines.push(format!("Stones: {stones}"));
     match opening.phase {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
-            // The next stone's color is the override when the user
-            // selected one with `b`/`w`, else the ceremony's default.
-            // The snapshot guarantees a default at a placement phase.
-            let (color, source) = match color_override {
-                Some(color) => (color, "override"),
-                None => (
-                    opening
-                        .default_next_color
-                        .expect("a placement phase always has a default color"),
-                    "default",
-                ),
-            };
-            lines.push(format!("Next: {color:?} ({source})"));
+            // The strict alternation fixes the next stone's color, so
+            // the panel states it without a source: there is nothing
+            // to select. The snapshot guarantees a color at a
+            // placement phase.
+            let color = opening
+                .next_color
+                .expect("a placement phase always has a next color");
+            lines.push(format!("Next: {color:?}"));
             lines.push("Enter place · u undo · d done".to_string());
         }
         OpeningPhase::FirstChoice => {
@@ -471,11 +440,7 @@ mod tests {
     use testkit::mv;
 
     fn play(core: &mut SessionCore, r: u8, c: u8) {
-        core.execute(Command::Play {
-            mv: mv(r, c),
-            color: None,
-        })
-        .unwrap();
+        core.execute(Command::Play { mv: mv(r, c) }).unwrap();
     }
 
     /// Remove ANSI escape sequences from a line.
@@ -600,12 +565,7 @@ mod tests {
     #[test]
     fn the_panel_lists_recent_events() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
-        let events = core
-            .execute(Command::Play {
-                mv: mv(7, 7),
-                color: None,
-            })
-            .unwrap();
+        let events = core.execute(Command::Play { mv: mv(7, 7) }).unwrap();
         let frame = render_study(&StudyView::new(&core, &events));
         let text = frame.join("\n");
         assert!(text.contains("Last events:"));
@@ -653,12 +613,8 @@ mod tests {
         // the stones on the frame come from the opening snapshot.
         let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
         assert!(core.board().moves().is_empty());
-        play(&mut core, 7, 7); // h8, Black by the default order
-        core.execute(Command::Play {
-            mv: mv(7, 8),
-            color: Some(Color::White),
-        })
-        .unwrap(); // i8, White by the override token
+        play(&mut core, 7, 7); // h8, Black by the alternation
+        play(&mut core, 7, 8); // i8, White by the alternation
 
         let frame = render_study(&StudyView::new(&core, &[]));
         let row7 = &frame[2 + 7];
@@ -677,8 +633,8 @@ mod tests {
         assert!(text.contains("Swap2: Placing3"), "the phase: {text}");
         assert!(text.contains("Stones: (none)"), "no placements yet: {text}");
         assert!(
-            text.contains("Next: Black (default)"),
-            "the default color of the first stone: {text}"
+            text.contains("Next: Black"),
+            "the color of the first stone: {text}"
         );
         assert!(
             text.contains("Enter place · u undo · d done"),
@@ -692,12 +648,11 @@ mod tests {
         );
 
         play(&mut core, 7, 7);
-        let view = StudyView::new(&core, &[]).color_override(Some(Color::White));
-        let text = render_study(&view).join("\n");
+        let text = render_study(&StudyView::new(&core, &[])).join("\n");
         assert!(text.contains("Stones: h8:Black"), "the placements: {text}");
         assert!(
-            text.contains("Next: White (override)"),
-            "the selected color of the next stone: {text}"
+            text.contains("Next: White"),
+            "the alternated color of the next stone: {text}"
         );
     }
 
@@ -745,19 +700,8 @@ mod tests {
     #[test]
     fn styled_and_unstyled_frames_differ_only_in_escape_sequences() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
-        let mut events = core
-            .execute(Command::Play {
-                mv: mv(7, 7),
-                color: None,
-            })
-            .unwrap();
-        events.extend(
-            core.execute(Command::Play {
-                mv: mv(6, 7),
-                color: None,
-            })
-            .unwrap(),
-        );
+        let mut events = core.execute(Command::Play { mv: mv(7, 7) }).unwrap();
+        events.extend(core.execute(Command::Play { mv: mv(6, 7) }).unwrap());
 
         // Exercise every styled element at once: stones, star points,
         // gutters, the last move, the cursor, and the panel lines.

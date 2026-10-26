@@ -10,7 +10,7 @@
 use cli::actor::{AiConfig, EvaluatorKind};
 use cli::command::{Command, Event};
 use cli::session::{SessionCore, SessionInit};
-use engine::{Color, Move};
+use engine::Move;
 
 /// Build a move from zero-based row and column.
 ///
@@ -23,26 +23,11 @@ pub fn mv(r: u8, c: u8) -> Move {
 /// Play one stone and return the events the session emitted.
 ///
 /// Tests that use this helper expect the move to be legal; an illegal move
-/// panics through the `unwrap`, which points at the test script.
+/// panics through the `unwrap`, which points at the test script. During a
+/// Swap2 ceremony the stone's color comes from the ceremony's strict
+/// alternation.
 pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play {
-        mv: mv(r, c),
-        color: None,
-    })
-    .unwrap()
-}
-
-/// Place one stone with an explicit color token: the Swap2 override.
-///
-/// Legal only during the opening; outside it the session returns the
-/// typed `ColorOverrideOutsideOpening` error and the `unwrap` fails the
-/// test, which is the intent.
-pub fn play_color(core: &mut SessionCore, r: u8, c: u8, color: Color) -> Vec<Event> {
-    core.execute(Command::Play {
-        mv: mv(r, c),
-        color: Some(color),
-    })
-    .unwrap()
+    core.execute(Command::Play { mv: mv(r, c) }).unwrap()
 }
 
 /// A hotseat session that starts inside the Swap2 opening ceremony.

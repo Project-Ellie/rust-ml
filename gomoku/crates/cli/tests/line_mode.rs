@@ -126,7 +126,7 @@ Commands (case-insensitive):
   q, quit, exit    quit
 
 Swap2 opening (sessions started with swap2):
-  play SQUARE [black|white]   place the next stone (defaults alternate, black first)
+  play SQUARE      place the next stone (colors alternate, black first)
   back [N]         remove the last placement(s)
   done             end the current placement round
   black | white    choose that color at a choice phase
@@ -196,18 +196,18 @@ fn the_two_move_transcript_is_byte_exact() {
 #[test]
 fn the_ceremony_runs_entirely_on_typed_commands() {
     let core = swap2_core();
-    // The full protocol: default and override placements, an undo, the
+    // The full protocol: alternated placements, an undo, the
     // count-validated `done`, the declined first choice, and the final
     // choice — every step typed, no keys.
     let script = "play h8\n\
-                  play i8 white\n\
+                  play i8\n\
                   back\n\
                   play i8\n\
                   play j8\n\
                   done\n\
                   more\n\
                   play g8\n\
-                  play f8 white\n\
+                  play f8\n\
                   done\n\
                   white\n\
                   quit\n";
@@ -236,22 +236,32 @@ fn the_ceremony_runs_entirely_on_typed_commands() {
         transcript.contains("Swap2 finished: White chosen"),
         "the finish: {transcript}"
     );
-    // Line mode has no b/w keys, so the panel never reports an armed
-    // override; the typed color token colors the stone directly.
-    assert!(
-        !transcript.contains("(override)"),
-        "no override panel in line mode: {transcript}"
-    );
 
     // The finished opening: the ceremony is over, White moves first,
-    // and the five stones sit where the script put them.
+    // and the five stones sit where the script put them, colored by
+    // the strict alternation B, W, B, W, B.
     assert!(core.snapshot().opening.is_none(), "the ceremony finished");
     assert_eq!(core.board().to_move(), Color::White);
-    assert_eq!(core.board().stone_at(mv(7, 7)), Some(Color::Black)); // h8, default
+    assert_eq!(core.board().stone_at(mv(7, 7)), Some(Color::Black)); // h8
     assert_eq!(core.board().stone_at(mv(7, 8)), Some(Color::White)); // i8, re-placed
-    assert_eq!(core.board().stone_at(mv(7, 9)), Some(Color::Black)); // j8, default
-    assert_eq!(core.board().stone_at(mv(7, 6)), Some(Color::Black)); // g8, round two
-    assert_eq!(core.board().stone_at(mv(7, 5)), Some(Color::White)); // f8, typed override
+    assert_eq!(core.board().stone_at(mv(7, 9)), Some(Color::Black)); // j8
+    assert_eq!(core.board().stone_at(mv(7, 6)), Some(Color::White)); // g8, round two
+    assert_eq!(core.board().stone_at(mv(7, 5)), Some(Color::Black)); // f8, round two
+}
+
+#[test]
+fn a_color_token_on_play_is_a_parse_error() {
+    // The strict alternation makes the token meaningless, so the
+    // grammar rejects it; the transcript shows the parser's message.
+    let core = swap2_core();
+    let (core, transcript) = run_line_script(core, "play h8 white\nquit\n");
+    assert!(
+        transcript.contains("usage: play <square>, got extra 'white'"),
+        "the color token is rejected: {transcript}"
+    );
+    // The failed line placed nothing: the ceremony is still empty.
+    let opening = core.snapshot().opening.expect("the ceremony still runs");
+    assert!(opening.placements.is_empty());
 }
 
 #[test]

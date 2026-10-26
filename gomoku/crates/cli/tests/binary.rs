@@ -148,19 +148,19 @@ fn play_no_swap2_starts_at_an_empty_board() {
 fn the_default_invocation_runs_the_swap2_ceremony() {
     // No subcommand at all: `play` is the default, and the ceremony
     // is the default opening. The script runs the full protocol with
-    // typed commands: a default placement, a color-token override, an
-    // undo, the count-validated `done`, the declined first choice,
-    // the second round, and the final choice. The `k8` afterwards is
-    // the first move of the game.
+    // typed commands: alternated placements, an undo, the
+    // count-validated `done`, the declined first choice, the second
+    // round, and the final choice. The `k8` afterwards is the first
+    // move of the game.
     let script = "play h8\n\
-                  play i8 white\n\
+                  play i8\n\
                   back\n\
                   play i8\n\
                   play j8\n\
                   done\n\
                   more\n\
                   play g8\n\
-                  play f8 white\n\
+                  play f8\n\
                   done\n\
                   white\n\
                   k8\n\

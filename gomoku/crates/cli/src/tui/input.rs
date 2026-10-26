@@ -56,16 +56,11 @@ pub struct InputState {
     pub mode: InputMode,
     /// The board cursor: the square the next Enter acts on.
     pub cursor: Move,
-    /// The selected color of the next Swap2 stone, set with `b`/`w` at
-    /// a placement phase. `None` means the ceremony's default order
-    /// applies. The shell clears it when a placement lands, so the
-    /// override arms exactly one stone.
-    pub next_color_override: Option<Color>,
 }
 
 impl InputState {
-    /// Fresh input state: normal mode, no override, the cursor on the
-    /// center point h8.
+    /// Fresh input state: normal mode, the cursor on the center point
+    /// h8.
     ///
     /// The center is the natural first target on an empty board and the
     /// most common first stone of a Swap2 ceremony, so the cursor
@@ -75,7 +70,6 @@ impl InputState {
         Self {
             mode: InputMode::Normal,
             cursor: Move::new(7, 7).expect("the center point is on the board"),
-            next_color_override: None,
         }
     }
 }
@@ -218,27 +212,17 @@ fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) 
 fn opening_key(key: KeyEvent, state: &mut InputState, opening: &OpeningSnapshot) -> InputOutcome {
     match opening.phase {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
-            // Enter places the next stone at the cursor. The override
-            // colors this one stone when set; the loop clears it when
-            // the placement lands.
-            KeyCode::Enter => InputOutcome::Command(Command::Play {
-                mv: state.cursor,
-                color: state.next_color_override,
-            }),
+            // Enter places the next stone at the cursor; the
+            // ceremony's strict alternation decides its color.
+            KeyCode::Enter => InputOutcome::Command(Command::Play { mv: state.cursor }),
             // During the ceremony the session routes `back` to the
             // replay log, so `u` removes the last placement.
             KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
             KeyCode::Char('d') => InputOutcome::Command(Command::Done),
-            // `b`/`w` select the next stone's color. The panel shows
-            // the selection, so the outcome needs no message.
-            KeyCode::Char('b') => {
-                state.next_color_override = Some(Color::Black);
-                InputOutcome::None
-            }
-            KeyCode::Char('w') => {
-                state.next_color_override = Some(Color::White);
-                InputOutcome::None
-            }
+            // `b`/`w` bind to the color choice, which exists only at a
+            // choice phase. At a placement phase the keys are unmapped:
+            // the alternation fixes the next stone's color, so there
+            // is nothing to select.
             // `m` is the decline of the first choice. During placement
             // it applies nowhere, so the key explains itself instead of
             // producing the session's typed error with no visible
@@ -278,10 +262,7 @@ fn playing_key(key: KeyEvent, state: &InputState, core: &SessionCore) -> InputOu
         KeyCode::Enter => {
             let side = core.board().to_move();
             if core.occupant(side).is_human() {
-                InputOutcome::Command(Command::Play {
-                    mv: state.cursor,
-                    color: None,
-                })
+                InputOutcome::Command(Command::Play { mv: state.cursor })
             } else {
                 InputOutcome::Command(Command::Step)
             }
@@ -348,13 +329,13 @@ mod tests {
         SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
     }
 
-    /// A session at the first choice: three default placements, `done`.
+    /// A session at the first choice: three alternating placements,
+    /// `done`.
     fn first_choice_core() -> SessionCore {
         let mut core = placing_core();
         for (r, c) in [(7, 7), (8, 8), (9, 9)] {
             core.execute(Command::Play {
                 mv: Move::new(r, c).unwrap(),
-                color: None,
             })
             .unwrap();
         }
@@ -376,7 +357,6 @@ mod tests {
         for (r, c) in [(5, 5), (6, 6)] {
             core.execute(Command::Play {
                 mv: Move::new(r, c).unwrap(),
-                color: None,
             })
             .unwrap();
         }
@@ -453,8 +433,7 @@ mod tests {
         assert_eq!(
             handle_key(key(KeyCode::Enter), &mut state, &core),
             InputOutcome::Command(Command::Play {
-                mv: Move::new(3, 4).unwrap(),
-                color: None
+                mv: Move::new(3, 4).unwrap()
             })
         );
     }
@@ -491,44 +470,32 @@ mod tests {
     }
 
     #[test]
-    fn at_a_placement_phase_enter_places_with_the_default_color() {
+    fn at_a_placement_phase_enter_places_the_next_stone() {
         let core = placing_core();
         let mut state = InputState::new();
         assert_eq!(
             handle_key(key(KeyCode::Enter), &mut state, &core),
             InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 7).unwrap(),
-                color: None
+                mv: Move::new(7, 7).unwrap()
             })
         );
     }
 
     #[test]
-    fn at_a_placement_phase_b_and_w_select_the_next_color() {
-        let core = placing_core();
-        let mut state = InputState::new();
-
-        // `w` selects White for the next stone; the key itself is only
-        // a state change, so the outcome is None.
-        assert_eq!(
-            handle_key(char_key('w'), &mut state, &core),
-            InputOutcome::None
-        );
-        assert_eq!(state.next_color_override, Some(Color::White));
-
-        // Enter uses the selection. Clearing the override after a
-        // placement is the loop's job, not the translator's.
-        assert_eq!(
-            handle_key(key(KeyCode::Enter), &mut state, &core),
-            InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 7).unwrap(),
-                color: Some(Color::White)
-            })
-        );
-
-        // `b` re-selects Black.
-        handle_key(char_key('b'), &mut state, &core);
-        assert_eq!(state.next_color_override, Some(Color::Black));
+    fn at_a_placement_phase_b_and_w_are_unmapped() {
+        // The alternation fixes the next stone's color, so `b`/`w`
+        // select nothing at a placement phase. The binding exists only
+        // at a choice phase, where the same keys choose the color.
+        for core in [placing_core(), placing2_core()] {
+            let mut state = InputState::new();
+            for c in ['b', 'w'] {
+                assert_eq!(
+                    handle_key(char_key(c), &mut state, &core),
+                    InputOutcome::None,
+                    "'{c}' is unmapped at a placement phase"
+                );
+            }
+        }
     }
 
     #[test]
@@ -661,8 +628,7 @@ mod tests {
         assert_eq!(
             handle_key(key(KeyCode::Enter), &mut state, &core),
             InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 7).unwrap(),
-                color: None
+                mv: Move::new(7, 7).unwrap()
             })
         );
         assert_eq!(state.mode, InputMode::Normal);

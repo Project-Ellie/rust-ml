@@ -214,11 +214,7 @@ fn step_after_game_over_is_error() {
         (7, 7),
     ];
     for &(r, c) in &script {
-        core.execute(Command::Play {
-            mv: mv(r, c),
-            color: None,
-        })
-        .unwrap();
+        core.execute(Command::Play { mv: mv(r, c) }).unwrap();
     }
     assert_eq!(core.board().status(), Status::Won(Color::Black));
     let err = core.execute(Command::Step).unwrap_err();

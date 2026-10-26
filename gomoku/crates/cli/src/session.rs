@@ -335,7 +335,7 @@ impl SessionCore {
 
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
-            Command::Play { mv, color } => self.execute_play(mv, color),
+            Command::Play { mv } => self.execute_play(mv),
             Command::Back { n } => self.execute_back(n),
             Command::Forward { n } => self.execute_forward(n),
             Command::Var { index } => self.execute_var(index),
@@ -513,19 +513,11 @@ impl SessionCore {
         Ok(())
     }
 
-    pub fn execute_play(
-        &mut self,
-        mv: Move,
-        color: Option<Color>,
-    ) -> Result<Vec<Event>, CommandError> {
-        // Phase routing: during the ceremony `play` places a stone (the
-        // color token is the override); afterwards `play` is a tree
-        // move and the token is a typed error.
+    pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
+        // Phase routing: during the ceremony `play` places a stone in
+        // the alternation's color; afterwards `play` is a tree move.
         if let Some(opening) = &mut self.opening {
-            return opening.place(mv, color);
-        }
-        if color.is_some() {
-            return Err(CommandError::ColorOverrideOutsideOpening);
+            return opening.place(mv);
         }
         let board = self.history.board();
         if board.status() != Status::Ongoing {
@@ -695,11 +687,7 @@ mod tests {
     use testkit::mv;
 
     fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-        core.execute(Command::Play {
-            mv: mv(r, c),
-            color: None,
-        })
-        .unwrap()
+        core.execute(Command::Play { mv: mv(r, c) }).unwrap()
     }
 
     // Play a list of moves that come as array of u8, interpreted in pairs
@@ -760,12 +748,7 @@ mod tests {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
         play(&mut core, 7, 7);
         let snapshot_before = core.snapshot();
-        let err = core
-            .execute(Command::Play {
-                mv: mv(7, 7),
-                color: None,
-            })
-            .unwrap_err();
+        let err = core.execute(Command::Play { mv: mv(7, 7) }).unwrap_err();
         assert_eq!(err, CommandError::IllegalMove(PlayError::Occupied));
         assert_eq!(core.snapshot(), snapshot_before);
     }

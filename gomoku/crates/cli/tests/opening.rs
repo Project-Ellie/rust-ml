@@ -10,9 +10,9 @@ use cli::command::{Command, CommandError, Event, OpeningPhase};
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError};
 
-use testkit::{event_types, mv, play, play_color, swap2_core};
+use testkit::{event_types, mv, play, swap2_core};
 
-/// Place the first round with the default alternation (black, white,
+/// Place the first round with the strict alternation (black, white,
 /// black) and end it with `done`. Returns the events of `done`.
 fn place_first_round(core: &mut SessionCore) -> Vec<Event> {
     play(core, 7, 7);
@@ -42,7 +42,7 @@ fn stone_count(board: &Board, color: Color) -> usize {
 fn take_black_finishes_the_ceremony_and_white_moves_first() {
     let mut core = swap2_core();
 
-    // The default order alternates, black first.
+    // The placements alternate, black first.
     let events = play(&mut core, 7, 7);
     assert_eq!(
         events,
@@ -131,13 +131,14 @@ fn more_places_two_more_stones_then_player_a_chooses() {
         }]
     );
 
-    // The second round alternates as well, starting with black.
+    // The second round continues the alternation: the fourth stone
+    // overall is white, the fifth black.
     let events = play(&mut core, 5, 5);
     assert_eq!(
         events,
         vec![Event::StonePlaced {
             mv: mv(5, 5),
-            color: Color::Black
+            color: Color::White
         }]
     );
     let events = play(&mut core, 4, 4);
@@ -145,7 +146,7 @@ fn more_places_two_more_stones_then_player_a_chooses() {
         events,
         vec![Event::StonePlaced {
             mv: mv(4, 4),
-            color: Color::White
+            color: Color::Black
         }]
     );
 
@@ -228,7 +229,8 @@ fn back_at_the_final_choice_returns_to_the_second_round() {
     );
 
     // The taken-back stone can be placed elsewhere; the ceremony
-    // continues normally to a finished opening.
+    // continues normally to a finished opening. The re-placed fifth
+    // stone is black: the alternation follows the placement count.
     play(&mut core, 3, 3);
     core.execute(Command::Done).unwrap();
     let events = core
@@ -242,7 +244,7 @@ fn back_at_the_final_choice_returns_to_the_second_round() {
             chosen: Color::Black
         }]
     );
-    assert_eq!(core.board().stone_at(mv(3, 3)), Some(Color::White));
+    assert_eq!(core.board().stone_at(mv(3, 3)), Some(Color::Black));
 }
 
 #[test]
@@ -279,39 +281,18 @@ fn an_occupied_square_is_rejected_during_the_ceremony() {
     let mut core = swap2_core();
     play(&mut core, 7, 7);
 
-    let err = core
-        .execute(Command::Play {
-            mv: mv(7, 7),
-            color: None,
-        })
-        .unwrap_err();
+    let err = core.execute(Command::Play { mv: mv(7, 7) }).unwrap_err();
     assert_eq!(err, CommandError::IllegalMove(PlayError::Occupied));
     // The failed placement did not enter the log.
     assert_eq!(core.snapshot().opening.unwrap().placements.len(), 1);
 }
 
 #[test]
-fn the_color_token_overrides_the_default_alternation() {
-    let mut core = swap2_core();
-    let events = play_color(&mut core, 7, 7, Color::White);
-    assert_eq!(
-        events,
-        vec![Event::StonePlaced {
-            mv: mv(7, 7),
-            color: Color::White
-        }]
-    );
-
-    // The default for the next stone follows the placement count, not
-    // the placed colors: one stone placed, so white is the default —
-    // even though the first stone was white. The Swap2 rule fixes the
-    // final counts; the order is free.
-    let opening = core.snapshot().opening.unwrap();
-    assert_eq!(opening.default_next_color, Some(Color::White));
-}
-
-#[test]
-fn the_default_order_alternates_black_white_black() {
+fn placements_follow_strict_alternation_across_both_rounds() {
+    // The new contract: no color token exists, and the ceremony
+    // alternates black first over the whole placement log — B, W, B
+    // in the first round, then W, B in the second. The alternation
+    // does not restart per round.
     let mut core = swap2_core();
     let mut colors = Vec::new();
     for (r, c) in [(7, 7), (8, 8), (9, 9)] {
@@ -319,35 +300,23 @@ fn the_default_order_alternates_black_white_black() {
         let opening = core.snapshot().opening.unwrap();
         colors.push(opening.placements.last().unwrap().1);
     }
-    assert_eq!(colors, vec![Color::Black, Color::White, Color::Black]);
-}
-
-#[test]
-fn the_color_token_is_rejected_outside_the_ceremony() {
-    // A session without Swap2.
-    let mut core = SessionCore::new(SessionInit::new_hotseat());
-    let err = core
-        .execute(Command::Play {
-            mv: mv(7, 7),
-            color: Some(Color::White),
-        })
-        .unwrap_err();
-    assert_eq!(err, CommandError::ColorOverrideOutsideOpening);
-
-    // And after a finished ceremony.
-    let mut core = swap2_core();
-    place_first_round(&mut core);
-    core.execute(Command::ChooseColor {
-        color: Color::Black,
-    })
-    .unwrap();
-    let err = core
-        .execute(Command::Play {
-            mv: mv(10, 10),
-            color: Some(Color::Black),
-        })
-        .unwrap_err();
-    assert_eq!(err, CommandError::ColorOverrideOutsideOpening);
+    core.execute(Command::Done).unwrap();
+    core.execute(Command::More).unwrap();
+    for (r, c) in [(5, 5), (4, 4)] {
+        play(&mut core, r, c);
+        let opening = core.snapshot().opening.unwrap();
+        colors.push(opening.placements.last().unwrap().1);
+    }
+    assert_eq!(
+        colors,
+        vec![
+            Color::Black,
+            Color::White,
+            Color::Black,
+            Color::White,
+            Color::Black
+        ]
+    );
 }
 
 #[test]
@@ -397,11 +366,7 @@ fn commands_in_the_wrong_phase_are_typed_errors() {
 
     // FirstChoice: placements and `done` do not apply.
     assert_eq!(
-        core.execute(Command::Play {
-            mv: mv(1, 1),
-            color: None
-        })
-        .unwrap_err(),
+        core.execute(Command::Play { mv: mv(1, 1) }).unwrap_err(),
         CommandError::NotAtPlacementPhase
     );
     assert_eq!(
@@ -447,7 +412,7 @@ fn new_restarts_the_ceremony() {
         .expect("a Swap2 session resets into the ceremony");
     assert_eq!(opening.phase, OpeningPhase::Placing3);
     assert!(opening.placements.is_empty());
-    assert_eq!(opening.default_next_color, Some(Color::Black));
+    assert_eq!(opening.next_color, Some(Color::Black));
     assert_eq!(core.board(), Board::new());
 }
 
@@ -472,12 +437,12 @@ fn the_snapshot_reports_the_ceremony_state() {
     let opening = core.snapshot().opening.unwrap();
     assert_eq!(opening.phase, OpeningPhase::Placing3);
     assert!(opening.placements.is_empty());
-    assert_eq!(opening.default_next_color, Some(Color::Black));
+    assert_eq!(opening.next_color, Some(Color::Black));
 
     play(&mut core, 7, 7);
     let opening = core.snapshot().opening.unwrap();
     assert_eq!(opening.placements, vec![(mv(7, 7), Color::Black)]);
-    assert_eq!(opening.default_next_color, Some(Color::White));
+    assert_eq!(opening.next_color, Some(Color::White));
 
     play(&mut core, 8, 8);
     play(&mut core, 9, 9);
@@ -485,14 +450,14 @@ fn the_snapshot_reports_the_ceremony_state() {
     let opening = core.snapshot().opening.unwrap();
     assert_eq!(opening.phase, OpeningPhase::FirstChoice);
     // A choice phase has no next placement.
-    assert_eq!(opening.default_next_color, None);
+    assert_eq!(opening.next_color, None);
 }
 
 #[test]
 fn the_snapshot_serializes_the_ceremony_state() {
     let mut core = swap2_core();
     play(&mut core, 7, 7);
-    play_color(&mut core, 8, 8, Color::Black);
+    play(&mut core, 8, 8);
     let snapshot = core.snapshot();
     let json = serde_json::to_string(&snapshot).expect("snapshot must serialize");
     let back: Snapshot = serde_json::from_str(&json).expect("snapshot must deserialize");

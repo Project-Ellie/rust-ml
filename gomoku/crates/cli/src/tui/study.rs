@@ -18,9 +18,9 @@
 //! events, [`LineInput`] reads a byte stream.
 //!
 //! The loop keeps three pieces of shell state next to the session
-//! core: the [`InputState`] (mode, board cursor, color override), the
-//! capped list of recent events for the panel, and the message line
-//! (the last event summary or the last error text).
+//! core: the [`InputState`] (mode and board cursor), the capped list
+//! of recent events for the panel, and the message line (the last
+//! event summary or the last error text).
 
 use crate::command::{self, Command, Event};
 use crate::repl;
@@ -109,8 +109,8 @@ impl InputSource for RawInput {
 /// commands. What line mode does not have are the cursor-only keys —
 /// arrows and the `d`/`b`/`w`/`m` ceremony keys — because there is no
 /// cursor to move and no normal mode to press them in. The typed
-/// commands (`play h8 white`, `done`, `black`, `white`, `more`,
-/// `back`) cover the ceremony.
+/// commands (`play h8`, `done`, `black`, `white`, `more`, `back`)
+/// cover the ceremony.
 ///
 /// The source is generic over the reader so tests can script it from
 /// memory; production reads stdin.
@@ -137,8 +137,8 @@ impl<R: BufRead> InputSource for LineInput<R> {
         core: &SessionCore,
     ) -> io::Result<InputOutcome> {
         // `state` exists for key-driven sources. A line of text
-        // carries its own meaning: there is no cursor to move, no
-        // buffer to edit, and no override to arm.
+        // carries its own meaning: there is no cursor to move and no
+        // buffer to edit.
         let _ = state;
         let mut line = String::new();
         // `read_line` reports 0 bytes at EOF. A piped script ends at
@@ -335,16 +335,6 @@ pub fn study_loop<S: Screen, I: InputSource>(
             InputOutcome::Command(Command::Quit) => return Ok(()),
             InputOutcome::Command(cmd) => match core.execute(cmd) {
                 Ok(new_events) => {
-                    // The color override arms one stone. A landed
-                    // placement disarms it, so the ceremony's default
-                    // order resumes; a failed placement leaves it
-                    // armed, so the user does not have to re-select.
-                    if new_events
-                        .iter()
-                        .any(|event| matches!(event, Event::StonePlaced { .. }))
-                    {
-                        state.next_color_override = None;
-                    }
                     record_events(&mut events, &mut message, &new_events);
                 }
                 Err(err) => message = Some(err.to_string()),
@@ -356,12 +346,11 @@ pub fn study_loop<S: Screen, I: InputSource>(
 /// Assemble the frame for one loop iteration.
 ///
 /// The view carries what the renderer cannot know: the board cursor
-/// and the color override live in the input state, and the message
-/// line lives in the loop. `cursor` is `None` when the input source
-/// has no cursor (line mode), and the frame then shows no cursor
-/// marker. One bottom line exists: while the command line is open it
-/// shows the buffer; in normal mode it shows the message, when there
-/// is one.
+/// lives in the input state, and the message line lives in the loop.
+/// `cursor` is `None` when the input source has no cursor (line
+/// mode), and the frame then shows no cursor marker. One bottom line
+/// exists: while the command line is open it shows the buffer; in
+/// normal mode it shows the message, when there is one.
 fn build_frame(
     core: &SessionCore,
     state: &InputState,
@@ -370,9 +359,7 @@ fn build_frame(
     message: Option<&str>,
     styled: bool,
 ) -> Vec<String> {
-    let view = StudyView::new(core, events)
-        .color_override(state.next_color_override)
-        .styled(styled);
+    let view = StudyView::new(core, events).styled(styled);
     let view = match cursor {
         Some(mv) => view.cursor(mv),
         None => view,
@@ -448,8 +435,7 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
                  during Swap2 placement: place the next stone
   u              undo: remove a Swap2 placement / go back one ply
   d              Swap2 placement: end the round (done)
-  b, w           Swap2 placement: select the next stone's color;
-                 Swap2 choice: choose that color
+  b, w           Swap2 choice: choose that color
   m              Swap2 first choice: place two more stones (more)
   :              open the command line (Esc cancels, Enter executes)
   ?              show this help
@@ -598,14 +584,14 @@ mod tests {
     }
 
     #[test]
-    fn the_loop_runs_the_ceremony_and_disarms_the_override() {
+    fn the_loop_runs_the_ceremony_on_alternated_placements() {
         let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
-        // Enter places h8 Black; `w` arms White; Right+Enter places i8
-        // White; Right+Enter places j8 with the default again; `d` ends
-        // the round; `b` takes Black; `q` quits.
+        // Enter places h8 Black; Right+Enter places i8 White;
+        // Right+Enter places j8 Black; `d` ends the round; `b` takes
+        // Black; `q` quits. The colors come from the strict
+        // alternation — no key selects them.
         let keys = vec![
             key(KeyCode::Enter),
-            char_key('w'),
             key(KeyCode::Right),
             key(KeyCode::Enter),
             key(KeyCode::Right),
@@ -628,28 +614,20 @@ mod tests {
             core.board().stone_at(Move::new(7, 8).unwrap()),
             Some(Color::White)
         );
-        // j8 is Black — proof that the override armed exactly one stone.
         assert_eq!(
             core.board().stone_at(Move::new(7, 9).unwrap()),
             Some(Color::Black)
         );
 
         // Frame 0 is the initial frame; the key at index i is processed
-        // before frame i+1 is drawn. Frame 2 follows the `w` key.
+        // before frame i+1 is drawn. Frame 1 follows the placement of
+        // h8: the panel names the alternation's next color.
         assert!(
-            screen.frames[2]
+            screen.frames[1]
                 .iter()
-                .any(|line| line.contains("Next: White (override)")),
-            "the armed override shows in the panel: {:?}",
-            screen.frames[2]
-        );
-        // Frame 4 follows the placement of i8, which disarmed the override.
-        assert!(
-            screen.frames[4]
-                .iter()
-                .any(|line| line.contains("Next: Black (default)")),
-            "a landed placement disarms the override: {:?}",
-            screen.frames[4]
+                .any(|line| line.contains("Next: White")),
+            "the panel shows the next stone's color: {:?}",
+            screen.frames[1]
         );
     }
 
@@ -784,7 +762,6 @@ mod tests {
         // seats; the seat table matters only to `step`.)
         core.execute(Command::Play {
             mv: Move::new(7, 7).unwrap(),
-            color: None,
         })
         .unwrap();
         assert_eq!(line_outcome("", &core), InputOutcome::None);
@@ -820,7 +797,6 @@ mod tests {
         ] {
             core.execute(Command::Play {
                 mv: Move::new(r, c).unwrap(),
-                color: None,
             })
             .unwrap();
         }
@@ -840,18 +816,16 @@ mod tests {
         assert_eq!(
             line_outcome("h8", &core),
             InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 7).unwrap(),
-                color: None
+                mv: Move::new(7, 7).unwrap()
             })
         );
-        // The optional color token covers the ceremony override.
-        assert_eq!(
-            line_outcome("play i8 white", &core),
-            InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 8).unwrap(),
-                color: Some(Color::White)
-            })
-        );
+        // There is no color token on `play`: ceremony placements
+        // follow strict alternation, so a trailing token is a parse
+        // error, shown as a message like any other.
+        let InputOutcome::Message(text) = line_outcome("play i8 white", &core) else {
+            panic!("a color token on play is a parse error");
+        };
+        assert!(text.contains("usage: play <square>"), "the text: {text}");
         // Help and quit need no special cases in the line mapping: the
         // grammar knows them, and the loop intercepts the commands.
         for word in ["h", "help", "?", "HELP"] {
@@ -902,8 +876,7 @@ mod tests {
         assert_eq!(
             input.next_outcome(&mut state, &core).unwrap(),
             InputOutcome::Command(Command::Play {
-                mv: Move::new(7, 7).unwrap(),
-                color: None
+                mv: Move::new(7, 7).unwrap()
             })
         );
         // The input state is untouched: a line carries its own meaning.

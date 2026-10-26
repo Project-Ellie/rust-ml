@@ -36,7 +36,7 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   q, quit, exit    quit
 
 Swap2 opening (sessions started with swap2):
-  play SQUARE [black|white]   place the next stone (defaults alternate, black first)
+  play SQUARE      place the next stone (colors alternate, black first)
   back [N]         remove the last placement(s)
   done             end the current placement round
   black | white    choose that color at a choice phase
@@ -152,7 +152,7 @@ pub fn print_state(core: &SessionCore, header: &str) -> Vec<String> {
 }
 
 /// The one state line of a ceremony in progress: phase, placements in
-/// order, and the color the next `play` defaults to.
+/// order, and the color the next `play` places.
 ///
 /// At a choice phase there is no next stone, so the `next` part is
 /// left out. The line appears only in Swap2 sessions; ordinary
@@ -168,7 +168,7 @@ fn opening_line(opening: &OpeningSnapshot) -> String {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    match opening.default_next_color {
+    match opening.next_color {
         Some(color) => format!(
             "swap2 {:?}  stones: {stones}  next: {color:?}",
             opening.phase
@@ -220,7 +220,6 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::session::SessionInit;
-    use engine::Color;
     use testkit::mv;
 
     #[test]
@@ -243,37 +242,36 @@ mod tests {
             "fresh ceremony line missing: {lines:?}"
         );
 
-        core.execute(Command::Play {
-            mv: mv(7, 7),
-            color: Some(Color::White),
-        })
-        .unwrap();
+        core.execute(Command::Play { mv: mv(7, 7) }).unwrap();
         let lines = print_state(&core, "");
         assert!(
             lines
                 .iter()
-                .any(|line| line == "swap2 Placing3  stones: h8:White  next: White"),
-            "override placement line: {lines:?}"
+                .any(|line| line == "swap2 Placing3  stones: h8:Black  next: White"),
+            "first placement line: {lines:?}"
         );
 
-        core.execute(Command::Play {
-            mv: mv(8, 8),
-            color: None,
-        })
-        .unwrap();
-        core.execute(Command::Play {
-            mv: mv(9, 9),
-            color: None,
-        })
-        .unwrap();
-        core.execute(Command::Done).unwrap_err(); // 1 black + 2 white
+        core.execute(Command::Play { mv: mv(8, 8) }).unwrap();
+        // Two stones do not make a round: `done` is rejected and the
+        // session stays in the placement phase.
+        core.execute(Command::Done).unwrap_err();
+        let lines = print_state(&core, "");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "swap2 Placing3  stones: h8:Black i9:White  next: Black"),
+            "still placing after a rejected done: {lines:?}"
+        );
+
+        core.execute(Command::Play { mv: mv(9, 9) }).unwrap();
+        core.execute(Command::Done).unwrap();
         // At a choice phase the line drops the `next` part.
         let lines = print_state(&core, "");
         assert!(
             lines
                 .iter()
-                .any(|line| line.starts_with("swap2 Placing3") && line.contains("h8:White")),
-            "still placing after a rejected done: {lines:?}"
+                .any(|line| line == "swap2 FirstChoice  stones: h8:Black i9:White j10:Black"),
+            "choice-phase line: {lines:?}"
         );
     }
 }

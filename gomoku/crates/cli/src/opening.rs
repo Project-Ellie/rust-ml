@@ -13,9 +13,15 @@
 //!
 //! The rule split: the Swap2 rule fixes only the final stone counts of
 //! each placement round (two Black and one White, then one more Black
-//! and one more White after `more`). The placement order is free. The
-//! default order alternates, black first, within each round; a color
-//! token on `play` overrides the next stone's color.
+//! and one more White after `more`). The placement order is a
+//! session-level convention on top of the rule: strict alternation,
+//! black first, over the whole ceremony (B, W, B, then W, B). The
+//! convention loses no reachable position — every count-valid stone
+//! set has an alternation order that produces it — so the session
+//! fixes the order and `play` takes no color token. The engine stays
+//! permissive: its typestate accepts explicit `(Move, Color)` pairs
+//! with count validation, because imported game records need not
+//! follow the convention.
 
 use engine::{Board, Color, Move, Swap2};
 use engine::{FinalChoice, FirstChoice, Placing2, Placing3};
@@ -41,17 +47,17 @@ pub struct OpeningState {
 ///
 /// A front-end draws the ceremony from this data alone. It needs no
 /// Swap2 rules: the phase says which commands apply, the placements
-/// say which stones are on the board, and the default color says what
-/// the next `play` without a token will place.
+/// say which stones are on the board, and the next color says what
+/// the next `play` will place.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpeningSnapshot {
     /// The current phase.
     pub phase: OpeningPhase,
     /// The placements so far, in order of placement.
     pub placements: Vec<(Move, Color)>,
-    /// The color the next `play` uses without an override token;
-    /// `None` at a choice phase, where no placement is next.
-    pub default_next_color: Option<Color>,
+    /// The color the next `play` places; `None` at a choice phase,
+    /// where no placement is next.
+    pub next_color: Option<Color>,
 }
 
 impl OpeningState {
@@ -70,45 +76,46 @@ impl OpeningState {
         OpeningSnapshot {
             phase: self.phase,
             placements: self.log.clone(),
-            default_next_color: self.default_next_color(),
+            next_color: self.next_color(),
         }
     }
 
-    /// The color the next `play` uses when no color token overrides it.
+    /// The color of the next stone: strict alternation, black first,
+    /// over the whole ceremony.
     ///
-    /// The default alternates within each round, black first. The
-    /// count restarts per round: the fourth stone overall is the first
-    /// stone of the second round, so it defaults to black again. At a
-    /// choice phase there is no next placement, so the answer is
-    /// `None`.
+    /// The alternation runs on the placement count alone: an even
+    /// count places Black next, an odd count White, so the sequence
+    /// is B, W, B in the first round and W, B in the second. Every
+    /// count-valid stone set has an alternation order that reaches
+    /// it, so fixing the order costs nothing. At a choice phase
+    /// there is no next placement, so the answer is `None`.
     #[must_use]
-    pub fn default_next_color(&self) -> Option<Color> {
-        let round_start = match self.phase {
-            OpeningPhase::Placing3 => 0,
-            OpeningPhase::Placing2 => 3,
-            OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => return None,
-        };
-        let index_in_round = self.log.len() - round_start;
-        Some(if index_in_round.is_multiple_of(2) {
-            Color::Black
-        } else {
-            Color::White
-        })
+    pub fn next_color(&self) -> Option<Color> {
+        match self.phase {
+            OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => None,
+            OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
+                Some(if self.log.len().is_multiple_of(2) {
+                    Color::Black
+                } else {
+                    Color::White
+                })
+            }
+        }
     }
 
-    /// Place the next stone of the ceremony.
+    /// Place the next stone of the ceremony, in the alternation's
+    /// color.
     ///
     /// The engine remains the rules authority: the typestate is
     /// rebuilt from the log, and its `place` rejects an occupied
     /// square. The log grows only after the engine accepts the
     /// placement, so the log can never hold a stone the engine
     /// refused.
-    pub fn place(&mut self, mv: Move, color: Option<Color>) -> Result<Vec<Event>, CommandError> {
-        // A choice phase has no next stone; the `None` default makes
+    pub fn place(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
+        // A choice phase has no next stone; the `None` answer makes
         // `play` there a typed error without touching the engine.
-        let color = match color.or_else(|| self.default_next_color()) {
-            Some(color) => color,
-            None => return Err(CommandError::NotAtPlacementPhase),
+        let Some(color) = self.next_color() else {
+            return Err(CommandError::NotAtPlacementPhase);
         };
         match self.phase {
             OpeningPhase::Placing3 => rebuild_placing3(&self.log).place(mv, color)?,
@@ -299,33 +306,34 @@ mod tests {
     use testkit::mv;
 
     #[test]
-    fn the_default_color_alternates_per_round_starting_with_black() {
+    fn the_color_alternates_over_the_whole_ceremony_starting_with_black() {
         let mut opening = OpeningState::new();
-        assert_eq!(opening.default_next_color(), Some(Color::Black));
-        opening.place(mv(7, 7), None).unwrap();
-        assert_eq!(opening.default_next_color(), Some(Color::White));
-        opening.place(mv(8, 8), None).unwrap();
-        assert_eq!(opening.default_next_color(), Some(Color::Black));
-        opening.place(mv(9, 9), None).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::Black));
+        opening.place(mv(7, 7)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::White));
+        opening.place(mv(8, 8)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::Black));
+        opening.place(mv(9, 9)).unwrap();
         opening.done().unwrap();
         // A choice phase has no next stone.
-        assert_eq!(opening.default_next_color(), None);
+        assert_eq!(opening.next_color(), None);
         opening.more().unwrap();
-        // The second round starts its alternation over, black first.
-        assert_eq!(opening.default_next_color(), Some(Color::Black));
-        opening.place(mv(5, 5), None).unwrap();
-        assert_eq!(opening.default_next_color(), Some(Color::White));
+        // The alternation does not restart per round: the fourth
+        // stone overall is white, the fifth black.
+        assert_eq!(opening.next_color(), Some(Color::White));
+        opening.place(mv(5, 5)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::Black));
     }
 
     #[test]
     fn undo_recomputes_the_phase_from_the_log_length() {
         let mut opening = OpeningState::new();
-        opening.place(mv(7, 7), None).unwrap();
-        opening.place(mv(8, 8), None).unwrap();
-        opening.place(mv(9, 9), None).unwrap();
+        opening.place(mv(7, 7)).unwrap();
+        opening.place(mv(8, 8)).unwrap();
+        opening.place(mv(9, 9)).unwrap();
         opening.done().unwrap();
         opening.more().unwrap();
-        opening.place(mv(5, 5), None).unwrap();
+        opening.place(mv(5, 5)).unwrap();
         assert_eq!(opening.phase, OpeningPhase::Placing2);
 
         // Removing the fourth stone crosses the round boundary: three
@@ -333,21 +341,24 @@ mod tests {
         // fresh `done` is required.
         opening.undo(1).unwrap();
         assert_eq!(opening.phase, OpeningPhase::Placing3);
+        // The alternation follows the placement count: three stones
+        // are on the log, so the next placement is white.
+        assert_eq!(opening.next_color(), Some(Color::White));
         opening.done().unwrap();
         assert_eq!(opening.phase, OpeningPhase::FirstChoice);
     }
 
     #[test]
-    fn the_snapshot_mirrors_phase_log_and_default_color() {
+    fn the_snapshot_mirrors_phase_log_and_next_color() {
         let mut opening = OpeningState::new();
-        opening.place(mv(7, 7), None).unwrap();
-        opening.place(mv(8, 8), Some(Color::Black)).unwrap();
+        opening.place(mv(7, 7)).unwrap();
+        opening.place(mv(8, 8)).unwrap();
         let snapshot = opening.snapshot();
         assert_eq!(snapshot.phase, OpeningPhase::Placing3);
         assert_eq!(
             snapshot.placements,
-            vec![(mv(7, 7), Color::Black), (mv(8, 8), Color::Black)]
+            vec![(mv(7, 7), Color::Black), (mv(8, 8), Color::White)]
         );
-        assert_eq!(snapshot.default_next_color, Some(Color::Black));
+        assert_eq!(snapshot.next_color, Some(Color::Black));
     }
 }

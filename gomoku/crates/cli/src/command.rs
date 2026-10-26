@@ -20,9 +20,9 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Play a move at the cursor. During the Swap2 opening this places
-    /// the next ceremony stone instead. `color` is the optional
-    /// override token; it is legal only during the opening.
-    Play { mv: Move, color: Option<Color> },
+    /// the next ceremony stone instead; its color follows the
+    /// ceremony's strict alternation.
+    Play { mv: Move },
     /// Let the AI play the side to move.
     Step,
     /// Go back N plies in the variation tree. During the Swap2 opening
@@ -142,8 +142,8 @@ pub enum Event {
     StonePlaced {
         /// Where the stone was placed.
         mv: Move,
-        /// The color placed, after the default order or the override
-        /// token was applied.
+        /// The color placed; the ceremony's strict alternation
+        /// decides it.
         color: Color,
     },
     /// `back` removed the last Swap2 placement.
@@ -245,8 +245,6 @@ pub enum CommandError {
     NotAtFirstChoice,
     #[error("the Swap2 opening has no placement to remove")]
     OpeningLogEmpty,
-    #[error("a color token applies only during the Swap2 opening")]
-    ColorOverrideOutsideOpening,
     #[error("the Swap2 opening is still in progress; choose a color first")]
     OpeningInProgress,
 }
@@ -281,8 +279,8 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
         "play" => {
             let token = parse_required_token(&mut tokens, "square")?;
             let mv = parse_move(&token)?;
-            let color = parse_optional_color(&mut tokens)?;
-            Ok(Command::Play { mv, color })
+            ensure_no_extra_play_token(&mut tokens)?;
+            Ok(Command::Play { mv })
         }
 
         "done" => {
@@ -359,35 +357,26 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
 
         _ => {
             let mv = parse_move(first)?;
-            let color = parse_optional_color(&mut tokens)?;
-            Ok(Command::Play { mv, color })
+            ensure_no_extra_play_token(&mut tokens)?;
+            Ok(Command::Play { mv })
         }
     }
 }
 
-/// Parse the optional color token of `play`: `black` or `white`.
+/// Reject a trailing token after the square of a `play`.
 ///
-/// The token is an override for the Swap2 opening, and the session
-/// rejects it outside the opening. The parser accepts it
-/// unconditionally: where a command applies is the session's business,
-/// not the parser's.
-fn parse_optional_color<'a>(
+/// Ceremony placements follow strict alternation, so there is no
+/// color token anymore: `play h8 white` is a usage error, and the
+/// message says what the command accepts.
+fn ensure_no_extra_play_token<'a>(
     tokens: &mut impl Iterator<Item = &'a str>,
-) -> Result<Option<Color>, CommandError> {
-    let Some(token) = tokens.next() else {
-        return Ok(None);
-    };
-    let color = match token {
-        "black" => Color::Black,
-        "white" => Color::White,
-        other => {
-            return Err(CommandError::Parse(format!(
-                "play expects a color: black|white, got '{other}'"
-            )));
-        }
-    };
-    ensure_no_more(tokens, "play")?;
-    Ok(Some(color))
+) -> Result<(), CommandError> {
+    if let Some(extra) = tokens.next() {
+        return Err(CommandError::Parse(format!(
+            "usage: play <square>, got extra '{extra}'"
+        )));
+    }
+    Ok(())
 }
 
 /// Parse a square token through the canonical notation module.
@@ -493,76 +482,32 @@ mod tests {
     }
     #[test]
     fn parse_play_bare_numbers() {
-        assert_eq!(
-            parse("h8"),
-            Ok(Command::Play {
-                mv: mv(7, 7),
-                color: None
-            })
-        );
-        assert_eq!(
-            parse("o1"),
-            Ok(Command::Play {
-                mv: mv(0, 14),
-                color: None
-            })
-        );
-        assert_eq!(
-            parse("a15"),
-            Ok(Command::Play {
-                mv: mv(14, 0),
-                color: None
-            })
-        );
+        assert_eq!(parse("h8"), Ok(Command::Play { mv: mv(7, 7) }));
+        assert_eq!(parse("o1"), Ok(Command::Play { mv: mv(0, 14) }));
+        assert_eq!(parse("a15"), Ok(Command::Play { mv: mv(14, 0) }));
     }
 
     #[test]
     fn parse_play_explicit() {
-        assert_eq!(
-            parse("play H8"),
-            Ok(Command::Play {
-                mv: mv(7, 7),
-                color: None
-            })
-        );
-        assert_eq!(
-            parse("PLAy o1"),
-            Ok(Command::Play {
-                mv: mv(0, 14),
-                color: None
-            })
-        );
+        assert_eq!(parse("play H8"), Ok(Command::Play { mv: mv(7, 7) }));
+        assert_eq!(parse("PLAy o1"), Ok(Command::Play { mv: mv(0, 14) }));
     }
 
     #[test]
-    fn parse_play_with_color_token() {
+    fn parse_play_rejects_a_color_token() {
+        // Ceremony placements follow strict alternation; there is no
+        // color token on `play` anymore, on either form of the
+        // command. The standalone `black`/`white` choice commands
+        // still parse (see parse_swap2_commands).
+        let err = parse("play h8 white").unwrap_err();
         assert_eq!(
-            parse("play h8 white"),
-            Ok(Command::Play {
-                mv: mv(7, 7),
-                color: Some(Color::White)
-            })
+            err,
+            CommandError::Parse("usage: play <square>, got extra 'white'".to_string())
         );
-        // The parser lowercases before matching, so case is free.
-        assert_eq!(
-            parse("play h8 BLACK"),
-            Ok(Command::Play {
-                mv: mv(7, 7),
-                color: Some(Color::Black)
-            })
-        );
-        // The bare-square form is `play` without the keyword, so it
-        // accepts the same optional token.
-        assert_eq!(
-            parse("h8 white"),
-            Ok(Command::Play {
-                mv: mv(7, 7),
-                color: Some(Color::White)
-            })
-        );
+        assert!(parse("play h8 BLACK").is_err());
+        assert!(parse("h8 white").is_err());
         assert!(parse("play h8 red").is_err());
         assert!(parse("play h8 white extra").is_err());
-        assert!(parse("h8 black extra").is_err());
     }
 
     #[test]
