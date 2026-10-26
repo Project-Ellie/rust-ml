@@ -155,6 +155,13 @@ impl<'a> StudyView<'a> {
 pub fn render_study(view: &StudyView) -> Vec<String>;
 ```
 
+Frame contract:
+
+- The frame zips the board half and the panel line by line with a
+  two-space gap; the shorter side contributes empty strings.
+- The command line, when present, is one extra line below everything:
+  `:` followed by the buffer.
+
 Board contract:
 
 - 19 lines: ruler, border, 15 rows, border, ruler. Each line is 53
@@ -186,8 +193,8 @@ Panel contract, top to bottom:
 Styling contract:
 
 - Stones: cyan bold (Black), yellow (White). Empty cells, star points,
-  rulers, borders, row labels, and the panel header and footer: dark
-  grey.
+  rulers, the `+---…---+` border lines, row labels, and the panel header
+  and footer: dark grey. The `|` row separators are not dimmed.
 - The cursor adds reverse video and keeps the glyph's own color.
 - The command line is never styled.
 - Unstyled output contains zero escape sequences.
