@@ -2,8 +2,10 @@
 
 Status: the documents are on main. The code is the learner's work,
 sub-chapter by sub-chapter. A complete reference implementation is
-preserved on the branch `reference/chapter-05-redesign` (152 cli
-tests green). This paper remains the architecture contract.
+preserved on the branch `reference/chapter-05-redesign` (tip
+87b170b, 151 cli tests green: the testkit crate plus the Swap2
+strict-alternation simplification). This paper remains the
+architecture contract.
 
 Decided (2026-10, with the owner):
 
@@ -19,21 +21,26 @@ Decided (2026-10, with the owner):
   Canonical-mode line input stays for the fallback, sessiondemo, and
   scripts. Keys are only translations to `Command` values; the session
   core sees no difference.
-- Swap2 vocabulary: typed commands `play h8 [color]`, `back`, `done`,
+- Swap2 vocabulary: typed commands `play h8`, `back`, `done`,
   `black`, `white`, `more`. Normal-mode keys: Enter places, `u` removes
   the last placement, `d` ends a placement phase, `b` / `w` choose a
   color in a choice phase, `m` places two more stones. `u` has one
   phase-dependent meaning (undo placement during the opening, tree
   navigation afterwards); the session knows the phase, so this is
   unambiguous.
-- Swap2 placement order: the Swap2 rule fixes only the final stone
-  counts of each placement phase (two black + one white; three black +
-  two white after `more`). The placement order is free. The default
-  order alternates, starting with black (black-white-black, then
-  black-white); the user can override the color of the next stone.
-  (Override mechanics: `b` / `w` select the next stone's color in
-  normal mode; `play h8 white` uses an optional color token in
-  canonical mode.)
+- Swap2 placement order (amended 2026-10-26, reference tip 87b170b):
+  the Swap2 rule fixes only the final stone counts of each placement
+  phase (two black + one white; three black + two white after `more`).
+  The placement order is invisible once the stones sit. Strict
+  alternation, black first, over the whole ceremony (black, white,
+  black, then white, black) preserves every reachable color
+  assignment: the white stones are placements two and four, and the
+  placer still picks their squares. The session therefore fixes the
+  order: `play` takes no color token, and a trailing token is a parse
+  error (`usage: play <square>`). The engine stays permissive: its
+  typestate accepts explicit (move, color) pairs with count
+  validation, because file imports of real game records need not
+  follow the session's convention.
 - All documents follow ASD-STE100: short sentences, one meaning per
   word, active voice, no figurative language.
 
@@ -169,8 +176,8 @@ validated projection of the log.
   in progress instead of at an empty tree.
 - Commands during the opening use the same parser and the same command
   language as everything else. There is no separate single-letter
-  interpreter. The vocabulary: `play h8 [color]` places the next stone
-  (the optional color token overrides the default alternation), `back`
+  interpreter. The vocabulary: `play h8` places the next stone (the
+  strict alternation fixes its color), `back`
   removes the last placement, `done` ends a placement phase (the
   session validates the stone counts), `black` / `white` choose a color
   in a choice phase, `more` declines the first choice and starts the

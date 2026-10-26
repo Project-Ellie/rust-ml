@@ -32,7 +32,6 @@ and the keys that apply.
 | **`InputOutcome`** | What one keypress means: a command, help, quit, a message, or a state-only change. |
 | **`InputSource`** | The trait that supplies input outcomes to the loop. The terminal implementation reads crossterm events; tests read a script. |
 | **Board cursor** | The square the next Enter acts on. Arrows and `hjkl` move it. |
-| **Color override** | The selected color of the next Swap2 stone, set with `b`/`w` at a placement phase. It arms exactly one stone. |
 | **Message line** | The bottom line of the frame in normal mode: the last event summary or the last error text. |
 | **Phase-dependent key** | A key whose meaning depends on the session phase. `u` removes a placement during the ceremony and goes back one ply afterwards. |
 
@@ -66,7 +65,7 @@ knows the phase, and the phase is what makes the modal keys safe.
    mapping gets a unit test.
 3. Extend `src/tui/render.rs`: draw ceremony placements as stones,
    add the ceremony block to the side panel, and add the message line
-   and the color override to `StudyView`.
+   to `StudyView`.
 4. Create `src/tui/study.rs`: the `InputSource` trait, the raw-mode
    implementation, the screen-agnostic `study_loop`, the help screen,
    and `run`, the full-screen entry point.
@@ -103,10 +102,12 @@ Two consequences follow:
 Normal mode has few keys, and the Swap2 ceremony wants several
 actions: place, undo, done, choose, more. The design paper's answer:
 one key carries one meaning per phase, and the session reports the
-phase through the snapshot. `b` selects the next stone's color at a
-placement phase and chooses Black at a choice phase. `u` removes a
-placement during the ceremony and goes back one ply afterwards. The
-two meanings never collide, because the phases never overlap.
+phase through the snapshot. `b` and `w` choose a color at a choice
+phase and do nothing at a placement phase: the strict alternation
+fixes the next stone's color, so there is nothing to select. `u`
+removes a placement during the ceremony and goes back one ply
+afterwards. The two meanings never collide, because the phases never
+overlap.
 
 The panel teaches the active keys at the point where the user needs
 them: a placement phase shows `Enter place · u undo · d done`, a
@@ -120,21 +121,15 @@ at the final choice shows `'more' applies only at the first Swap2
 choice`, the same sentence the session's typed error uses. One rule,
 one sentence, from the input layer or from the session.
 
-### The one-shot color override
+### No color selection exists at a placement phase
 
-At a placement phase, `b`/`w` select the color of the next stone.
-The selection lives in the input state, not in the session: the typed
-command language carries the color on each `play` (`play h8 white`),
-and the normal-mode override mirrors that grammar. It arms exactly one
-stone.
-
-The disarm is event-driven. The translator cannot know whether the
-placement will succeed (the square can be occupied), so it does not
-clear the override. The loop clears it when an executed command
-yields a `StonePlaced` event: the armed stone landed, the override
-is spent, and the default order resumes. A failed placement leaves
-the override armed, so the user moves the cursor and presses Enter
-again without re-selecting.
+Sub-chapter c fixed the placement colors by strict alternation, so
+there is no color to select while placing. `b`/`w` bind to the color
+choice, which exists only at a choice phase; at a placement phase the
+keys are unmapped and the panel's `Next:` line states the
+alternation's color without a source label. The input tests pin the
+unmapped keys at both placement phases, and the choice-phase binding
+is the same keys' only meaning.
 
 ### The guard restores the terminal, always
 
@@ -222,7 +217,6 @@ pub enum InputMode { Normal, CommandLine(String) }
 pub struct InputState {
     pub mode: InputMode,
     pub cursor: Move,
-    pub next_color_override: Option<Color>,
 }
 
 pub enum InputOutcome {
@@ -248,9 +242,9 @@ The normal-mode table, global keys first:
 - `:` opens the command line. `?` is `Help`. `q` is `Quit`.
 - Phase-dependent keys dispatch on `core.snapshot().opening`:
   - Placement phases (Placing3, Placing2): Enter is `play` at the
-    cursor with the override color when one is armed, `u` is `back`
+    cursor (the strict alternation colors the stone), `u` is `back`
     (the session routes it to the replay log), `d` is `done`, `b`/`w`
-    arm the override, `m` is a message.
+    are unmapped, `m` is a message.
   - Choice phases (FirstChoice, FinalChoice): `b`/`w` choose a color,
     `m` is `more` at the first choice only and a message otherwise.
     Enter and `u` are not mapped.
@@ -269,14 +263,11 @@ alone keeps the mapping layout-independent.
 
 ### `src/tui/render.rs` (extended)
 
-`StudyView` gains two optional inputs with chainable setters:
+`StudyView` gains one optional input with a chainable setter:
 
 - `message(&str)` — the bottom line of the frame in normal mode.
   While the command line is open it owns the bottom line and the
   message is not drawn.
-- `color_override(Option<Color>)` — the armed override from the input
-  state. At a placement phase the panel shows `Next: White
-  (override)`; otherwise it shows the ceremony's default.
 
 When the snapshot carries a ceremony, the frame changes in two
 places:
@@ -288,7 +279,7 @@ places:
   entries; a linear scan is fast enough for a per-frame draw.
 - The side panel replaces the game-state block (ply, side to move,
   path) with the ceremony block: the phase, the placements in order,
-  `Next: <Color> (default|override)` at a placement phase, and the
+  `Next: <Color>` at a placement phase, and the
   guidance line for the phase. A choice phase has no next stone, so
   the panel shows no `Next:` line there.
 
@@ -325,9 +316,8 @@ message line. One iteration: build the frame with `render_study`,
   no-ops, so the loop intercepts both; typed and keyed forms do the
   same thing.
 - `Command(cmd)`: execute on the core. On success, the events append
-  to the list, the message becomes the last event's summary, and a
-  `StonePlaced` event disarms the color override. On error, the
-  message becomes the error text.
+  to the list, and the message becomes the last event's summary. On
+  error, the message becomes the error text.
 - `Message(text)`: the message line takes the text.
 - `None`: nothing reaches the session.
 
@@ -352,14 +342,14 @@ needs no special handling.
   and the typed `quit`/`help` interception contract.
 - `src/tui/study.rs`: 8 loop tests over `TestScreen` and
   `ScriptedInput`. They cover a two-move hotseat sequence, the full
-  ceremony path (including the override arming one stone and
-  disarming), the wrong-phase key message, the illegal-move message,
+  ceremony path (the placements land in the strict alternation's
+  colors), the wrong-phase key message, the illegal-move message,
   help as a full-screen frame with any-key dismissal, typed help and
   quit, the parse-error message, and an exhausted script as an error
   instead of a silent quit.
 - `src/tui/render.rs`: 4 new tests. Ceremony placements render as
   stones on an otherwise empty tree board; the panel shows the phase,
-  the placements, the default or override color, and the guidance;
+  the placements, the next color, and the guidance;
   a choice phase shows no `Next:` line; the message is the bottom
   line unless the command line is open.
 - The `AltScreen` guard's Drop order is documented in comments and
@@ -385,8 +375,8 @@ The rhythm is red, green, extend. Run from `gomoku/`.
    fail against a stub. Implement `InputMode`, `InputState`,
    `InputOutcome`, and the global part of `handle_key`. Green.
 3. **Phase-dependent keys.** Add the per-phase tests: playing (human
-   and AI seats), placement (including the override and the `m`
-   message), first choice, final choice. Build the ceremony cores in
+   and AI seats), placement (including the unmapped `b`/`w` and the
+   `m` message), first choice, final choice. Build the ceremony cores in
    the tests through the public session API. Implement `opening_key`
    and `playing_key`. Green.
 4. **The command line.** Add the editing tests: append, Backspace
@@ -431,7 +421,7 @@ Neither script uses the shell; both diffs must be empty.
   scripted input; `run` rejects a non-terminal stdout with a clear
   error.
 * All three gates pass, and both demo transcripts are unchanged.
-  (Result here: 132 tests, up from 101. The lib holds 78, up from
+  (Result here: 130 tests, up from 99. The lib holds 78, up from
   47: +19 input tests, +8 loop tests, +4 render tests.)
 
 Next: sub-chapter e — the line-mode fallback.

@@ -298,8 +298,8 @@ is retired. The new README documents the study table. Sections:
   Every invocation names the binary: the crate has three binaries, so
   plain `cargo run -p cli` is ambiguous and cargo rejects it.
 * **The Swap2 opening** — the protocol in three sentences, then the
-  ceremony commands (`play <square> [black|white]`, `back`, `done`,
-  `black` / `white`, `more`).
+  ceremony commands (`play <square>` — colors alternate, black first —
+  `back`, `done`, `black` / `white`, `more`).
 * **The full-screen shell** — the normal-mode key table and the `:`
   command line.
 * **Study commands** — the typed language table.
@@ -416,9 +416,9 @@ no "Swap2" anywhere in the transcript. It ends at EOF.
 
 `the_default_invocation_runs_the_swap2_ceremony` (lines 147–203)
 passes no subcommand at all: the default path runs the ceremony. The
-script is the full protocol — a default placement, a color-token
-override, an undo, the count-validated `done`, `more`, the second
-round, the final choice — followed by one game move. The phases must
+script is the full protocol — alternated placements, an undo, the
+count-validated `done`, `more`, the second round, the final choice —
+followed by one game move. The phases must
 appear in protocol order, asserted with the forward-scan idiom from
 `tests/line_mode.rs`:
 
@@ -506,9 +506,9 @@ deletion: sub-chapter c moved the ceremony into the session, and
 
 From `gomoku/`, after the sub-chapter:
 
-* `cargo test -p cli` — 152 tests pass (144 before): 87 lib tests, 8
+* `cargo test -p cli` — 151 tests pass (143 before): 87 lib tests, 8
   new binary integration tests, and the unchanged suites (7 actor,
-  9 history, 3 line-mode, 20 opening, 13 session, 4 study,
+  9 history, 4 line-mode, 18 opening, 13 session, 4 study,
   1 doctest). The binary tests run in about 0.3 s.
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.

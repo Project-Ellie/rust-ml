@@ -95,7 +95,7 @@ impl<W: Write> Screen for LineScreen<W> {
 }
 ```
 
-## src/tui/study.rs (extended, 950 lines, +9 unit tests)
+## src/tui/study.rs (extended, 923 lines, +9 unit tests)
 
 ### The trait predicate
 
@@ -153,8 +153,8 @@ impl<R: BufRead> LineInput<R> {
 The `InputSource` implementation (lines 133–166) does three things:
 reads one line, maps EOF to quit, and delegates the text to the pure
 `line_outcome`. The input state is explicitly unused — a line carries
-its own meaning, so there is no cursor to move, no buffer to edit,
-and no override to arm. `wait_any_key` reads and discards one line:
+its own meaning, so there is no cursor to move and no buffer to edit.
+`wait_any_key` reads and discards one line:
 the "any key" of canonical mode is the Enter key, and EOF dismisses
 the help screen too.
 
@@ -168,8 +168,8 @@ impl<R: BufRead> InputSource for LineInput<R> {
         core: &SessionCore,
     ) -> io::Result<InputOutcome> {
         // `state` exists for key-driven sources. A line of text
-        // carries its own meaning: there is no cursor to move, no
-        // buffer to edit, and no override to arm.
+        // carries its own meaning: there is no cursor to move and no
+        // buffer to edit.
         let _ = state;
         let mut line = String::new();
         // `read_line` reports 0 bytes at EOF. A piped script ends at
@@ -267,7 +267,7 @@ side effects.
 
 ### The loop's two changed lines
 
-The first change is the cursor. `build_frame` (lines 356–388) now
+The first change is the cursor. `build_frame` (lines 346–375) now
 takes `cursor: Option<Move>` and sets it on the view only when
 present; the loop computes the option from the predicate.
 
@@ -295,7 +295,7 @@ predicate and shapes two outputs from it: the key table, and the
 dismissal note — canonical mode delivers a line at a time, so the
 line-mode note names the Enter key.
 
-src/tui/study.rs, lines 406–438:
+src/tui/study.rs, lines 393–425:
 
 ```rust
 /// Draw the help screen and wait for one input to dismiss it.
@@ -365,7 +365,7 @@ repeatably, with the input state untouched; `select_shell` maps both
 directions; the predicate distinguishes the sources; and
 `help_frame(false)` drops the key table and changes the note.
 
-## tests/line_mode.rs (new, 269 lines, 3 tests)
+## tests/line_mode.rs (new, 277 lines, 4 tests)
 
 tests/line_mode.rs, lines 1–11:
 
@@ -440,8 +440,8 @@ two frames.
 
 ### The typed ceremony
 
-The second test runs the full Swap2 protocol with no keys: default
-and override placements, a `back`, the count-validated `done`,
+The second test runs the full Swap2 protocol with no keys:
+alternated placements, a `back`, the count-validated `done`,
 `more`, the second round, and the final choice. The phase lines must
 appear in protocol order in the transcript, asserted by scanning
 forward from the last hit:
@@ -465,13 +465,35 @@ tests/line_mode.rs, lines 216–228:
 ```
 
 The session assertions close the test: the ceremony is finished,
-White moves first, and the five stones sit where the script put them.
-One negative assertion pins the input model: the transcript contains
-no `(override)` panel line, because the `b`/`w` keys that arm an
-override do not exist in line mode — the typed `play f8 white`
-carries its color on the command.
+White moves first, and the five stones sit where the script put
+them, colored by the strict alternation B, W, B, W, B — the fourth
+stone overall is white, because the alternation does not restart per
+round.
 
-The third test is the EOF contract: a script of one move and no
+The third test pins the color-token rejection: `play h8 white` is a
+parse error in line mode as everywhere else, the transcript carries
+the parser's usage message, and the failed line places nothing.
+
+tests/line_mode.rs, lines 252–265:
+
+```rust
+#[test]
+fn a_color_token_on_play_is_a_parse_error() {
+    // The strict alternation makes the token meaningless, so the
+    // grammar rejects it; the transcript shows the parser's message.
+    let core = swap2_core();
+    let (core, transcript) = run_line_script(core, "play h8 white\nquit\n");
+    assert!(
+        transcript.contains("usage: play <square>, got extra 'white'"),
+        "the color token is rejected: {transcript}"
+    );
+    // The failed line placed nothing: the ceremony is still empty.
+    let opening = core.snapshot().opening.expect("the ceremony still runs");
+    assert!(opening.placements.is_empty());
+}
+```
+
+The fourth test is the EOF contract: a script of one move and no
 `quit` line runs the move and quits at end of input, instead of
 erroring the way a key script would.
 
@@ -518,9 +540,9 @@ Five, all documented in the code where they apply:
 
 From `gomoku/`, after the sub-chapter:
 
-* `cargo test -p cli` — 144 tests pass (132 before): 87 lib tests (78
-  before; +9 line-mode unit tests), 3 line-mode integration tests,
-  and the unchanged suites (7 actor, 9 history, 20 opening, 13
+* `cargo test -p cli` — 143 tests pass (130 before): 87 lib tests (78
+  before; +9 line-mode unit tests), 4 line-mode integration tests,
+  and the unchanged suites (7 actor, 9 history, 18 opening, 13
   session, 4 study, 1 doctest).
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.
@@ -531,7 +553,7 @@ From `gomoku/`, after the sub-chapter:
   output was byte-identical to the in-memory golden transcript, so
   the production stdin/stdout path and the test path agree.
 
-A note on size: `study.rs` is 950 lines, 459 without tests (263
+A note on size: `study.rs` is 923 lines, 444 without tests (251
 without tests after sub-chapter d). The growth is the second input
 source, its mapping, and the selection rule, under the chapter's
 commenting standard. The file holds one concern — the loop and its

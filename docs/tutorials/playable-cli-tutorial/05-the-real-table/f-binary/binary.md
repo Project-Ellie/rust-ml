@@ -262,8 +262,8 @@ Four session tests:
 3. `play --no-swap2` hotseat, two moves, EOF: both seats human, no
    "Swap2" anywhere.
 4. No subcommand at all: the default invocation runs the Swap2
-   ceremony. The script plays the full protocol (default and
-   override placements, an undo, `done`, `more`, the second round,
+   ceremony. The script plays the full protocol (alternated
+   placements, an undo, `done`, `more`, the second round,
    the final choice), then one game move. Asserts the hint, the four
    phase lines in protocol order, the finish event, and `Ply: 1`.
 
@@ -332,7 +332,7 @@ keys act; `q` restores the terminal.
 * The README documents both subcommands and both input models, and
   every command it quotes runs.
 * All three gates pass, and both demo transcripts are unchanged.
-  (Result here: 152 tests, up from 144. `tests/binary.rs` adds 8.)
+  (Result here: 151 tests, up from 143. `tests/binary.rs` adds 8.)
 
 Next: [Chapter 06 — Seeing the mind](../../06-seeing-the-mind.md)
 

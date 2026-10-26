@@ -18,7 +18,7 @@ the line interface (`repl.rs`), then the test kit and the tests.
 
 ## src/command.rs — the extended vocabulary
 
-`Play` becomes a struct variant with the optional color token, and
+`Play` becomes a struct variant with the move as its only field, and
 three ceremony commands join the enum. All variants carry doc comments
 now; the enum itself states its role.
 
@@ -33,9 +33,9 @@ src/command.rs, lines 15–55:
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Play a move at the cursor. During the Swap2 opening this places
-    /// the next ceremony stone instead. `color` is the optional
-    /// override token; it is legal only during the opening.
-    Play { mv: Move, color: Option<Color> },
+    /// the next ceremony stone instead; its color follows the
+    /// ceremony's strict alternation.
+    Play { mv: Move },
     /// Let the AI play the side to move.
     Step,
     /// Go back N plies in the variation tree. During the Swap2 opening
@@ -107,8 +107,8 @@ src/command.rs, lines 139–168:
     StonePlaced {
         /// Where the stone was placed.
         mv: Move,
-        /// The color placed, after the default order or the override
-        /// token was applied.
+        /// The color placed; the ceremony's strict alternation
+        /// decides it.
         color: Color,
     },
     /// `back` removed the last Swap2 placement.
@@ -137,13 +137,15 @@ Their `Display` arms (lines 199–212) follow the existing one-line style:
 `Placed h8 White`, `Removed h8`, `Swap2 phase: FirstChoice`, `Swap2
 finished: Black chosen`.
 
-The seven new errors (lines 239–252) give every wrong-phase command its
+The six new errors (lines 238–249) give every wrong-phase command its
 own typed variant with one true sentence each. Note what is not here:
 a failed `done` reuses the engine's `PlayError::BadOpeningCounts`
 through the existing `IllegalMove` variant, because the count rule
-belongs to the engine.
+belongs to the engine. There is no color-override error either: the
+strict alternation removes the override path, and the color token on
+`play` is a parse error, not a session error.
 
-src/command.rs, lines 238–251:
+src/command.rs, lines 238–249:
 
 ```rust
     #[error("no Swap2 opening is in progress")]
@@ -156,8 +158,6 @@ src/command.rs, lines 238–251:
     NotAtFirstChoice,
     #[error("the Swap2 opening has no placement to remove")]
     OpeningLogEmpty,
-    #[error("a color token applies only during the Swap2 opening")]
-    ColorOverrideOutsideOpening,
     #[error("the Swap2 opening is still in progress; choose a color first")]
     OpeningInProgress,
 ```
@@ -168,14 +168,14 @@ The `play` arm and the bare-square fallback both end in the new helper,
 so the two forms stay the same command. The ceremony arms sit between
 `play` and `step`.
 
-src/command.rs, lines 281–310:
+src/command.rs, lines 279–308:
 
 ```rust
         "play" => {
             let token = parse_required_token(&mut tokens, "square")?;
             let mv = parse_move(&token)?;
-            let color = parse_optional_color(&mut tokens)?;
-            Ok(Command::Play { mv, color })
+            ensure_no_extra_play_token(&mut tokens)?;
+            Ok(Command::Play { mv })
         }
 
         "done" => {
@@ -203,53 +203,48 @@ src/command.rs, lines 281–310:
         }
 ```
 
-The helper accepts the token everywhere and lets the session decide
-where it applies. Its doc comment records the split: parsing is about
-text, phase is about state.
+The helper rejects any trailing token on either `play` form. Its doc
+comment records why: the strict alternation leaves nothing for a color
+token to mean, so the token is a usage error, and the message says
+what the command accepts.
 
-src/command.rs, lines 368–391:
+src/command.rs, lines 366–380:
 
 ```rust
-/// Parse the optional color token of `play`: `black` or `white`.
+/// Reject a trailing token after the square of a `play`.
 ///
-/// The token is an override for the Swap2 opening, and the session
-/// rejects it outside the opening. The parser accepts it
-/// unconditionally: where a command applies is the session's business,
-/// not the parser's.
-fn parse_optional_color<'a>(
+/// Ceremony placements follow strict alternation, so there is no
+/// color token anymore: `play h8 white` is a usage error, and the
+/// message says what the command accepts.
+fn ensure_no_extra_play_token<'a>(
     tokens: &mut impl Iterator<Item = &'a str>,
-) -> Result<Option<Color>, CommandError> {
-    let Some(token) = tokens.next() else {
-        return Ok(None);
-    };
-    let color = match token {
-        "black" => Color::Black,
-        "white" => Color::White,
-        other => {
-            return Err(CommandError::Parse(format!(
-                "play expects a color: black|white, got '{other}'"
-            )));
-        }
-    };
-    ensure_no_more(tokens, "play")?;
-    Ok(Some(color))
+) -> Result<(), CommandError> {
+    if let Some(extra) = tokens.next() {
+        return Err(CommandError::Parse(format!(
+            "usage: play <square>, got extra '{extra}'"
+        )));
+    }
+    Ok(())
 }
 ```
 
-The parser tests: `parse_play_with_color_token` (lines 538–567) covers
-the token on both `play` forms, case-insensitivity, and the two error
-shapes; `parse_swap2_commands` (lines 569–589) covers the four new
-commands and their extra-argument errors. The two pre-existing `play`
-tests assert the struct variant with `color: None`.
+The parser tests: `parse_play_rejects_a_color_token` (lines 496–511)
+pins the usage error on both `play` forms and the continued rejection
+of unknown tokens; `parse_swap2_commands` (lines 513–533) covers the
+four new commands and their extra-argument errors. The two pre-existing
+`play` tests assert the one-field struct variant.
 
-## src/opening.rs (new, 353 lines)
+## src/opening.rs (new, 364 lines)
 
-The module doc (lines 1–18) states the lesson in one paragraph: the
+The module doc (lines 1–24) states the lesson in one paragraph: the
 log is the source of truth; the typestate is a validated projection of
-the truth. `OpeningState` is two fields, and the doc comment explains
+the truth. A second paragraph records the rule split: the Swap2 rule
+fixes only the counts; the placement order is the session's strict
+alternation; the engine stays permissive for imported records.
+`OpeningState` is two fields, and the doc comment explains
 why the phase is not derivable from the log alone.
 
-src/opening.rs, lines 1–24:
+src/opening.rs, lines 1–30:
 
 ```rust
 //! The session-side Swap2 machine: a replay log with the engine's
@@ -267,9 +262,15 @@ src/opening.rs, lines 1–24:
 //!
 //! The rule split: the Swap2 rule fixes only the final stone counts of
 //! each placement round (two Black and one White, then one more Black
-//! and one more White after `more`). The placement order is free. The
-//! default order alternates, black first, within each round; a color
-//! token on `play` overrides the next stone's color.
+//! and one more White after `more`). The placement order is a
+//! session-level convention on top of the rule: strict alternation,
+//! black first, over the whole ceremony (B, W, B, then W, B). The
+//! convention loses no reachable position — every count-valid stone
+//! set has an alternation order that produces it — so the session
+//! fixes the order and `play` takes no color token. The engine stays
+//! permissive: its typestate accepts explicit `(Move, Color)` pairs
+//! with count validation, because imported game records need not
+//! follow the convention.
 
 use engine::{Board, Color, Move, Swap2};
 use engine::{FinalChoice, FirstChoice, Placing2, Placing3};
@@ -278,7 +279,7 @@ use serde::{Deserialize, Serialize};
 use crate::command::{CommandError, Event, OpeningPhase};
 ```
 
-src/opening.rs, lines 26–37:
+src/opening.rs, lines 32–43:
 
 ```rust
 /// The session-side record of a Swap2 ceremony in progress.
@@ -295,68 +296,69 @@ pub struct OpeningState {
 }
 ```
 
-`OpeningSnapshot` (lines 39–60) is the read model a front-end draws
+`OpeningSnapshot` (lines 45–61) is the read model a front-end draws
 from. Its three fields are the whole ceremony: phase, placements in
-order, and the color the next `play` will use.
+order, and the color the next `play` will place.
 
-### The default color
+### The next color
 
-The one rule with a sharp edge: the alternation restarts per round. The
-fourth stone overall is the first stone of round two and defaults to
-black. A global parity rule is wrong at exactly that stone; the
-in-module test `the_default_color_alternates_per_round_starting_with_black`
-(lines 302–319) pins the restart.
+The one rule with a sharp edge: the alternation runs over the whole
+ceremony and does not restart per round. The fourth stone overall is
+white, not black; a per-round restart would be wrong at exactly that
+stone. Every count-valid stone set has an alternation order that
+reaches it, so the fixed order loses no reachable position. The
+in-module test `the_color_alternates_over_the_whole_ceremony_starting_with_black`
+(lines 308–326) pins the full sequence.
 
-src/opening.rs, lines 77–99:
+src/opening.rs, lines 83–104:
 
 ```rust
-    /// The color the next `play` uses when no color token overrides it.
+    /// The color of the next stone: strict alternation, black first,
+    /// over the whole ceremony.
     ///
-    /// The default alternates within each round, black first. The
-    /// count restarts per round: the fourth stone overall is the first
-    /// stone of the second round, so it defaults to black again. At a
-    /// choice phase there is no next placement, so the answer is
-    /// `None`.
+    /// The alternation runs on the placement count alone: an even
+    /// count places Black next, an odd count White, so the sequence
+    /// is B, W, B in the first round and W, B in the second. Every
+    /// count-valid stone set has an alternation order that reaches
+    /// it, so fixing the order costs nothing. At a choice phase
+    /// there is no next placement, so the answer is `None`.
     #[must_use]
-    pub fn default_next_color(&self) -> Option<Color> {
-        let round_start = match self.phase {
-            OpeningPhase::Placing3 => 0,
-            OpeningPhase::Placing2 => 3,
-            OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => return None,
-        };
-        let index_in_round = self.log.len() - round_start;
-        Some(if index_in_round.is_multiple_of(2) {
-            Color::Black
-        } else {
-            Color::White
-        })
+    pub fn next_color(&self) -> Option<Color> {
+        match self.phase {
+            OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => None,
+            OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
+                Some(if self.log.len().is_multiple_of(2) {
+                    Color::Black
+                } else {
+                    Color::White
+                })
+            }
+        }
     }
-
-    /// Place the next stone of the ceremony.
 ```
 
 ### place, undo, done
 
-`place` routes the color default, asks the engine, and grows the log
-only after acceptance. The `None` arm is what rejects `play` at a
-choice phase without touching the engine.
+`place` takes the alternation's color from `next_color`, asks the
+engine, and grows the log only after acceptance. The `None` answer is
+what rejects `play` at a choice phase without touching the engine.
 
-src/opening.rs, lines 99–122:
+src/opening.rs, lines 106–129:
 
 ```rust
-    /// Place the next stone of the ceremony.
+    /// Place the next stone of the ceremony, in the alternation's
+    /// color.
     ///
     /// The engine remains the rules authority: the typestate is
     /// rebuilt from the log, and its `place` rejects an occupied
     /// square. The log grows only after the engine accepts the
     /// placement, so the log can never hold a stone the engine
     /// refused.
-    pub fn place(&mut self, mv: Move, color: Option<Color>) -> Result<Vec<Event>, CommandError> {
-        // A choice phase has no next stone; the `None` default makes
+    pub fn place(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
+        // A choice phase has no next stone; the `None` answer makes
         // `play` there a typed error without touching the engine.
-        let color = match color.or_else(|| self.default_next_color()) {
-            Some(color) => color,
-            None => return Err(CommandError::NotAtPlacementPhase),
+        let Some(color) = self.next_color() else {
+            return Err(CommandError::NotAtPlacementPhase);
         };
         match self.phase {
             OpeningPhase::Placing3 => rebuild_placing3(&self.log).place(mv, color)?,
@@ -375,7 +377,7 @@ engine call. The comment explains why that is safe: every prefix of
 the log was once the live state. The phase after the removal is a
 function of the log length and never a choice phase.
 
-src/opening.rs, lines 124–158:
+src/opening.rs, lines 131–165:
 
 ```rust
     /// Take back the last placement(s) — the meaning of `back` during
@@ -415,13 +417,13 @@ src/opening.rs, lines 124–158:
     }
 ```
 
-`done` and `more` (lines 160–203) run the engine transitions. `done`
+`done` and `more` (lines 167–209) run the engine transitions. `done`
 returns the engine's `BadOpeningCounts` on rejection and leaves the
 state untouched, so the round continues. `more` routes through
 `place_two_more` although that transition cannot fail: every protocol
 transition goes through the typestate, so the rules live in one place.
 
-src/opening.rs, lines 160–183:
+src/opening.rs, lines 167–190:
 
 ```rust
     /// End the current placement round.
@@ -456,7 +458,7 @@ src/opening.rs, lines 160–183:
 nothing. The session owns the boundary — the board becomes the tree
 root and the opening state is cleared there.
 
-src/opening.rs, lines 204–232:
+src/opening.rs, lines 211–239:
 
 ```rust
     /// Choose a color at a choice phase and report the finished board.
@@ -490,12 +492,12 @@ src/opening.rs, lines 204–232:
 impl Default for OpeningState {
 ```
 
-The four rebuild helpers (lines 238–295) are the projection. Each
+The four rebuild helpers (lines 245–301) are the projection. Each
 replays the log into the typestate; the `expect` and `debug_assert`
 messages document invariants rather than handle errors. Only
-`rebuild_placing2` and `rebuild_final_choice` are quoted here.
+`rebuild_placing2` is quoted here.
 
-src/opening.rs, lines 253–270:
+src/opening.rs, lines 260–277:
 
 ```rust
 /// Replay the log into `Swap2<Placing2>`: the first three entries are
@@ -518,8 +520,8 @@ fn rebuild_placing2(log: &[(Move, Color)]) -> Swap2<Placing2> {
 }
 ```
 
-The in-module tests (lines 297–353) pin the alternation restart, the
-undo-to-phase rule, and the snapshot mirror.
+The in-module tests (lines 303–364) pin the whole-ceremony
+alternation, the undo-to-phase rule, and the snapshot mirror.
 
 ## src/session.rs
 
@@ -615,7 +617,7 @@ src/session.rs, lines 336–353:
 ```rust
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
-            Command::Play { mv, color } => self.execute_play(mv, color),
+            Command::Play { mv } => self.execute_play(mv),
             Command::Back { n } => self.execute_back(n),
             Command::Forward { n } => self.execute_forward(n),
             Command::Var { index } => self.execute_var(index),
@@ -656,22 +658,14 @@ src/session.rs, lines 371–382:
 
 `execute_play` and `execute_back` route the dual-meaning commands.
 
-src/session.rs, lines 516–529 and 558–563:
+src/session.rs, lines 516–521 and 550–555:
 
 ```rust
-    pub fn execute_play(
-        &mut self,
-        mv: Move,
-        color: Option<Color>,
-    ) -> Result<Vec<Event>, CommandError> {
-        // Phase routing: during the ceremony `play` places a stone (the
-        // color token is the override); afterwards `play` is a tree
-        // move and the token is a typed error.
+    pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
+        // Phase routing: during the ceremony `play` places a stone in
+        // the alternation's color; afterwards `play` is a tree move.
         if let Some(opening) = &mut self.opening {
-            return opening.place(mv, color);
-        }
-        if color.is_some() {
-            return Err(CommandError::ColorOverrideOutsideOpening);
+            return opening.place(mv);
         }
 ```
 
@@ -684,18 +678,20 @@ src/session.rs, lines 516–529 and 558–563:
         }
 ```
 
-`execute_step` refuses during the ceremony (lines 385–392), and `reset`
-restores the ceremony for Swap2 sessions (lines 652–659).
+`execute_step` refuses during the ceremony (lines 384–391), and `reset`
+restores the ceremony for Swap2 sessions (lines 636–653).
 
 ## src/repl.rs
 
-The help text gains a five-line Swap2 block (lines 38–44).
+The help text gains a five-line Swap2 block (lines 38–43): `play
+SQUARE` places the next stone (colors alternate, black first), then
+`back`, `done`, `black | white`, and `more`.
 `print_state` inserts one line during the ceremony (lines 133–137),
 produced by `opening_line` (lines 154–178):
 
 ```rust
 /// The one state line of a ceremony in progress: phase, placements in
-/// order, and the color the next `play` defaults to.
+/// order, and the color the next `play` places.
 ///
 /// At a choice phase there is no next stone, so the `next` part is
 /// left out. The line appears only in Swap2 sessions; ordinary
@@ -711,7 +707,7 @@ fn opening_line(opening: &OpeningSnapshot) -> String {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    match opening.default_next_color {
+    match opening.next_color {
         Some(color) => format!(
             "swap2 {:?}  stones: {stones}  next: {color:?}",
             opening.phase
@@ -721,16 +717,16 @@ fn opening_line(opening: &OpeningSnapshot) -> String {
 }
 ```
 
-Two in-module tests (lines 219–279) pin both sides of the contract:
+Two in-module tests (lines 219–277) pin both sides of the contract:
 ordinary sessions print no swap2 line, and a ceremony prints the line
-with the override color and without `next` at the right times.
+with the alternation's colors and without `next` at a choice phase.
 
 ## The test kit and the tests
 
-`crates/testkit/src/lib.rs`: `play` builds the struct variant with
-`color: None` (lines 27–33); `play_color` (line 40) passes the token;
-`swap2_core` (line 49) builds a hotseat ceremony session;
-`event_type` learns the four new names (lines 75–78).
+`crates/testkit/src/lib.rs`: `play` builds the one-field struct
+variant (lines 29–31); `swap2_core` (lines 33–36) builds a hotseat
+ceremony session; `event_type` learns the four new names (lines
+60–63).
 
 tests/opening.rs, lines 1–39:
 
@@ -747,9 +743,9 @@ use cli::command::{Command, CommandError, Event, OpeningPhase};
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError};
 
-use testkit::{event_types, mv, play, play_color, swap2_core};
+use testkit::{event_types, mv, play, swap2_core};
 
-/// Place the first round with the default alternation (black, white,
+/// Place the first round with the strict alternation (black, white,
 /// black) and end it with `done`. Returns the events of `done`.
 fn place_first_round(core: &mut SessionCore) -> Vec<Event> {
     play(core, 7, 7);
@@ -776,9 +772,9 @@ fn stone_count(board: &Board, color: Color) -> usize {
 }
 ```
 
-`tests/opening.rs` (new, 536 lines, 20 tests) drives everything through
+`tests/opening.rs` (new, 500 lines, 18 tests) drives everything through
 the public API. Two local helpers carry the protocol: `place_first_round`
-plays the default order and ends the round with `done`;
+plays the first round and ends it with `done`;
 `place_second_round` plays the `more` path. One test as an example of
 the style:
 
@@ -788,6 +784,46 @@ fn back_on_an_empty_log_is_a_typed_error() {
     let mut core = swap2_core();
     let err = core.execute(Command::Back { n: 1 }).unwrap_err();
     assert_eq!(err, CommandError::OpeningLogEmpty);
+}
+```
+
+The contract test for the placement colors runs the whole ceremony and
+asserts the strict alternation across both rounds — B, W, B, then W, B,
+with no per-round restart:
+
+tests/opening.rs, lines 290–320:
+
+```rust
+#[test]
+fn placements_follow_strict_alternation_across_both_rounds() {
+    // The new contract: no color token exists, and the ceremony
+    // alternates black first over the whole placement log — B, W, B
+    // in the first round, then W, B in the second. The alternation
+    // does not restart per round.
+    let mut core = swap2_core();
+    let mut colors = Vec::new();
+    for (r, c) in [(7, 7), (8, 8), (9, 9)] {
+        play(&mut core, r, c);
+        let opening = core.snapshot().opening.unwrap();
+        colors.push(opening.placements.last().unwrap().1);
+    }
+    core.execute(Command::Done).unwrap();
+    core.execute(Command::More).unwrap();
+    for (r, c) in [(5, 5), (4, 4)] {
+        play(&mut core, r, c);
+        let opening = core.snapshot().opening.unwrap();
+        colors.push(opening.placements.last().unwrap().1);
+    }
+    assert_eq!(
+        colors,
+        vec![
+            Color::Black,
+            Color::White,
+            Color::Black,
+            Color::White,
+            Color::Black
+        ]
+    );
 }
 ```
 
@@ -807,18 +843,18 @@ byte-stability proof).
 
 From `gomoku/`, after the sub-chapter:
 
-* `cargo test -p cli` — 101 tests pass (74 before): 47 lib tests (40
+* `cargo test -p cli` — 99 tests pass (74 before): 47 lib tests (40
   before; +3 opening unit tests, +2 parser tests, +2 repl tests), the
-  new `tests/opening.rs` with 20 tests, and the unchanged suites (7
+  new `tests/opening.rs` with 18 tests, and the unchanged suites (7
   actor, 9 session, 13 history, 4 study, 1 doctest).
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.
 * Both demo transcripts are byte-identical to before.
 
-A note on size: `session.rs` grew to 951 lines, past the chapter's
-budget, and `command.rs` to 702. The budget's own rule applies: a file
+A note on size: `session.rs` grew to 931 lines, past the chapter's
+budget, and `command.rs` to 643. The budget's own rule applies: a file
 past the budget holds more than one concern. The ceremony logic itself
-moved to `opening.rs` (356 lines, most of them comments the chapter
+moved to `opening.rs` (364 lines, most of them comments the chapter
 standard requires); what remains in `session.rs` is routing and
 construction. A future split of `session.rs` (snapshot serde versus
 command execution) is visible but is not this sub-chapter.

@@ -16,8 +16,8 @@ re-implementation of the protocol inside the TUI. This sub-chapter
 shows the other answer: keep a replay log of placements as the source
 of truth, and rebuild the engine's typestate from the log whenever a
 rule must be checked. The session gains the ceremony as a phase with
-six commands in the same language as everything else: `play h8
-[color]`, `back`, `done`, `black`, `white`, `more`.
+six commands in the same language as everything else: `play h8`,
+`back`, `done`, `black`, `white`, `more`.
 
 ## Glossary
 
@@ -28,15 +28,16 @@ six commands in the same language as everything else: `play h8
 | **Replay log** | The `Vec<(Move, Color)>` the session keeps. Every placement that the engine accepted, in order. |
 | **Validated projection** | A typestate value rebuilt from the log. It is computed on demand and discarded; the log stays the truth. |
 | **Phase** | The runtime mirror of the typestate marker: `OpeningPhase::Placing3`, `FirstChoice`, `Placing2`, `FinalChoice`. |
-| **Placement round** | One placing phase: three stones in round one, two stones in round two. The rule fixes the counts per round; the order is free. |
-| **Color token** | The optional `black`/`white` argument of `play`, which overrides the default color of the next stone. |
+| **Placement round** | One placing phase: three stones in round one, two stones in round two. The rule fixes the counts per round; the colors follow strict alternation, black first, over the whole ceremony: B, W, B, then W, B. |
+| **Strict alternation** | The session's color rule for placements: an even placement count places black next, an odd count white. Every count-valid stone set has an alternation order that reaches it (the white stones are placements two and four), so the session fixes the order and `play` takes no color token. |
 | **Phase routing** | The meaning of a command depends on the session phase. `back` removes a placement during the ceremony and navigates the tree afterwards. |
 
 ## Context
 
 Read [the design paper](../00-design.md) first. Its section
 "c — Swap2 as a session phase" assigns this sub-chapter, and its header
-records the decided Swap2 vocabulary and the free placement order.
+records the decided Swap2 vocabulary and the strict-alternation
+placement order.
 Read [`gomoku/crates/engine/src/opening.rs`](../../../../gomoku/crates/engine/src/opening.rs)
 next. It is the machine you will reuse, not re-implement. The engine
 chapter ([docs/13-engine-design.md](../../../../docs/13-engine-design.md))
@@ -51,16 +52,19 @@ Two properties of the engine API shape everything below:
 2. **The typestate has no read access.** `Swap2` exposes no stones.
    Only `take_black`/`take_white` produce something readable: a
    `Board`. And a mid-ceremony position is not always a valid `Board`:
-   two Black stones and zero White stones break the count invariant of
-   `Board::from_position`.
+   the typestate accepts placements in any color order (imported
+   records need not alternate), and two Black stones and zero White
+   stones break the count invariant of `Board::from_position`.
 
 So the session cannot hold the typestate. It holds data instead.
 
 ## Intention
 
-1. Extend the command language in `src/command.rs`: `play` gains the
-   optional color token; `done`, `black`, `white`, and `more` are new
-   commands; `OpeningPhase` joins the vocabulary as an event payload.
+1. Extend the command language in `src/command.rs`: `done`, `black`,
+   `white`, and `more` are new commands; `play` keeps its one
+   argument, and a trailing token on it is a parse error, because the
+   ceremony colors the stone by strict alternation; `OpeningPhase`
+   joins the vocabulary as an event payload.
 2. Create `src/opening.rs`: `OpeningState` keeps the phase and the
    replay log; every rule decision goes through a rebuilt typestate.
 3. Extend `SessionCore`: `SessionInit` gains `swap2`, the core gains
@@ -115,9 +119,15 @@ the stones on the board are the state.
 ### Why the ceremony has no `Board`
 
 `Board::from_position` requires the stone counts to differ by at most
-one. Mid-ceremony positions can differ by two (the default order opens
-black, black). No valid `Board` can hold such a position, and the
-engine is right to reject it: it is not a game position.
+one, with the side to move fixed by the counts. A ceremony position is
+not a game position: the side to move is undecided until the choice,
+and the count rule is checked only at `done`. The engine's typestate
+is also deliberately more permissive than the session's convention:
+its `place` accepts any explicit `(Move, Color)` pair, because
+imported game records need not follow the alternation. A replayed log
+can therefore hold counts (two Black, zero White) that no valid
+`Board` can express, and the log design must not depend on the
+alternation holding.
 
 Consequence: during the ceremony, `SessionCore::board()` returns the
 empty initial board, and the stones live in `Snapshot.opening` as
@@ -133,17 +143,18 @@ same `Command` values, and `SessionCore::execute` routes them by
 phase:
 
 - `play` places a ceremony stone while the opening is in progress and
-  a tree move afterwards. The color token is legal only during the
-  ceremony; outside it, the token is a typed error.
+  a tree move afterwards. The strict alternation fixes the ceremony
+  stone's color, so `play` takes no color token in either phase.
 - `back` removes placements while the opening is in progress and
   navigates the tree afterwards.
 - `done`, `black`, `white`, and `more` exist only during the ceremony.
   Outside it, each returns the typed `NotInOpening` error.
 
-The parser accepts the color token everywhere and the session decides
-where it applies. That split is deliberate: parsing is about text,
-phase is about state. A parse error means "I cannot read this"; a
-phase error means "this does not apply now".
+The parser rejects a trailing token on `play` as a usage error, and
+the session rejects a phase-wrong command as a typed error. That split
+is deliberate: parsing is about text, phase is about state. A parse
+error means "I cannot read this"; a phase error means "this does not
+apply now".
 
 ### Errors are phase reports
 
@@ -178,7 +189,7 @@ tree, losing Swap2) would silently change what the session is.
 
 ```rust
 pub enum Command {
-    Play { mv: Move, color: Option<Color> },
+    Play { mv: Move },
     // ... existing variants unchanged ...
     Done,
     ChooseColor { color: Color },
@@ -190,9 +201,9 @@ pub enum OpeningPhase { Placing3, FirstChoice, Placing2, FinalChoice }
 
 `Play` becomes a struct variant. Every construction site changes; the
 shared test kit's `play` helper absorbs most of them. The parser
-accepts the color token on the explicit `play h8 white` form and on
-the bare-square form `h8 white`, because the two forms are documented
-as the same command.
+treats the explicit `play h8` form and the bare-square form `h8` as
+the same command, and a trailing token on either form is a parse
+error: `usage: play <square>`.
 
 `OpeningPhase` lives in the vocabulary module because it is the
 payload of `Event::OpeningPhaseChanged`, the way `SeatSel` is the
@@ -208,8 +219,7 @@ side to move after the ceremony is always White, so carrying it would
 repeat what the engine already guarantees.
 
 New errors: `NotInOpening`, `NotAtPlacementPhase`, `NotAtChoicePhase`,
-`NotAtFirstChoice`, `OpeningLogEmpty`, `ColorOverrideOutsideOpening`,
-and `OpeningInProgress`.
+`NotAtFirstChoice`, `OpeningLogEmpty`, and `OpeningInProgress`.
 
 ### `src/opening.rs` (new)
 
@@ -219,8 +229,8 @@ pub struct OpeningState { phase: OpeningPhase, log: Vec<(Move, Color)> }
 impl OpeningState {
     pub fn new() -> Self;
     pub fn snapshot(&self) -> OpeningSnapshot;
-    pub fn default_next_color(&self) -> Option<Color>;
-    pub fn place(&mut self, mv: Move, color: Option<Color>) -> Result<Vec<Event>, CommandError>;
+    pub fn next_color(&self) -> Option<Color>;
+    pub fn place(&mut self, mv: Move) -> Result<Vec<Event>, CommandError>;
     pub fn undo(&mut self, n: u32) -> Result<Vec<Event>, CommandError>;
     pub fn done(&mut self) -> Result<Vec<Event>, CommandError>;
     pub fn more(&mut self) -> Result<Vec<Event>, CommandError>;
@@ -230,7 +240,7 @@ impl OpeningState {
 pub struct OpeningSnapshot {
     pub phase: OpeningPhase,
     pub placements: Vec<(Move, Color)>,
-    pub default_next_color: Option<Color>,
+    pub next_color: Option<Color>,
 }
 ```
 
@@ -241,12 +251,15 @@ event vocabulary directly; there is no second event language to map.
 
 Details that matter:
 
-- The default color alternates **within each round**, black first.
-  The count restarts per round: the fourth stone overall is the first
-  stone of round two and defaults to black. A global parity rule is
-  wrong at exactly that stone; the in-module test pins the restart.
-- `default_next_color` returns `None` at a choice phase. There is no
-  next stone there, and a made-up default would put a false "next:
+- The color follows one parity rule over the whole ceremony, black
+  first: an even placement count places black next, an odd count
+  white. The sequence is B, W, B in round one and W, B in round two —
+  the alternation does not restart per round, so the fourth stone
+  overall is white. Every count-valid stone set has an alternation
+  order that reaches it, so fixing the order loses no reachable
+  position. The in-module test pins the full sequence.
+- `next_color` returns `None` at a choice phase. There is no
+  next stone there, and a made-up answer would put a false "next:
   black" on the screen.
 - The rebuild helpers (`rebuild_placing3`, `rebuild_placing2`,
   `rebuild_first_choice`, `rebuild_final_choice`) replay the log into
@@ -281,7 +294,7 @@ Details that matter:
 ### `src/repl.rs`
 
 The help text gains a Swap2 block. `print_state` prints one extra line
-during the ceremony — phase, placements in order, and the default next
+during the ceremony — phase, placements in order, and the next
 color — and nothing otherwise. Ordinary transcripts are byte-identical
 to before; the demo scripts prove it.
 
@@ -289,19 +302,19 @@ to before; the demo scripts prove it.
 
 - `tests/opening.rs` (new): the full protocol paths (take black, take
   white, `more` then choose), undo inside and across rounds, `back N`,
-  count validation at `done`, occupied-square rejection, the color
-  override, the default alternation, every typed error in and out of
+  count validation at `done`, occupied-square rejection, the strict
+  alternation across both rounds, every typed error in and out of
   phase, `step` rejection, `new` semantics, the snapshot contents, the
   serde round trip, tree navigation after the ceremony, and the
   construction panic.
-- `src/opening.rs` unit tests pin the per-round alternation, the
+- `src/opening.rs` unit tests pin the whole-ceremony alternation, the
   undo-to-phase rule, and the snapshot mirror.
-- `src/command.rs` unit tests cover the new syntax: the color token on
-  both `play` forms, the four new commands, and their argument
-  errors.
-- `crates/testkit/src/lib.rs`: `play` builds the struct variant; new
-  helpers `play_color` and `swap2_core`; `event_type` knows the four
-  new events.
+- `src/command.rs` unit tests cover the new syntax: the four new
+  commands, the parse error for a trailing token on `play`, and the
+  argument errors.
+- `crates/testkit/src/lib.rs`: `play` builds the struct variant; the
+  new helper `swap2_core` builds a hotseat ceremony session;
+  `event_type` knows the four new events.
 
 ## Solution (opt-in)
 
@@ -318,11 +331,12 @@ The rhythm is red, green, extend. Run from `gomoku/`.
    commands, `OpeningPhase`, the events, and the errors to
    `command.rs`. Fix every construction site (the test kit absorbs
    most). Add the parser tests and watch them fail — the parser does
-   not know the tokens yet. Implement the parser arms and
-   `parse_optional_color`. Green.
-2. **The machine.** Write the failing tests for the default
-   alternation (including the per-round restart) and the undo rule
-   against `OpeningState`. Implement `src/opening.rs`. Green.
+   not know the words yet. Implement the parser arms and
+   `ensure_no_extra_play_token`. Green.
+2. **The machine.** Write the failing tests for the strict
+   alternation (black first across both rounds, no per-round restart)
+   and the undo rule against `OpeningState`. Implement
+   `src/opening.rs`. Green.
 3. **Routing.** Write the failing integration tests in
    `tests/opening.rs`: the take-black path first, then the errors.
    Wire `SessionInit.swap2`, the `opening` field, and the phase
@@ -349,26 +363,26 @@ Both diffs must be empty; neither script uses Swap2.
 
 ## Done when
 
-* `play` carries the optional color token, and the four ceremony
-  commands parse and execute.
+* `play` takes no color token — a trailing token is a parse error —
+  and the four ceremony commands parse and execute.
 * `src/opening.rs` holds the replay log and rebuilds the engine
   typestate for every rule decision. No Swap2 rule is re-implemented
   in the cli crate.
-* `Snapshot` exposes the ceremony (phase, placements, default color),
+* `Snapshot` exposes the ceremony (phase, placements, next color),
   and ordinary sessions serialize byte-identically to before.
 * After `OpeningFinished`, the tree root is the finished opening board
   and White moves first.
 * `new` restarts the ceremony in a Swap2 session.
 * All three gates pass, and both demo transcripts are unchanged.
-  (Result here: 101 tests, up from 74.)
+  (Result here: 99 tests, up from 74.)
 
 Next: sub-chapter d — the alternate-screen shell.
 
 ## References
 
 * [00-design.md](../00-design.md) — the contract for all six
-  sub-chapters, including the Swap2 vocabulary and the free placement
-  order.
+  sub-chapters, including the Swap2 vocabulary and the
+  strict-alternation placement order.
 * [a-refactor/refactor.md](../a-refactor/refactor.md) — the test kit
   and the transcript-diff technique this sub-chapter reuses.
 * [b-renderer/renderer.md](../b-renderer/renderer.md) — the renderer

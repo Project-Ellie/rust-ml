@@ -144,7 +144,7 @@ sub-chapter's extension of its rule, documented in the code.
 
 ### What the fallback does not say
 
-A shell must not advertise input it cannot take. Three displays
+A shell must not advertise input it cannot take. Two displays
 follow from that rule:
 
 1. **No cursor marker.** The renderer draws the cursor as angle
@@ -156,15 +156,13 @@ follow from that rule:
    language only. The dismissal note also changes: canonical mode
    delivers a line at a time, so the note reads "Press Enter to
    return to the table."
-3. **No override panel.** The full-screen `b`/`w` keys arm a color
-   override that the panel reports as `Next: White (override)`. Those
-   keys do not exist in line mode. The typed `play h8 white` carries
-   the color on the command, so the ceremony keeps its full
-   vocabulary and the panel never reports an override.
 
-All three hang on one predicate: `InputSource::has_normal_mode`. The
+Both hang on one predicate: `InputSource::has_normal_mode`. The
 full-screen source answers `true` (the default); the line source
-answers `false`.
+answers `false`. The ceremony needs no exception: the strict
+alternation colors every placement, so the typed vocabulary (`play
+h8`, `done`, `black`, `white`, `more`, `back`) is complete, and a
+trailing color token on `play` is a parse error in both shells.
 
 ### EOF is quit
 
@@ -311,7 +309,7 @@ io::stdin().lock())`.
   words and the ceremony vocabulary), the parse-error message, a
   scripted reader through EOF, the selection rule, the predicate, and
   the two help-frame shapes.
-- `tests/line_mode.rs` (new): 3 integration tests through the real
+- `tests/line_mode.rs` (new): 4 integration tests through the real
   `study_loop` with a scripted `LineInput` and a `LineScreen` over a
   `Vec<u8>`.
   - A two-move hotseat session with an error line, the help screen,
@@ -320,11 +318,15 @@ io::stdin().lock())`.
     the bytes carry: no cursor marker, the session's error text, the
     typed-language help without the key table, the Enter dismissal
     note.
-  - A Swap2 ceremony runs entirely on typed commands: default and
-    override placements, an undo, the count-validated `done`, the
-    declined first choice, and the final choice. The phases must
-    appear in protocol order, and the finished board holds the five
-    stones with White to move.
+  - A Swap2 ceremony runs entirely on typed commands: alternated
+    placements, an undo, the count-validated `done`, the declined
+    first choice, and the final choice. The phases must appear in
+    protocol order, and the finished board holds the five stones,
+    colored B, W, B, W, B by the strict alternation, with White to
+    move.
+  - A color token on `play` (`play h8 white`) is a parse error, the
+    transcript shows the parser's message, and the failed line
+    places nothing.
   - A script without a `quit` line ends at EOF, and the loop quits
     instead of erroring.
 
@@ -391,8 +393,8 @@ Neither script touches the study shell; both diffs must be empty.
 * The frame shows no cursor marker in line mode, and the help screen
   shows no key table there. Both hang on `has_normal_mode`.
 * All three gates pass, and both demo transcripts are unchanged.
-  (Result here: 144 tests, up from 132. The lib holds 87, up from 78:
-  +9 line-mode unit tests. `tests/line_mode.rs` adds 3.)
+  (Result here: 143 tests, up from 130. The lib holds 87, up from 78:
+  +9 line-mode unit tests. `tests/line_mode.rs` adds 4.)
 
 Next: sub-chapter f — the binary.
 

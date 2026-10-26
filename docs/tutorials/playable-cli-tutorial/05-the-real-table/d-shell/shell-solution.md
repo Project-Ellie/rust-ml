@@ -164,7 +164,7 @@ The guard's Drop order is documented in comments, not tested: the
 test needs a terminal, and this sub-chapter's tests run headless by
 design.
 
-## src/tui/input.rs (new, 706 lines, 19 tests)
+## src/tui/input.rs (new, 672 lines, 19 tests)
 
 The module doc (lines 1–18) states the two rules that shape the file:
 the module reads crossterm's key vocabulary but performs no I/O, and
@@ -219,13 +219,14 @@ const MORE_ONLY_AT_FIRST_CHOICE: &str = "'more' applies only at the first Swap2 
 records why the editor exists: raw mode delivers one keypress at a
 time, so appending, Backspace, and echo are this module's job.
 
-`InputState` (lines 48–64) is three public fields with doc comments.
-`InputState::new()` (lines 67–81) starts in normal mode with the
-cursor on the center point h8 — the natural first target on an empty
-board. The `next_color_override` field documents its own lifecycle:
-set by `b`/`w`, cleared by the loop when a placement lands.
+`InputState` (lines 48–59) is two public fields with doc comments:
+the mode and the board cursor. `InputState::new()` (lines 62–74)
+starts in normal mode with the cursor on the center point h8 — the
+natural first target on an empty board. There is no color field:
+the strict alternation fixes the next stone's color, so the input
+state has nothing to select.
 
-src/tui/input.rs, lines 48–64:
+src/tui/input.rs, lines 48–59:
 
 ```rust
 /// The shell's input state.
@@ -239,28 +240,23 @@ pub struct InputState {
     pub mode: InputMode,
     /// The board cursor: the square the next Enter acts on.
     pub cursor: Move,
-    /// The selected color of the next Swap2 stone, set with `b`/`w` at
-    /// a placement phase. `None` means the ceremony's default order
-    /// applies. The shell clears it when a placement lands, so the
-    /// override arms exactly one stone.
-    pub next_color_override: Option<Color>,
 }
 ```
 
-`InputOutcome` (lines 94–112) has five variants. The design paper
+`InputOutcome` (lines 88–101) has five variants. The design paper
 lists four (`Command`, `Help`, `Quit`, `None`); `Message(String)` is
 the fifth, for parse errors and wrong-phase keys. The translation
 layer never executes; it reports, and the loop acts.
 
 ### The command-line editor
 
-`handle_key` (lines 116–122) dispatches on the mode.
+`handle_key` (lines 110–115) dispatches on the mode.
 `handle_command_line_key` takes the buffer out of the state with
 `mem::replace`, so the mode can change (Esc, Enter) without two live
 borrows of `state.mode`. Every path either puts the buffer back or
 leaves the state in normal mode.
 
-src/tui/input.rs, lines 129–170:
+src/tui/input.rs, lines 123–164:
 
 ```rust
 fn handle_command_line_key(key: KeyEvent, state: &mut InputState) -> InputOutcome {
@@ -313,13 +309,13 @@ dropped; vim drops a failed ex command line the same way.
 
 ### The normal-mode table
 
-`handle_normal_key` (lines 180–215) checks the global keys first —
+`handle_normal_key` (lines 174–209) checks the global keys first —
 cursor motion, `:`, `?`, `q` — and dispatches the rest on
 `core.snapshot().opening`. The comment above the dispatch states the
 safety argument: one key per action is safe because the session
 always knows the phase.
 
-src/tui/input.rs, lines 207–214:
+src/tui/input.rs, lines 201–208:
 
 ```rust
     // Phase-dependent keys. The session knows the phase; the snapshot
@@ -332,55 +328,48 @@ src/tui/input.rs, lines 207–214:
     }
 ```
 
-`opening_key` (lines 218–270) is the ceremony table. At a placement
-phase, Enter translates to `Play` with the armed override; the
-translator does not clear the override, because it cannot know
-whether the placement will succeed. `b`/`w` arm the override and
-return `None`: the panel shows the selection, so no message is
-needed. At a choice phase, Enter and `u` are not mapped.
+`opening_key` (lines 212–253) is the ceremony table. At a placement
+phase, Enter translates to `Play` at the cursor and the strict
+alternation decides the color, so `b`/`w` are unmapped there: the
+comment in the arm says why. At a choice phase, Enter and `u` are
+not mapped.
 
-src/tui/input.rs, lines 220–237 (excerpt):
+src/tui/input.rs, lines 214–225 (excerpt):
 
 ```rust
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
-            // Enter places the next stone at the cursor. The override
-            // colors this one stone when set; the loop clears it when
-            // the placement lands.
-            KeyCode::Enter => InputOutcome::Command(Command::Play {
-                mv: state.cursor,
-                color: state.next_color_override,
-            }),
+            // Enter places the next stone at the cursor; the
+            // ceremony's strict alternation decides its color.
+            KeyCode::Enter => InputOutcome::Command(Command::Play { mv: state.cursor }),
             // During the ceremony the session routes `back` to the
             // replay log, so `u` removes the last placement.
             KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
             KeyCode::Char('d') => InputOutcome::Command(Command::Done),
-            // `b`/`w` select the next stone's color. The panel shows
-            // the selection, so the outcome needs no message.
-            KeyCode::Char('b') => {
-                state.next_color_override = Some(Color::Black);
-                InputOutcome::None
-            }
+            // `b`/`w` bind to the color choice, which exists only at a
+            // choice phase. At a placement phase the keys are unmapped:
+            // the alternation fixes the next stone's color, so there
+            // is nothing to select.
 ```
 
-The `m` guard at the choice phases (lines 259–265): `more` exists only
+The `m` guard at the choice phases (lines 243–249): `more` exists only
 at the first choice, so the arm carries a guard; the fallthrough arm
 returns the same message as the placement phases.
 
-`playing_key` (lines 272–301) is the play table: Enter reads the seat
+`playing_key` (lines 256–283) is the play table: Enter reads the seat
 table (`core.occupant(core.board().to_move())`) and becomes `play` at
 the cursor or `step`; `u` is `back`; the ceremony keys are unmapped.
 The session still validates the result — an occupied square, a
 finished game — and the loop shows the error. Translation is a
 suggestion; the session decides.
 
-`move_cursor` (lines 303–315) clamps with the named idioms:
+`move_cursor` (lines 284–296) clamps with the named idioms:
 `saturating_sub` up and left (a `u8` cannot go below zero),
 `saturating_add(1).min(14)` down and right. The `expect` documents
 that clamped coordinates are always valid; it is not error handling.
 
 ### The tests
 
-Lines 318–706 hold 19 tests. The ceremony cores are built through the
+Lines 299–672 hold 19 tests. The ceremony cores are built through the
 public session API (`placing_core`, `first_choice_core`,
 `placing2_core`, `final_choice_core`), so the tests exercise the real
 phases, not mocks of them. One test per mapping group, plus the modal
@@ -408,37 +397,20 @@ treats both as no-ops.
 
 ### The view
 
-`StudyView` gains two fields, each with a chainable setter.
-`message` (lines 97–107) is the bottom line in normal mode; the doc
+`StudyView` gains one field with a chainable setter.
+`message` (lines 95–105) is the bottom line in normal mode; the doc
 comment records that the command line owns the bottom line while it
-is open. `color_override` (lines 109–119) carries the armed override
-from the input state; the selection lives in the shell, not in the
-session, so the renderer must be told.
-
-src/tui/render.rs, lines 109–119:
-
-```rust
-    /// Report `color` as the selected color of the next Swap2 stone.
-    ///
-    /// The selection lives in the shell's input state, not in the
-    /// session, so the renderer must be told. At a placement phase the
-    /// panel shows the override when one is set, else the ceremony's
-    /// default color. Outside a placement phase the value is ignored.
-    #[must_use]
-    pub fn color_override(mut self, color: Option<Color>) -> Self {
-        self.color_override = color;
-        self
-    }
-```
+is open. The view needs no color input: the snapshot's `next_color`
+already states the alternation's answer.
 
 ### The board
 
 `render_study` passes the opening snapshot into both halves (lines
-144–153). The comment at the call site repeats the sub-chapter-c
+133–141). The comment at the call site repeats the sub-chapter-c
 invariant: the tree board is empty during the ceremony by design, so
 the stones to draw come from the opening snapshot.
 
-The cell lookup (lines 258–269) falls back from the board to the
+The cell lookup (lines 237–248) falls back from the board to the
 placement list:
 
 ```rust
@@ -463,11 +435,11 @@ tree, and the tree is empty.
 
 ### The panel
 
-`render_side_panel` (lines 305–330) splits its middle block by phase.
+`render_side_panel` (lines 284–309) splits its middle block by phase.
 The existing ply/status/path/branch code moves into `position_lines`
-(lines 343–369) unchanged. The ceremony block is new:
+(lines 321–347) unchanged. The ceremony block is new:
 
-src/tui/render.rs, lines 371–423:
+src/tui/render.rs, lines 349–392:
 
 ```rust
 /// The ceremony block of the side panel: the phase, the placements,
@@ -478,11 +450,7 @@ src/tui/render.rs, lines 371–423:
 /// user needs them: a placement phase shows the placement keys, a
 /// choice phase shows the choice keys. The guidance strings match the
 /// key table in the help screen word for word.
-fn ceremony_lines(
-    lines: &mut Vec<String>,
-    opening: &OpeningSnapshot,
-    color_override: Option<Color>,
-) {
+fn ceremony_lines(lines: &mut Vec<String>, opening: &OpeningSnapshot) {
     lines.push(format!("Swap2: {:?}", opening.phase));
     let stones = if opening.placements.is_empty() {
         "(none)".to_string()
@@ -497,19 +465,14 @@ fn ceremony_lines(
     lines.push(format!("Stones: {stones}"));
     match opening.phase {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
-            // The next stone's color is the override when the user
-            // selected one with `b`/`w`, else the ceremony's default.
-            // The snapshot guarantees a default at a placement phase.
-            let (color, source) = match color_override {
-                Some(color) => (color, "override"),
-                None => (
-                    opening
-                        .default_next_color
-                        .expect("a placement phase always has a default color"),
-                    "default",
-                ),
-            };
-            lines.push(format!("Next: {color:?} ({source})"));
+            // The strict alternation fixes the next stone's color, so
+            // the panel states it without a source: there is nothing
+            // to select. The snapshot guarantees a color at a
+            // placement phase.
+            let color = opening
+                .next_color
+                .expect("a placement phase always has a next color");
+            lines.push(format!("Next: {color:?}"));
             lines.push("Enter place · u undo · d done".to_string());
         }
         OpeningPhase::FirstChoice => {
@@ -525,11 +488,11 @@ fn ceremony_lines(
 }
 ```
 
-The bottom-line rule in `render_study` (lines 170–178): the command
+The bottom-line rule in `render_study` (lines 149–157): the command
 line while it is open, else the message when there is one. One bottom
 line exists; the mode decides its content.
 
-The four new tests (lines 650–743): ceremony placements render as
+The four new tests (lines 611–699): ceremony placements render as
 stones with byte offsets (the same technique as the last-move test),
 the panel shows phase/stones/next color/guidance and drops the
 game-state lines, a choice phase shows no `Next:` line, and the
@@ -537,7 +500,7 @@ message/command-line precedence on the bottom line. The pre-existing
 styled/unstyled equivalence test passes unchanged: ceremony stones
 render through the same `study_cell` path.
 
-## src/tui/study.rs (new, 561 lines, 8 tests)
+## src/tui/study.rs (new, 542 lines, 8 tests)
 
 src/tui/study.rs, lines 1–38:
 
@@ -554,9 +517,9 @@ src/tui/study.rs, lines 1–38:
 //! touches a terminal.
 //!
 //! The loop keeps three pieces of shell state next to the session
-//! core: the [`InputState`] (mode, board cursor, color override), the
-//! capped list of recent events for the panel, and the message line
-//! (the last event summary or the last error text).
+//! core: the [`InputState`] (mode and board cursor), the capped list
+//! of recent events for the panel, and the message line (the last
+//! event summary or the last error text).
 
 use crate::command::{Command, Event};
 use crate::repl;
@@ -623,14 +586,14 @@ so a resize needs no special handling beyond the next paint.
 
 ### The loop
 
-`study_loop` (lines 130–174) holds three pieces of shell state: the
+`study_loop` (lines 130–164) holds three pieces of shell state: the
 input state, the capped event list, and the message line. One
 iteration is draw, translate, apply. Two match arms intercept
 `Command::Help` and `Command::Quit`: the typed command language
 contains both words, and the session core treats them as no-ops, so
 the loop turns them into the same behavior as the `?` and `q` keys.
 
-src/tui/study.rs, lines 130–174:
+src/tui/study.rs, lines 130–164:
 
 ```rust
 pub fn study_loop<S: Screen, I: InputSource>(
@@ -661,16 +624,6 @@ pub fn study_loop<S: Screen, I: InputSource>(
             InputOutcome::Command(Command::Quit) => return Ok(()),
             InputOutcome::Command(cmd) => match core.execute(cmd) {
                 Ok(new_events) => {
-                    // The color override arms one stone. A landed
-                    // placement disarms it, so the ceremony's default
-                    // order resumes; a failed placement leaves it
-                    // armed, so the user does not have to re-select.
-                    if new_events
-                        .iter()
-                        .any(|event| matches!(event, Event::StonePlaced { .. }))
-                    {
-                        state.next_color_override = None;
-                    }
                     record_events(&mut events, &mut message, &new_events);
                 }
                 Err(err) => message = Some(err.to_string()),
@@ -680,25 +633,22 @@ pub fn study_loop<S: Screen, I: InputSource>(
 }
 ```
 
-The override disarm is event-driven: the loop reacts to the
-`StonePlaced` fact, not to the command's identity. A placement typed
-on the command line (`play h8 white`) disarms an armed override too —
-the armed stone landed, wherever the command came from.
-
-`build_frame` (lines 183–207) assembles the view. The command line
+`build_frame` (lines 166–191) assembles the view. The command line
 owns the bottom line while it is open; in normal mode the message
-shows, when there is one. `record_events` (lines 210–219) caps the
+shows, when there is one. `record_events` (lines 193–207) caps the
 list at 20, dropping from the front because index 0 is the oldest
 event, and sets the message to the batch's last event.
 
 ### The help screen
 
-`help_frame` (lines 233–246) reuses `repl::HELP` for the typed
+`help_frame` (lines 215–231) reuses `repl::HELP` for the typed
 language and appends the normal-mode key table (`NORMAL_MODE_KEYS`,
-lines 249–262). Reusing the constant is the point: the help screen
+lines 233–249). Reusing the constant is the point: the help screen
 and the line-mode `help` command cannot drift apart. The key table
 lists the phase-dependent keys with their phases, because that is the
-one thing a user cannot guess.
+one thing a user cannot guess; `b`/`w` appear only as the choice
+keys, because the strict alternation leaves nothing to select at a
+placement phase.
 
 ### The entry point
 
@@ -731,13 +681,13 @@ pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
 
 ### The loop tests
 
-The tests (lines 264–561) define the two fakes. `TestScreen` records
+The tests (lines 252–542) define the two fakes. `TestScreen` records
 every frame in a `Vec`; its `styled()` keeps the default `false`, so
 assertions read plain text. `ScriptedInput` plays back a list of key
 events and treats exhaustion as an error, not a silent quit: a
 shorter-than-intended script must fail the test, not pass it.
 
-src/tui/study.rs, lines 303–310 (excerpt):
+src/tui/study.rs, lines 291–298 (excerpt):
 
 ```rust
     /// An input source that plays back a scripted list of keys.
@@ -751,18 +701,18 @@ src/tui/study.rs, lines 303–310 (excerpt):
 ```
 
 One test as an example of the style — the ceremony path, which also
-pins the one-shot override:
+pins the strict alternation across the frames:
 
 ```rust
 #[test]
-fn the_loop_runs_the_ceremony_and_disarms_the_override() {
+fn the_loop_runs_the_ceremony_on_alternated_placements() {
     let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
-    // Enter places h8 Black; `w` arms White; Right+Enter places i8
-    // White; Right+Enter places j8 with the default again; `d` ends
-    // the round; `b` takes Black; `q` quits.
+    // Enter places h8 Black; Right+Enter places i8 White;
+    // Right+Enter places j8 Black; `d` ends the round; `b` takes
+    // Black; `q` quits. The colors come from the strict
+    // alternation — no key selects them.
     let keys = vec![
         key(KeyCode::Enter),
-        char_key('w'),
         key(KeyCode::Right),
         key(KeyCode::Enter),
         key(KeyCode::Right),
@@ -777,15 +727,14 @@ fn the_loop_runs_the_ceremony_and_disarms_the_override() {
     // and White moves first.
     assert!(core.snapshot().opening.is_none());
     assert_eq!(core.board().to_move(), Color::White);
-    // j8 is Black — proof that the override armed exactly one stone.
     assert_eq!(core.board().stone_at(Move::new(7, 9).unwrap()), Some(Color::Black));
 }
 ```
 
 The assertions on recorded frames use the frame index as a timeline:
 frame 0 is the initial frame, and the key at index *i* is processed
-before frame *i*+1 is drawn, so `frames[2]` is the frame after the
-`w` key.
+before frame *i*+1 is drawn, so `frames[1]` is the frame after the
+first placement.
 
 ## Deviations from the design paper's wording
 
@@ -815,18 +764,18 @@ Three, all small:
 
 From `gomoku/`, after the sub-chapter:
 
-* `cargo test -p cli` — 132 tests pass (101 before): 78 lib tests (47
+* `cargo test -p cli` — 130 tests pass (99 before): 78 lib tests (47
   before; +19 input tests, +8 loop tests, +4 render tests), and the
-  unchanged suites (7 actor, 9 history, 20 opening, 13 session, 4
+  unchanged suites (7 actor, 9 history, 18 opening, 13 session, 4
   study, 1 doctest).
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.
 * Both demo transcripts are byte-identical to before. The shell adds
   no output path to sessiondemo; the repl code is untouched.
 
-A note on size: `input.rs` is 706 lines and `study.rs` is 561, past
+A note on size: `input.rs` is 672 lines and `study.rs` is 542, past
 the chapter's 250-line budget. Counted without tests, input.rs is
-317 lines and study.rs is 263 — still past, driven by the chapter's
+297 lines and study.rs is 251 — still past, driven by the chapter's
 own commenting standard and by the per-phase match arms, which are
 table entries more than logic. Each file holds one concern (the input
 state machine; the loop), which is the budget's stated purpose. A

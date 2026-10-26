@@ -359,21 +359,21 @@ crates/testkit/src/lib.rs, lines 1–13:
 use cli::actor::{AiConfig, EvaluatorKind};
 use cli::command::{Command, Event};
 use cli::session::{SessionCore, SessionInit};
-use engine::{Color, Move};
+use engine::Move;
 ```
 
 One note before the helper quotes: they show the kit as it stands at
 the end of the chapter on the reference branch. Sub-chapter c turns
-`Command::Play` into a struct variant with a color token and adds
-`play_color` and `swap2_core`; after this sub-chapter, `play` builds
-the tuple variant `Command::Play(mv(r, c))`, and the two Swap2
-helpers do not exist yet.
+`Command::Play` into a one-field struct variant and adds
+`swap2_core`; after this sub-chapter, `play` builds
+the tuple variant `Command::Play(mv(r, c))`, and the Swap2
+helper does not exist yet.
 
 The move builder and the first session driver. The `unwrap` in `play`
 is intentional: a test that plays an illegal move should fail loudly,
 and the panic points at the test script.
 
-crates/testkit/src/lib.rs, lines 15–33:
+crates/testkit/src/lib.rs, lines 15–31:
 
 ```rust
 /// Build a move from zero-based row and column.
@@ -387,36 +387,20 @@ pub fn mv(r: u8, c: u8) -> Move {
 /// Play one stone and return the events the session emitted.
 ///
 /// Tests that use this helper expect the move to be legal; an illegal move
-/// panics through the `unwrap`, which points at the test script.
+/// panics through the `unwrap`, which points at the test script. During a
+/// Swap2 ceremony the stone's color comes from the ceremony's strict
+/// alternation.
 pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play {
-        mv: mv(r, c),
-        color: None,
-    })
-    .unwrap()
+    core.execute(Command::Play { mv: mv(r, c) }).unwrap()
 }
 ```
 
-The Swap2 helpers (sub-chapter c adds them). `play_color` passes the
-override token; `swap2_core` builds a hotseat session that starts
-inside the opening ceremony.
+The Swap2 helper (sub-chapter c adds it). `swap2_core` builds a
+hotseat session that starts inside the opening ceremony.
 
-crates/testkit/src/lib.rs, lines 35–51:
+crates/testkit/src/lib.rs, lines 33–36:
 
 ```rust
-/// Place one stone with an explicit color token: the Swap2 override.
-///
-/// Legal only during the opening; outside it the session returns the
-/// typed `ColorOverrideOutsideOpening` error and the `unwrap` fails the
-/// test, which is the intent.
-pub fn play_color(core: &mut SessionCore, r: u8, c: u8, color: Color) -> Vec<Event> {
-    core.execute(Command::Play {
-        mv: mv(r, c),
-        color: Some(color),
-    })
-    .unwrap()
-}
-
 /// A hotseat session that starts inside the Swap2 opening ceremony.
 pub fn swap2_core() -> SessionCore {
     SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
@@ -430,7 +414,7 @@ payload; comparing variant names keeps those assertions short.
 `event_types` is the plural convenience:
 `assert_eq!(event_types(&events), ["Moved", "GameOver"])`.
 
-crates/testkit/src/lib.rs, lines 53–88:
+crates/testkit/src/lib.rs, lines 38–73:
 
 ```rust
 /// Let the AI play the side to move and return the events.
@@ -474,7 +458,7 @@ pub fn event_types(events: &[Event]) -> Vec<&'static str> {
 The one AI-config builder. The comment records the deliberate
 divergence: 200 simulations instead of the default 400.
 
-crates/testkit/src/lib.rs, lines 90–106:
+crates/testkit/src/lib.rs, lines 75–91:
 
 ```rust
 /// The AI configuration shared by the integration tests.

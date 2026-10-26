@@ -305,12 +305,15 @@ Two further tutorial tracks are written and verified, ready to work:
   tutorial + solution document pairs live in `05-the-real-table/`;
   the code is the learner's work, sub-chapter by sub-chapter. A
   complete reference implementation of the redesign is preserved on
-  the branch `reference/chapter-05-redesign` (152 cli tests green;
-  tip 0aab090). The branch tip carries the testkit-crate approach:
-  one workspace crate `crates/testkit`, pulled into cli as a
+  the branch `reference/chapter-05-redesign` (151 cli tests green;
+  tip 87b170b). The branch tip carries the testkit-crate approach
+  (one workspace crate `crates/testkit`, pulled into cli as a
   dev-dependency, replaces the earlier two-kit split
-  (`src/testkit.rs` + `tests/common/mod.rs`), and the chapter-05
-  docs are amended to it. **Progress on main (2026-10-25)**: main at
+  (`src/testkit.rs` + `tests/common/mod.rs`)) and the Swap2
+  strict-alternation simplification (no color token on `play`, no
+  `b`/`w` arming keys at placement phases; colors alternate black
+  first across both rounds), and the chapter-05
+  docs are amended to both. **Progress on main (2026-10-25)**: main at
   d1a208b has the finished sub-chapter a (notation/fmt/repl
   extraction + the testkit crate) landed as the owner's workspace
   state. Next: sub-chapter b.
