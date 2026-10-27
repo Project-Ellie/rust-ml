@@ -68,16 +68,24 @@ pub enum Command {
 }
 ```
 
-`OpeningPhase` follows the enum (lines 57–78). It is the runtime mirror
+`OpeningPhase` follows the enum (lines 57–76). It is the runtime mirror
 of the engine's four typestate markers, and it lives with the command
 vocabulary because it is the payload of `Event::OpeningPhaseChanged`.
 It derives serde for the snapshot's wire format; `snake_case` puts
 `"placing3"`, `"first_choice"`, `"placing2"`, and `"final_choice"` on
 the wire.
 
-src/command.rs, lines 65–76:
+src/command.rs, lines 57–76:
 
 ```rust
+/// The runtime phase of a Swap2 opening.
+///
+/// The engine tracks the ceremony at the type level (`Swap2<Placing3>`
+/// and friends); the session needs the same information at runtime, to
+/// route commands and to report the ceremony in the snapshot. The four
+/// variants mirror the four typestate markers one to one. The type
+/// lives with the command vocabulary because it is the payload of
+/// [`Event::OpeningPhaseChanged`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OpeningPhase {
@@ -133,9 +141,20 @@ src/command.rs, lines 139–168:
 }
 ```
 
-Their `Display` arms (lines 199–212) follow the existing one-line style:
-`Placed h8 White`, `Removed h8`, `Swap2 phase: FirstChoice`, `Swap2
-finished: Black chosen`.
+Their `Display` arms follow the existing one-line style:
+
+src/command.rs, lines 199–206:
+
+```rust
+            Event::StonePlaced { mv, color } => {
+                write!(f, "Placed {} {color:?}", fmt_move(*mv))
+            }
+            Event::StoneRemoved { mv } => write!(f, "Removed {}", fmt_move(*mv)),
+            Event::OpeningPhaseChanged { phase } => write!(f, "Swap2 phase: {phase:?}"),
+            Event::OpeningFinished { chosen } => {
+                write!(f, "Swap2 finished: {chosen:?} chosen")
+            }
+```
 
 The six new errors (lines 238–249) give every wrong-phase command its
 own typed variant with one true sentence each. Note what is not here:
@@ -353,6 +372,54 @@ pub struct OpeningState {
 from. Its three fields are the whole ceremony: phase, placements in
 order, and the color the next `play` will place.
 
+src/opening.rs, lines 45–61:
+
+```rust
+/// The read model of a ceremony in progress, exposed through
+/// `Snapshot`.
+///
+/// A front-end draws the ceremony from this data alone. It needs no
+/// Swap2 rules: the phase says which commands apply, the placements
+/// say which stones are on the board, and the next color says what
+/// the next `play` will place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpeningSnapshot {
+    /// The current phase.
+    pub phase: OpeningPhase,
+    /// The placements so far, in order of placement.
+    pub placements: Vec<(Move, Color)>,
+    /// The color the next `play` places; `None` at a choice phase,
+    /// where no placement is next.
+    pub next_color: Option<Color>,
+}
+```
+
+`OpeningState::new` starts a fresh ceremony; `snapshot` maps the state
+into the read model.
+
+src/opening.rs, lines 64–81:
+
+```rust
+    /// A fresh ceremony: phase Placing3, empty log.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            phase: OpeningPhase::Placing3,
+            log: Vec::new(),
+        }
+    }
+
+    /// The read model for the session snapshot.
+    #[must_use]
+    pub fn snapshot(&self) -> OpeningSnapshot {
+        OpeningSnapshot {
+            phase: self.phase,
+            placements: self.log.clone(),
+            next_color: self.next_color(),
+        }
+    }
+```
+
 ### The next color
 
 The one rule with a sharp edge: the alternation runs over the whole
@@ -472,9 +539,7 @@ src/opening.rs, lines 131–165:
 
 `done` and `more` (lines 167–209) run the engine transitions. `done`
 returns the engine's `BadOpeningCounts` on rejection and leaves the
-state untouched, so the round continues. `more` routes through
-`place_two_more` although that transition cannot fail: every protocol
-transition goes through the typestate, so the rules live in one place.
+state untouched, so the round continues.
 
 src/opening.rs, lines 167–190:
 
@@ -502,6 +567,33 @@ src/opening.rs, lines 167–190:
         };
         self.phase = next;
         Ok(vec![Event::OpeningPhaseChanged { phase: next }])
+    }
+```
+
+`more` routes through `place_two_more` although that transition cannot
+fail: every protocol transition goes through the typestate, so the
+rules live in one place.
+
+src/opening.rs, lines 192–209:
+
+```rust
+    /// Decline the first choice and start the two-stone round.
+    ///
+    /// The engine transition `place_two_more` cannot fail, but the
+    /// rebuild still routes through it: every protocol transition in
+    /// this module goes through the typestate, so the Swap2 rules live
+    /// in exactly one place — the engine.
+    pub fn more(&mut self) -> Result<Vec<Event>, CommandError> {
+        match self.phase {
+            OpeningPhase::FirstChoice => {
+                let _ = rebuild_first_choice(&self.log).place_two_more();
+                self.phase = OpeningPhase::Placing2;
+                Ok(vec![Event::OpeningPhaseChanged {
+                    phase: OpeningPhase::Placing2,
+                }])
+            }
+            _ => Err(CommandError::NotAtFirstChoice),
+        }
     }
 ```
 
@@ -547,8 +639,30 @@ impl Default for OpeningState {
 
 The four rebuild helpers (lines 245–301) are the projection. Each
 replays the log into the typestate; the `expect` and `debug_assert`
-messages document invariants rather than handle errors. Only
-`rebuild_placing2` is quoted here.
+messages document invariants rather than handle errors.
+
+src/opening.rs, lines 245–258:
+
+```rust
+/// Replay the log into a fresh `Swap2<Placing3>`.
+///
+/// Every entry was validated by the engine when it was appended, so
+/// the replay cannot fail. The `expect` documents that invariant; it
+/// is not error handling.
+fn rebuild_placing3(log: &[(Move, Color)]) -> Swap2<Placing3> {
+    let mut opening = Swap2::<Placing3>::new();
+    for &(mv, color) in log {
+        opening
+            .place(mv, color)
+            .expect("the log contains only engine-validated placements");
+    }
+    opening
+}
+```
+
+`rebuild_placing2` crosses the round boundary: the first three
+entries replay through `finish` and `place_two_more`, the rest are
+second-round placements.
 
 src/opening.rs, lines 260–277:
 
@@ -570,6 +684,37 @@ fn rebuild_placing2(log: &[(Move, Color)]) -> Swap2<Placing2> {
             .expect("the log contains only engine-validated placements");
     }
     placing2
+}
+```
+
+The two choice rebuilds close the protocol: the first choice follows
+exactly three placements, the final choice exactly five.
+
+src/opening.rs, lines 279–301:
+
+```rust
+/// Replay the log into `Swap2<FirstChoice>`: exactly three placements,
+/// count-validated when `done` accepted them.
+fn rebuild_first_choice(log: &[(Move, Color)]) -> Swap2<FirstChoice> {
+    debug_assert!(
+        log.len() == 3,
+        "the first choice follows exactly three placements"
+    );
+    rebuild_placing3(log)
+        .finish()
+        .expect("the first round was count-validated by `done`")
+}
+
+/// Replay the log into `Swap2<FinalChoice>`: exactly five placements,
+/// count-validated when the second `done` accepted them.
+fn rebuild_final_choice(log: &[(Move, Color)]) -> Swap2<FinalChoice> {
+    debug_assert!(
+        log.len() == 5,
+        "the final choice follows exactly five placements"
+    );
+    rebuild_placing2(log)
+        .finish()
+        .expect("the second round was count-validated by `done`")
 }
 ```
 
@@ -779,9 +924,30 @@ src/session.rs, lines 336–353:
     }
 ```
 
-`execute_done` and `execute_more` (lines 355–369) are one-liners into
-the machine, with `NotInOpening` outside the ceremony. The boundary
-method:
+`execute_done` and `execute_more` route the command into the
+machine. Outside a ceremony the answer is `NotInOpening`.
+
+src/session.rs, lines 355–369:
+
+```rust
+    /// Route `done` into the ceremony, or reject it outside one.
+    fn execute_done(&mut self) -> Result<Vec<Event>, CommandError> {
+        match &mut self.opening {
+            Some(opening) => opening.done(),
+            None => Err(CommandError::NotInOpening),
+        }
+    }
+
+    /// Route `more` into the ceremony, or reject it outside one.
+    fn execute_more(&mut self) -> Result<Vec<Event>, CommandError> {
+        match &mut self.opening {
+            Some(opening) => opening.more(),
+            None => Err(CommandError::NotInOpening),
+        }
+    }
+```
+
+The boundary method:
 
 src/session.rs, lines 371–382:
 
@@ -800,9 +966,10 @@ src/session.rs, lines 371–382:
     }
 ```
 
-`execute_play` and `execute_back` route the dual-meaning commands.
+`execute_play` and `execute_back` route the dual-meaning commands. The
+heads carry the routing; `execute_back` is quoted whole.
 
-src/session.rs, lines 516–521 and 550–555:
+src/session.rs, lines 516–521 and 550–560:
 
 ```rust
     pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
@@ -820,18 +987,89 @@ src/session.rs, lines 516–521 and 550–555:
         if let Some(opening) = &mut self.opening {
             return opening.undo(n);
         }
+        let _moved = self.history.back(n);
+        Ok(vec![Event::CursorMoved {
+            ply: self.history.ply(),
+        }])
+    }
 ```
 
-`execute_step` refuses during the ceremony (lines 384–391), and `reset`
-restores the ceremony for Swap2 sessions (lines 636–653).
+`execute_step` refuses during the ceremony: the AI searches game
+positions, and ceremony stones are not a game position.
+
+src/session.rs, lines 384–391:
+
+```rust
+    fn execute_step(&mut self) -> Result<Vec<Event>, CommandError> {
+        // The AI searches game positions. Ceremony stones are not a
+        // game position, and a move searched now would be discarded
+        // when the ceremony finishes and resets the tree. Refuse
+        // instead.
+        if self.opening.is_some() {
+            return Err(CommandError::OpeningInProgress);
+        }
+```
+
+`execute_new` delegates to `reset`, and `reset` restores the ceremony
+for Swap2 sessions.
+
+src/session.rs, lines 461–464:
+
+```rust
+    pub fn execute_new(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.reset();
+        Ok(vec![Event::Reset])
+    }
+```
+
+`reset` itself:
+
+src/session.rs, lines 636–653:
+
+```rust
+    fn reset(&mut self) {
+        self.history = History::from_opening(&self.init.opening);
+        self.black = self.init.black.clone();
+        self.white = self.init.white.clone();
+        self.default_config = self.init.default_config.clone();
+        self.black_sims = self.init.black_sims;
+        self.white_sims = self.init.white_sims;
+        self.search_info.clear();
+        // `new` returns the session to its initial phase. A Swap2
+        // session started in the ceremony, so it resets into the
+        // ceremony.
+        self.opening = if self.init.swap2 {
+            Some(OpeningState::new())
+        } else {
+            None
+        };
+        // Keep the same RNG; reset does not reseed.
+    }
+```
 
 ## src/repl.rs
 
 The help text gains a five-line Swap2 block (lines 38–43): `play
 SQUARE` places the next stone (colors alternate, black first), then
 `back`, `done`, `black | white`, and `more`.
-`print_state` inserts one line during the ceremony (lines 133–137),
-produced by `opening_line` (lines 154–178):
+`print_state` inserts one line during the ceremony, produced by
+`opening_line`:
+
+src/repl.rs, lines 131–137:
+
+```rust
+    // During the ceremony the rendered board is empty, because
+    // placements are not game moves. One line carries the ceremony
+    // state instead; the full-screen renderer will draw the stones
+    // from the same snapshot field.
+    if let Some(opening) = &snapshot.opening {
+        lines.push(opening_line(opening));
+    }
+```
+
+`opening_line` assembles the text:
+
+src/repl.rs, lines 154–178:
 
 ```rust
 /// The one state line of a ceremony in progress: phase, placements in

@@ -81,10 +81,33 @@ pub trait Screen {
 }
 ```
 
-`AltScreen` is the RAII guard. The struct doc comment (lines 46–61)
-states the contract and the Drop order: cursor visible and alternate
-screen left first (both are escape sequences on stdout), raw mode off
-last. `enter` uses `execute!`, which flushes: the mode switch must
+`AltScreen` is the RAII guard. Its doc comment states the contract
+and the Drop order: cursor visible and alternate screen left first
+(both are escape sequences on stdout), raw mode off last.
+
+src/tui/screen.rs, lines 45–61:
+
+```rust
+/// The full-screen terminal screen, and the RAII guard for it.
+///
+/// Raw mode and the alternate screen are global, sticky terminal
+/// state. If the program returns early, errors out, or panics while
+/// they are active, the user's terminal stays broken: no echo, no
+/// line buffering, no scrollback. The value's `Drop` restores the
+/// terminal, and `Drop` runs on every exit path, panic included. The
+/// value carries no data; its job is to stay alive until the shell is
+/// done.
+///
+/// The Drop order is fixed and deliberate: show the cursor and leave
+/// the alternate screen first (both are escape sequences on stdout),
+/// then disable raw mode (a terminal attribute). Writing escape
+/// sequences after raw mode is off would still work, but restoring
+/// the visible state before the input state reads better in a
+/// terminal log and keeps every stdout write inside the raw-mode
+/// section of the program's life.
+```
+
+`enter` uses `execute!`, which flushes: the mode switch must
 take effect before the first frame is queued.
 
 src/tui/screen.rs, lines 62–94:
@@ -214,17 +237,32 @@ const MORE_ONLY_AT_FIRST_CHOICE: &str = "'more' applies only at the first Swap2 
 
 ### The state and the outcome
 
-`InputMode` (lines 40–49) is two variants: `Normal`, and
-`CommandLine(String)` with the buffer as payload. The doc comment
-records why the editor exists: raw mode delivers one keypress at a
-time, so appending, Backspace, and echo are this module's job.
+`InputMode` is two variants: `Normal`, and `CommandLine(String)` with
+the buffer as payload. The doc comment records why the editor exists:
+raw mode delivers one keypress at a time, so appending, Backspace,
+and echo are this module's job.
+
+src/tui/input.rs, lines 33–46:
+
+```rust
+/// The input mode of the shell.
+///
+/// Two modes exist. Normal mode translates single keys directly. The
+/// command line is a small editor over a `String` buffer: raw mode
+/// gives the program one keypress at a time, so appending, Backspace,
+/// and echo are this module's job, not the terminal driver's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputMode {
+    /// Single keys act immediately.
+    Normal,
+    /// A `:` command line is open; the payload is the buffer typed so
+    /// far.
+    CommandLine(String),
+}
+```
 
 `InputState` (lines 48–59) is two public fields with doc comments:
-the mode and the board cursor. `InputState::new()` (lines 62–74)
-starts in normal mode with the cursor on the center point h8 — the
-natural first target on an empty board. There is no color field:
-the strict alternation fixes the next stone's color, so the input
-state has nothing to select.
+the mode and the board cursor.
 
 src/tui/input.rs, lines 48–59:
 
@@ -243,14 +281,80 @@ pub struct InputState {
 }
 ```
 
-`InputOutcome` (lines 88–101) has five variants. The design paper
-lists four (`Command`, `Help`, `Quit`, `None`); `Message(String)` is
-the fifth, for parse errors and wrong-phase keys. The translation
-layer never executes; it reports, and the loop acts.
+`InputState::new()` starts in normal mode with the cursor on the
+center point h8 — the natural first target on an empty board. There
+is no color field: the strict alternation fixes the next stone's
+color, so the input state has nothing to select.
+
+src/tui/input.rs, lines 62–74:
+
+```rust
+    /// Fresh input state: normal mode, the cursor on the center point
+    /// h8.
+    ///
+    /// The center is the natural first target on an empty board and the
+    /// most common first stone of a Swap2 ceremony, so the cursor
+    /// starts there instead of in a corner.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            mode: InputMode::Normal,
+            cursor: Move::new(7, 7).expect("the center point is on the board"),
+        }
+    }
+```
+
+`InputOutcome` has five variants. The design paper lists four
+(`Command`, `Help`, `Quit`, `None`); `Message(String)` is the fifth,
+for parse errors and wrong-phase keys. The translation layer never
+executes; it reports, and the loop acts.
+
+src/tui/input.rs, lines 83–101:
+
+```rust
+/// What one key press means for the shell.
+///
+/// The translation layer never executes anything. It reports what the
+/// key means, and the loop in [`crate::tui::study`] acts on the report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputOutcome {
+    /// Execute this command on the session core.
+    Command(Command),
+    /// Show the full-screen help; any key returns to the table.
+    Help,
+    /// Leave the shell.
+    Quit,
+    /// Show this text on the message line. Parse errors and keys that
+    /// do not apply in the current phase use this variant.
+    Message(String),
+    /// The key changed only input state (cursor moved, buffer edited),
+    /// or the key is not mapped. Nothing reaches the session.
+    None,
+}
+```
 
 ### The command-line editor
 
-`handle_key` (lines 110–115) dispatches on the mode.
+`handle_key` dispatches on the mode.
+
+src/tui/input.rs, lines 103–115:
+
+```rust
+/// Translate one key press into an outcome.
+///
+/// The function is pure: it mutates only `state` and touches no I/O.
+/// `core` is read-only; it supplies the phase (the Swap2 snapshot) and
+/// the seat table (for Enter during play). Two small machines share the
+/// work: the command-line editor while a command line is open, and the
+/// normal-mode mapping otherwise.
+pub fn handle_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) -> InputOutcome {
+    match &state.mode {
+        InputMode::Normal => handle_normal_key(key, state, core),
+        InputMode::CommandLine(_) => handle_command_line_key(key, state),
+    }
+}
+```
+
 `handle_command_line_key` takes the buffer out of the state with
 `mem::replace`, so the mode can change (Esc, Enter) without two live
 borrows of `state.mode`. Every path either puts the buffer back or
@@ -309,13 +413,53 @@ dropped; vim drops a failed ex command line the same way.
 
 ### The normal-mode table
 
-`handle_normal_key` (lines 174–209) checks the global keys first —
-cursor motion, `:`, `?`, `q` — and dispatches the rest on
-`core.snapshot().opening`. The comment above the dispatch states the
-safety argument: one key per action is safe because the session
-always knows the phase.
+`handle_normal_key` checks the global keys first —
+cursor motion, `:`, `?`, `q`:
 
-src/tui/input.rs, lines 201–208:
+src/tui/input.rs, lines 166–199:
+
+```rust
+/// One key in normal mode: the translation table.
+///
+/// The table is in two parts. The global keys (cursor motion, `:`,
+/// `?`, `q`) mean the same thing in every phase and are checked first.
+/// The remaining keys are phase-dependent and dispatch on the session
+/// snapshot. Modifiers are not inspected: `?` arrives as `Char('?')`
+/// with the Shift modifier on most layouts, and matching the code alone
+/// keeps the mapping independent of the layout.
+fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) -> InputOutcome {
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            move_cursor(&mut state.cursor, -1, 0);
+            return InputOutcome::None;
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            move_cursor(&mut state.cursor, 1, 0);
+            return InputOutcome::None;
+        }
+        KeyCode::Left | KeyCode::Char('h') => {
+            move_cursor(&mut state.cursor, 0, -1);
+            return InputOutcome::None;
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            move_cursor(&mut state.cursor, 0, 1);
+            return InputOutcome::None;
+        }
+        KeyCode::Char(':') => {
+            state.mode = InputMode::CommandLine(String::new());
+            return InputOutcome::None;
+        }
+        KeyCode::Char('?') => return InputOutcome::Help,
+        KeyCode::Char('q') => return InputOutcome::Quit,
+        _ => {}
+    }
+```
+
+The rest dispatches on `core.snapshot().opening`. The comment above
+the dispatch states the safety argument: one key per action is safe
+because the session always knows the phase.
+
+src/tui/input.rs, lines 201–209:
 
 ```rust
     // Phase-dependent keys. The session knows the phase; the snapshot
@@ -326,17 +470,20 @@ src/tui/input.rs, lines 201–208:
         Some(opening) => opening_key(key, state, &opening),
         None => playing_key(key, state, core),
     }
+}
 ```
 
-`opening_key` (lines 212–253) is the ceremony table. At a placement
-phase, Enter translates to `Play` at the cursor and the strict
-alternation decides the color, so `b`/`w` are unmapped there: the
-comment in the arm says why. At a choice phase, Enter and `u` are
-not mapped.
+`opening_key` is the ceremony table. At a placement phase, Enter
+translates to `Play` at the cursor and the strict alternation decides
+the color, so `b`/`w` are unmapped there: the comment in the arm says
+why. At a choice phase, Enter and `u` are not mapped.
 
-src/tui/input.rs, lines 214–225 (excerpt):
+src/tui/input.rs, lines 211–253:
 
 ```rust
+/// The phase-dependent keys during the Swap2 ceremony.
+fn opening_key(key: KeyEvent, state: &mut InputState, opening: &OpeningSnapshot) -> InputOutcome {
+    match opening.phase {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
             // Enter places the next stone at the cursor; the
             // ceremony's strict alternation decides its color.
@@ -349,42 +496,196 @@ src/tui/input.rs, lines 214–225 (excerpt):
             // choice phase. At a placement phase the keys are unmapped:
             // the alternation fixes the next stone's color, so there
             // is nothing to select.
+            // `m` is the decline of the first choice. During placement
+            // it applies nowhere, so the key explains itself instead of
+            // producing the session's typed error with no visible
+            // context.
+            KeyCode::Char('m') => InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string()),
+            _ => InputOutcome::None,
+        },
+        // At a choice phase the only stone-related keys are the choice
+        // itself. Enter places nothing here, and `u` is not mapped:
+        // removing a placement belongs to the placement phases.
+        OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => match key.code {
+            KeyCode::Char('b') => InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black,
+            }),
+            KeyCode::Char('w') => InputOutcome::Command(Command::ChooseColor {
+                color: Color::White,
+            }),
+            // `more` exists only at the first choice. At the final
+            // choice the key gets the same message as at a placement
+            // phase, so the rule has one sentence everywhere.
+            KeyCode::Char('m') if opening.phase == OpeningPhase::FirstChoice => {
+                InputOutcome::Command(Command::More)
+            }
+            KeyCode::Char('m') => InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string()),
+            _ => InputOutcome::None,
+        },
+    }
+}
 ```
 
-The `m` guard at the choice phases (lines 243–249): `more` exists only
-at the first choice, so the arm carries a guard; the fallthrough arm
-returns the same message as the placement phases.
+The `m` guard at the choice phases: `more` exists only at the
+first choice, so the arm carries a guard; the fallthrough arm returns
+the same message as the placement phases.
 
-`playing_key` (lines 256–283) is the play table: Enter reads the seat
-table (`core.occupant(core.board().to_move())`) and becomes `play` at
-the cursor or `step`; `u` is `back`; the ceremony keys are unmapped.
+`playing_key` is the play table: Enter reads the seat table
+(`core.occupant(core.board().to_move())`) and becomes `play` at the
+cursor or `step`; `u` is `back`; the ceremony keys are unmapped.
 The session still validates the result — an occupied square, a
 finished game — and the loop shows the error. Translation is a
 suggestion; the session decides.
 
-`move_cursor` (lines 284–296) clamps with the named idioms:
+src/tui/input.rs, lines 255–275:
+
+```rust
+/// The phase-dependent keys during play, after any ceremony finished.
+fn playing_key(key: KeyEvent, state: &InputState, core: &SessionCore) -> InputOutcome {
+    match key.code {
+        // Enter is the obvious next action: a human seat plays at the
+        // cursor, an AI seat searches. The seat table decides; the
+        // session validates the result (an occupied square, a finished
+        // game) and the loop shows the error.
+        KeyCode::Enter => {
+            let side = core.board().to_move();
+            if core.occupant(side).is_human() {
+                InputOutcome::Command(Command::Play { mv: state.cursor })
+            } else {
+                InputOutcome::Command(Command::Step)
+            }
+        }
+        KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
+        // The ceremony keys (`d`, `b`, `w`, `m`) have no meaning during
+        // play and are ignored like any other unmapped key.
+        _ => InputOutcome::None,
+    }
+}
+```
+
+`move_cursor` clamps with the named idioms:
 `saturating_sub` up and left (a `u8` cannot go below zero),
 `saturating_add(1).min(14)` down and right. The `expect` documents
 that clamped coordinates are always valid; it is not error handling.
 
-### The tests
-
-Lines 299–672 hold 19 tests. The ceremony cores are built through the
-public session API (`placing_core`, `first_choice_core`,
-`placing2_core`, `final_choice_core`), so the tests exercise the real
-phases, not mocks of them. One test per mapping group, plus the modal
-transitions and the editing edge cases. An example of the style:
+src/tui/input.rs, lines 277–296:
 
 ```rust
-#[test]
-fn at_a_placement_phase_m_is_a_message_not_a_command() {
-    let core = placing_core();
-    let mut state = InputState::new();
-    assert_eq!(
-        handle_key(char_key('m'), &mut state, &core),
-        InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string())
-    );
+/// Move the board cursor one step, clamped to the board edges.
+///
+/// Up and left use `saturating_sub`: a `u8` cannot go below zero, and
+/// saturating_sub clamps at the edge instead of underflowing. Down and
+/// right use `min` with 14, the last valid index on a 15×15 board. The
+/// clamped coordinates are always valid, so `Move::new` cannot fail;
+/// the `expect` documents that invariant instead of handling an error.
+fn move_cursor(cursor: &mut Move, dr: i8, dc: i8) {
+    let row = match dr {
+        -1 => cursor.row().saturating_sub(1),
+        1 => cursor.row().saturating_add(1).min(14),
+        _ => cursor.row(),
+    };
+    let col = match dc {
+        -1 => cursor.col().saturating_sub(1),
+        1 => cursor.col().saturating_add(1).min(14),
+        _ => cursor.col(),
+    };
+    *cursor = Move::new(row, col).expect("clamped coordinates stay on the board");
 }
+```
+
+### The tests
+
+Lines 299–672 hold 19 tests. The shared helpers build keys, type
+text, and start sessions:
+
+src/tui/input.rs, lines 305–325:
+
+```rust
+    /// A key event with no modifiers, as a terminal reports a plain
+    /// keypress. `KeyEvent::new` marks the event as a press.
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn char_key(c: char) -> KeyEvent {
+        key(KeyCode::Char(c))
+    }
+
+    /// Type a string into an open command line, one `Char` key at a time.
+    fn type_text(state: &mut InputState, core: &SessionCore, text: &str) {
+        for c in text.chars() {
+            let outcome = handle_key(char_key(c), state, core);
+            assert_eq!(outcome, InputOutcome::None, "typing '{c}' edits only");
+        }
+    }
+
+    fn playing_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat())
+    }
+```
+
+The ceremony cores are built through the public session API, so the
+tests exercise the real phases, not mocks of them.
+
+src/tui/input.rs, lines 327–365:
+
+```rust
+    /// A session at the first placement phase.
+    fn placing_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
+    }
+
+    /// A session at the first choice: three alternating placements,
+    /// `done`.
+    fn first_choice_core() -> SessionCore {
+        let mut core = placing_core();
+        for (r, c) in [(7, 7), (8, 8), (9, 9)] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+            })
+            .unwrap();
+        }
+        core.execute(Command::Done).unwrap();
+        core
+    }
+
+    /// A session at the second placement phase: the first choice
+    /// declined with `more`.
+    fn placing2_core() -> SessionCore {
+        let mut core = first_choice_core();
+        core.execute(Command::More).unwrap();
+        core
+    }
+
+    /// A session at the final choice: both rounds placed and confirmed.
+    fn final_choice_core() -> SessionCore {
+        let mut core = placing2_core();
+        for (r, c) in [(5, 5), (6, 6)] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+            })
+            .unwrap();
+        }
+        core.execute(Command::Done).unwrap();
+        core
+    }
+```
+
+One test per mapping group, plus the modal
+transitions and the editing edge cases. An example of the style:
+
+src/tui/input.rs, lines 516–524:
+
+```rust
+    #[test]
+    fn at_a_placement_phase_m_is_a_message_not_a_command() {
+        let core = placing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('m'), &mut state, &core),
+            InputOutcome::Message(MORE_ONLY_AT_FIRST_CHOICE.to_string())
+        );
+    }
 ```
 
 The test `the_typed_quit_and_help_are_commands_for_the_loop_to_intercept`
@@ -393,25 +694,109 @@ pins the interception contract: typed `quit` and `help` translate to
 translator — turns them into shell behavior, because the session core
 treats both as no-ops.
 
+src/tui/input.rs, lines 651–671:
+
+```rust
+    #[test]
+    fn the_typed_quit_and_help_are_commands_for_the_loop_to_intercept() {
+        // `quit` and `help` typed on the command line translate to the
+        // same Command values as everything else. The loop intercepts
+        // them, because the session core treats both as no-ops.
+        let core = playing_core();
+        let mut state = InputState::new();
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "quit");
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Quit)
+        );
+
+        handle_key(char_key(':'), &mut state, &core);
+        type_text(&mut state, &core, "help");
+        assert_eq!(
+            handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Help)
+        );
+    }
+```
+
 ## src/tui/render.rs (extended)
 
 ### The view
 
-`StudyView` gains one field with a chainable setter.
-`message` (lines 95–105) is the bottom line in normal mode; the doc
-comment records that the command line owns the bottom line while it
-is open. The view needs no color input: the snapshot's `next_color`
-already states the alternation's answer.
+`StudyView` gains one field with a chainable setter. `message` is
+the bottom line in normal mode; the doc comment records that the
+command line owns the bottom line while it is open. The view needs no
+color input: the snapshot's `next_color` already states the
+alternation's answer.
+
+src/tui/render.rs, lines 95–105:
+
+```rust
+    /// Show `text` as the bottom line of the frame.
+    ///
+    /// One bottom line exists. While the command line is open it shows
+    /// the buffer and the message is not drawn; in normal mode the
+    /// message carries the last event summary or the last error text.
+    /// The line is never styled: it is feedback text, not furniture.
+    #[must_use]
+    pub fn message(mut self, text: &'a str) -> Self {
+        self.message = Some(text);
+        self
+    }
+```
 
 ### The board
 
-`render_study` passes the opening snapshot into both halves (lines
-133–141). The comment at the call site repeats the sub-chapter-c
-invariant: the tree board is empty during the ceremony by design, so
-the stones to draw come from the opening snapshot.
+`render_study` passes the opening snapshot into both halves. The
+comment at the call site repeats the sub-chapter-c invariant: the
+tree board is empty during the ceremony by design, so the stones to
+draw come from the opening snapshot. The bottom-line rule closes the
+function: the command line while it is open, else the message when
+there is one. One bottom line exists; the mode decides its content.
 
-The cell lookup (lines 237–248) falls back from the board to the
+src/tui/render.rs, lines 126–158:
+
+```rust
+pub fn render_study(view: &StudyView) -> Vec<String> {
+    let core = view.core;
+    let board = core.board();
+    let snapshot = core.snapshot();
+    // During a Swap2 ceremony the tree board is empty by design (the
+    // placements are not game moves), so the stones to draw come from
+    // the opening snapshot.
+    let opening = snapshot.opening.as_ref();
+    let board_lines = study_board_lines(
+        &board,
+        opening,
+        snapshot.last_move,
+        view.cursor,
+        view.styled,
+    );
+    let panel_lines = render_side_panel(core, &board, &snapshot, view.recent_events, view.styled);
+    let rows = board_lines.len().max(panel_lines.len());
+    let mut out = Vec::with_capacity(rows + 1);
+    for i in 0..rows {
+        let left = board_lines.get(i).map(String::as_str).unwrap_or("");
+        let right = panel_lines.get(i).map(String::as_str).unwrap_or("");
+        out.push(format!("{left}  {right}"));
+    }
+    // One bottom line: the command line while it is open (the user's
+    // text always at the bottom of the screen), else the message when
+    // the loop has one to show.
+    if let Some(buffer) = view.command_line {
+        out.push(format!(":{buffer}"));
+    } else if let Some(text) = view.message {
+        out.push(text.to_string());
+    }
+    out
+}
+```
+
+The cell lookup falls back from the board to the
 placement list:
+
+src/tui/render.rs, lines 237–248:
 
 ```rust
     // Ceremony placements are not in the tree board, so the board
@@ -435,9 +820,85 @@ tree, and the tree is empty.
 
 ### The panel
 
-`render_side_panel` (lines 284–309) splits its middle block by phase.
+`render_side_panel` splits its middle block by phase.
+
+src/tui/render.rs, lines 284–317:
+
+```rust
+fn render_side_panel(
+    core: &SessionCore,
+    board: &Board,
+    snapshot: &Snapshot,
+    recent_events: &[Event],
+    styled: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push(panel_line("-- Study table --", styled));
+    lines.push(format!("Black: {}", seat_label(core.black())));
+    lines.push(format!("White: {}", seat_label(core.white())));
+    lines.push(String::new());
+    // The middle block is phase-dependent: during the ceremony the tree
+    // is empty, so ply and side-to-move would describe a game that has
+    // not started. The ceremony block takes their place.
+    match &snapshot.opening {
+        Some(opening) => ceremony_lines(&mut lines, opening),
+        None => position_lines(&mut lines, board, snapshot),
+    }
+    lines.push(String::new());
+    lines.push("Last events:".to_string());
+    if recent_events.is_empty() {
+        lines.push("  (none)".to_string());
+    } else {
+        // The five most recent events, oldest first: the latest event is
+        // the bottom line of the list.
+        for ev in recent_events.iter().rev().take(5).rev() {
+            lines.push(format!("  {ev}"));
+        }
+    }
+    lines.push(String::new());
+    lines.push(panel_line("? help · q quit", styled));
+    lines
+}
+```
+
 The existing ply/status/path/branch code moves into `position_lines`
-(lines 321–347) unchanged. The ceremony block is new:
+unchanged.
+
+src/tui/render.rs, lines 319–347:
+
+```rust
+/// The game-state block of the side panel: ply, side to move or game
+/// result, path tail, and branch options.
+fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
+    lines.push(format!("Ply: {}", snapshot.ply));
+    // One line covers both states a game can be in: waiting for a side,
+    // or finished with a result.
+    match snapshot.status {
+        Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
+        Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
+        Status::Draw => lines.push("Game over: draw".to_string()),
+    }
+    lines.push(format!("Path: {}", path_tail_string(board)));
+    // One continuation is the main line, not a choice. The panel lists
+    // options only when the cursor is at a real branch point.
+    if snapshot.branch_options.len() > 1 {
+        let opts: Vec<String> = snapshot
+            .branch_options
+            .iter()
+            // The numbers are the 0-based index the `var` command takes,
+            // so what the user reads is what the user types.
+            .map(|(i, m)| format!("[{i}] {}", algebraic(*m)))
+            .collect();
+        lines.push(format!(
+            "{} variations: {}",
+            snapshot.branch_options.len(),
+            opts.join(" ")
+        ));
+    }
+}
+```
+
+The ceremony block is new:
 
 src/tui/render.rs, lines 349–392:
 
@@ -488,11 +949,9 @@ fn ceremony_lines(lines: &mut Vec<String>, opening: &OpeningSnapshot) {
 }
 ```
 
-The bottom-line rule in `render_study` (lines 149–157): the command
-line while it is open, else the message when there is one. One bottom
-line exists; the mode decides its content.
-
-The four new tests (lines 611–699): ceremony placements render as
+The bottom-line rule of `render_study` applies to the whole frame:
+the command line while it is open, else the message when there is
+one. The four new tests (lines 611–699): ceremony placements render as
 stones with byte offsets (the same technique as the last-move test),
 the panel shows phase/stones/next color/guidance and drops the
 game-state lines, a choice phase shows no `Next:` line, and the
@@ -577,12 +1036,58 @@ pub trait InputSource {
 }
 ```
 
-`RawInput` (lines 61–78) is a unit struct; the work is in
-`read_key_press` (lines 85–97), which filters for
-`KeyEventKind::Press`. Some platforms report release and repeat
-events; without the filter every key would act twice there. Non-key
-events are skipped: the loop repaints the whole frame on every key,
-so a resize needs no special handling beyond the next paint.
+`RawInput` is a unit struct; the work is in `read_key_press`, which
+filters for `KeyEventKind::Press`.
+
+src/tui/study.rs, lines 60–75:
+
+```rust
+/// The raw-mode input source: one terminal keypress per call.
+pub struct RawInput;
+
+impl InputSource for RawInput {
+    fn next_outcome(
+        &mut self,
+        state: &mut InputState,
+        core: &SessionCore,
+    ) -> io::Result<InputOutcome> {
+        Ok(handle_key(read_key_press()?, state, core))
+    }
+
+    fn wait_any_key(&mut self) -> io::Result<()> {
+        read_key_press().map(|_| ())
+    }
+}
+```
+
+The filter and its reasoning:
+
+src/tui/study.rs, lines 77–93:
+
+```rust
+/// Read one key press from the terminal.
+///
+/// crossterm reports press, release, and repeat events on some
+/// platforms (Windows); Unix terminals report presses only. Filtering
+/// on `KeyEventKind::Press` keeps every key acting exactly once on
+/// every platform. Non-key events (resize, mouse) are skipped: the
+/// loop repaints the full frame on every key anyway, so a resize needs
+/// no special handling beyond the next paint.
+fn read_key_press() -> io::Result<KeyEvent> {
+    loop {
+        if let CrosstermEvent::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            return Ok(key);
+        }
+    }
+}
+```
+
+Some platforms report release and repeat events; without the
+filter every key would act twice there. Non-key events are skipped:
+the loop repaints the whole frame on every key, so a resize needs no
+special handling beyond the next paint.
 
 ### The loop
 
@@ -635,34 +1140,149 @@ pub fn study_loop<S: Screen, I: InputSource>(
 
 `build_frame` (lines 166–191) assembles the view. The command line
 owns the bottom line while it is open; in normal mode the message
-shows, when there is one. `record_events` (lines 193–207) caps the
-list at 20, dropping from the front because index 0 is the oldest
-event, and sets the message to the batch's last event.
+shows, when there is one.
+
+src/tui/study.rs, lines 166–191:
+
+```rust
+/// Assemble the frame for one loop iteration.
+///
+/// The view carries what the renderer cannot know: the board cursor
+/// lives in the input state, and the message line lives in the loop.
+/// One bottom line exists: while the command line is open it shows
+/// the buffer; in normal mode it shows the message, when there is
+/// one.
+fn build_frame(
+    core: &SessionCore,
+    state: &InputState,
+    events: &[Event],
+    message: Option<&str>,
+    styled: bool,
+) -> Vec<String> {
+    let view = StudyView::new(core, events)
+        .cursor(state.cursor)
+        .styled(styled);
+    let view = match &state.mode {
+        InputMode::CommandLine(buffer) => view.command_line(buffer),
+        InputMode::Normal => match message {
+            Some(text) => view.message(text),
+            None => view,
+        },
+    };
+    render_study(&view)
+}
+```
+
+`record_events` (lines 193–207) caps the list at 20, dropping from
+the front because index 0 is the oldest event, and sets the message
+to the batch's last event.
+
+src/tui/study.rs, lines 193–207:
+
+```rust
+/// Append one batch of events to the capped list and update the
+/// message line.
+///
+/// The message is the summary of the batch's last event: the newest
+/// fact about the session. The list drops from the front when it
+/// exceeds the cap, because index 0 is the oldest event.
+fn record_events(events: &mut Vec<Event>, message: &mut Option<String>, new_events: &[Event]) {
+    if let Some(last) = new_events.last() {
+        *message = Some(last.to_string());
+    }
+    events.extend_from_slice(new_events);
+    let excess = events.len().saturating_sub(EVENT_CAP);
+    // `drain` is lazy; `drop` on the iterator performs the removal.
+    drop(events.drain(..excess));
+}
+```
 
 ### The help screen
 
-`help_frame` (lines 215–231) reuses `repl::HELP` for the typed
-language and appends the normal-mode key table (`NORMAL_MODE_KEYS`,
-lines 233–249). Reusing the constant is the point: the help screen
-and the line-mode `help` command cannot drift apart. The key table
-lists the phase-dependent keys with their phases, because that is the
-one thing a user cannot guess; `b`/`w` appear only as the choice
-keys, because the strict alternation leaves nothing to select at a
-placement phase.
+`show_help` draws the frame and waits for one key through the
+source; `help_frame` reuses `repl::HELP` for the typed language and
+appends the normal-mode key table (`NORMAL_MODE_KEYS`). Reusing the
+constant is the point: the help screen and the line-mode `help`
+command cannot drift apart. The key table lists the phase-dependent
+keys with their phases, because that is the one thing a user cannot
+guess; `b`/`w` appear only as the choice keys, because the strict
+alternation leaves nothing to select at a placement phase.
+
+src/tui/study.rs, lines 209–231:
+
+```rust
+/// Draw the full-screen help and wait for one key to dismiss it.
+fn show_help<S: Screen, I: InputSource>(screen: &mut S, input: &mut I) -> io::Result<()> {
+    screen.draw(&help_frame())?;
+    input.wait_any_key()
+}
+
+/// The help frame: the typed command language, then the normal-mode
+/// key table, then the dismissal note.
+///
+/// The command-language part reuses [`repl::HELP`], so the help screen
+/// and the line-mode `help` command cannot drift apart. The frame is
+/// unstyled text: it must stay readable on every terminal, and the
+/// help screen has no stones to highlight.
+fn help_frame() -> Vec<String> {
+    // `HELP` ends with a newline; `str::lines` drops it, so the blank
+    // separator between the two parts is added explicitly.
+    let mut lines: Vec<String> = repl::HELP.lines().map(str::to_string).collect();
+    lines.push(String::new());
+    lines.extend(NORMAL_MODE_KEYS.lines().map(str::to_string));
+    lines.push(String::new());
+    lines.push("Press any key to return to the table.".to_string());
+    lines
+}
+```
+
+The key table constant:
+
+src/tui/study.rs, lines 233–249:
+
+```rust
+/// The normal-mode half of the help text.
+///
+/// The table lists the phase-dependent keys with their phases, because
+/// that is the one thing a user cannot guess: `u` undoes a placement
+/// during the ceremony and goes back one ply afterwards.
+const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
+  arrows, hjkl   move the board cursor
+  Enter          play at the cursor (human seat), step the AI (AI seat);
+                 during Swap2 placement: place the next stone
+  u              undo: remove a Swap2 placement / go back one ply
+  d              Swap2 placement: end the round (done)
+  b, w           Swap2 choice: choose that color
+  m              Swap2 first choice: place two more stones (more)
+  :              open the command line (Esc cancels, Enter executes)
+  ?              show this help
+  q              quit
+"#;
+```
 
 ### The entry point
 
-`run` (lines 105–127) checks `stdout().is_terminal()` first. On a
-pipe it returns an `Unsupported` error with a sentence that names
+`run` checks `stdout().is_terminal()` first. On a pipe it returns
+an `Unsupported` error with a sentence that names
 sub-chapter e; writing escape sequences into a pipe would produce
 garbage, and a clear error beats garbage. On a terminal it enters the
 guard and runs the loop. The `SessionCore` is built here, inside the
 guard's lifetime, so a construction panic still restores the
 terminal.
 
-src/tui/study.rs, lines 105–118:
+src/tui/study.rs, lines 95–118:
 
 ```rust
+/// Run the study table on the full screen.
+///
+/// `hint`, when given, is the first message on the message line — for
+/// example a note that the session starts inside the Swap2 ceremony.
+///
+/// # Errors
+/// Returns an error when stdout is not a terminal. The line-mode
+/// fallback for pipes and CI is sub-chapter e; until then the shell
+/// refuses instead of writing escape sequences into a pipe. Also
+/// returns any I/O error from the terminal itself.
 pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
     if !io::stdout().is_terminal() {
         return Err(io::Error::new(
@@ -683,9 +1303,47 @@ pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
 
 The tests (lines 252–542) define the two fakes. `TestScreen` records
 every frame in a `Vec`; its `styled()` keeps the default `false`, so
-assertions read plain text. `ScriptedInput` plays back a list of key
-events and treats exhaustion as an error, not a silent quit: a
-shorter-than-intended script must fail the test, not pass it.
+assertions read plain text.
+
+src/tui/study.rs, lines 259–289:
+
+```rust
+    /// A screen that records every frame it is asked to draw.
+    ///
+    /// The terminal cannot be asserted on; a `Vec` can. The recorded
+    /// frames are unstyled, because the default `styled()` is false.
+    struct TestScreen {
+        frames: Vec<Vec<String>>,
+    }
+
+    impl TestScreen {
+        fn new() -> Self {
+            Self { frames: Vec::new() }
+        }
+
+        /// All recorded frames joined into one text, for content
+        /// assertions that do not care about frame boundaries.
+        fn all_text(&self) -> String {
+            self.frames
+                .iter()
+                .flat_map(|frame| frame.iter())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+
+    impl Screen for TestScreen {
+        fn draw(&mut self, frame: &[String]) -> io::Result<()> {
+            self.frames.push(frame.to_vec());
+            Ok(())
+        }
+    }
+```
+
+`ScriptedInput` plays back a list of key events and treats
+exhaustion as an error, not a silent quit: a shorter-than-intended
+script must fail the test, not pass it.
 
 src/tui/study.rs, lines 291–298 (excerpt):
 
@@ -700,35 +1358,125 @@ src/tui/study.rs, lines 291–298 (excerpt):
     }
 ```
 
+The implementation plays the keys back in order:
+
+src/tui/study.rs, lines 300–324:
+
+```rust
+    impl ScriptedInput {
+        fn new(keys: Vec<KeyEvent>) -> Self {
+            Self { keys: keys.into() }
+        }
+
+        fn pop(&mut self) -> io::Result<KeyEvent> {
+            self.keys.pop_front().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::UnexpectedEof, "the script ran out of keys")
+            })
+        }
+    }
+
+    impl InputSource for ScriptedInput {
+        fn next_outcome(
+            &mut self,
+            state: &mut InputState,
+            core: &SessionCore,
+        ) -> io::Result<InputOutcome> {
+            Ok(handle_key(self.pop()?, state, core))
+        }
+
+        fn wait_any_key(&mut self) -> io::Result<()> {
+            self.pop().map(|_| ())
+        }
+    }
+```
+
+The key constructors, the typed-line helper, and the scripted runner:
+
+src/tui/study.rs, lines 326–352:
+
+```rust
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn char_key(c: char) -> KeyEvent {
+        key(KeyCode::Char(c))
+    }
+
+    /// A typed command line as a list of keys: `:`, the text, Enter.
+    fn typed_line(text: &str) -> Vec<KeyEvent> {
+        let mut keys = vec![char_key(':')];
+        keys.extend(text.chars().map(char_key));
+        keys.push(key(KeyCode::Enter));
+        keys
+    }
+
+    /// Run the loop to completion over a scripted session and return
+    /// the recorded frames.
+    fn run_scripted(
+        mut core: SessionCore,
+        keys: Vec<KeyEvent>,
+    ) -> io::Result<(SessionCore, TestScreen)> {
+        let mut screen = TestScreen::new();
+        let mut input = ScriptedInput::new(keys);
+        study_loop(&mut core, &mut screen, &mut input, None)?;
+        Ok((core, screen))
+    }
+```
+
 One test as an example of the style — the ceremony path, which also
 pins the strict alternation across the frames:
 
-```rust
-#[test]
-fn the_loop_runs_the_ceremony_on_alternated_placements() {
-    let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
-    // Enter places h8 Black; Right+Enter places i8 White;
-    // Right+Enter places j8 Black; `d` ends the round; `b` takes
-    // Black; `q` quits. The colors come from the strict
-    // alternation — no key selects them.
-    let keys = vec![
-        key(KeyCode::Enter),
-        key(KeyCode::Right),
-        key(KeyCode::Enter),
-        key(KeyCode::Right),
-        key(KeyCode::Enter),
-        char_key('d'),
-        char_key('b'),
-        char_key('q'),
-    ];
-    let (core, screen) = run_scripted(core, keys).expect("a scripted ceremony runs clean");
+src/tui/study.rs, lines 390–436:
 
-    // The ceremony finished: the tree root holds the opening board
-    // and White moves first.
-    assert!(core.snapshot().opening.is_none());
-    assert_eq!(core.board().to_move(), Color::White);
-    assert_eq!(core.board().stone_at(Move::new(7, 9).unwrap()), Some(Color::Black));
-}
+```rust
+    #[test]
+    fn the_loop_runs_the_ceremony_on_alternated_placements() {
+        let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        // Enter places h8 Black; Right+Enter places i8 White;
+        // Right+Enter places j8 Black; `d` ends the round; `b` takes
+        // Black; `q` quits. The colors come from the strict
+        // alternation — no key selects them.
+        let keys = vec![
+            key(KeyCode::Enter),
+            key(KeyCode::Right),
+            key(KeyCode::Enter),
+            key(KeyCode::Right),
+            key(KeyCode::Enter),
+            char_key('d'),
+            char_key('b'),
+            char_key('q'),
+        ];
+        let (core, screen) = run_scripted(core, keys).expect("a scripted ceremony runs clean");
+
+        // The ceremony finished: the tree root holds the opening board
+        // and White moves first.
+        assert!(core.snapshot().opening.is_none());
+        assert_eq!(core.board().to_move(), Color::White);
+        assert_eq!(
+            core.board().stone_at(Move::new(7, 7).unwrap()),
+            Some(Color::Black)
+        );
+        assert_eq!(
+            core.board().stone_at(Move::new(7, 8).unwrap()),
+            Some(Color::White)
+        );
+        assert_eq!(
+            core.board().stone_at(Move::new(7, 9).unwrap()),
+            Some(Color::Black)
+        );
+
+        // Frame 0 is the initial frame; the key at index i is processed
+        // before frame i+1 is drawn. Frame 1 follows the placement of
+        // h8: the panel names the alternation's next color.
+        assert!(
+            screen.frames[1]
+                .iter()
+                .any(|line| line.contains("Next: White")),
+            "the panel shows the next stone's color: {:?}",
+            screen.frames[1]
+        );
+    }
 ```
 
 The assertions on recorded frames use the frame index as a timeline:

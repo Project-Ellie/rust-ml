@@ -18,11 +18,31 @@ additions (`study.rs`), then the integration tests
 
 ## src/tui/screen.rs (extended, 179 lines, +57)
 
-The module doc (lines 1–17) now names both implementations:
+The module doc now names both implementations:
 `AltScreen` repaints the same twenty terminal rows; `LineScreen`
 appends every frame below the previous one, so a session read back
 from a log shows the frames in order. That order property is what
 makes the transcript testable.
+
+src/tui/screen.rs, lines 1–15:
+
+```rust
+//! The screen abstraction: where a finished frame goes.
+//!
+//! One trait, one method. The loop in [`crate::tui::study`] builds a
+//! frame as a `Vec<String>` and hands it to a [`Screen`]; the screen
+//! decides how the lines reach the user. Two implementations exist.
+//! [`AltScreen`] is the full-screen one: crossterm, the alternate
+//! screen, and an RAII guard that restores the terminal on every exit
+//! path. [`LineScreen`] is the fallback for pipes, CI logs, and
+//! redirects: it appends the frame's lines to a writer and nothing
+//! more.
+//!
+//! The trait is deliberately small. A screen does not know about
+//! sessions, commands, or keys; it knows how to draw lines. That is
+//! what lets a test replace the terminal with a `Vec` of recorded
+//! frames.
+```
 
 `LineScreen` is generic over the writer. Tests pass a `Vec<u8>` and
 recover it with `into_inner`; production uses the named `stdout()`
@@ -124,11 +144,35 @@ src/tui/study.rs, lines 69–80:
 ### The line-mode source
 
 `LineInput` lives in `study.rs`, not in `input.rs` — see the
-deviations section for the placement argument. The struct doc (lines
-100–116) states the two rules of the mapping: no special cases beyond
-the empty line, because the grammar already knows the help and quit
-words; and no cursor-only keys, because there is no cursor to move
-and no normal mode to press them in.
+deviations section for the placement argument. The struct doc states
+the two rules of the mapping: no special cases beyond the empty line,
+because the grammar already knows the help and quit words; and no
+cursor-only keys, because there is no cursor to move and no normal
+mode to press them in.
+
+src/tui/study.rs, lines 100–116:
+
+```rust
+/// The line-mode input source: one complete line per call.
+///
+/// `LineInput` is the canonical-mode counterpart of [`RawInput`]. The
+/// terminal driver in canonical mode delivers a line at a time, and
+/// so do pipes, CI logs, and redirected scripts. Each line maps to an
+/// outcome through the shared grammar of [`command::parse`]; the
+/// mapping has no special cases beyond the empty line, because the
+/// grammar already knows `h`/`help`/`?` as `Help` and
+/// `q`/`quit`/`exit` as `Quit`, and the loop intercepts both
+/// commands. What line mode does not have are the cursor-only keys —
+/// arrows and the `d`/`b`/`w`/`m` ceremony keys — because there is no
+/// cursor to move and no normal mode to press them in. The typed
+/// commands (`play h8`, `done`, `black`, `white`, `more`, `back`)
+/// cover the ceremony.
+///
+/// The source is generic over the reader so tests can script it from
+/// memory; production reads stdin.
+```
+
+The struct is one reader; the constructor wraps it:
 
 src/tui/study.rs, lines 117–131:
 
@@ -158,7 +202,7 @@ its own meaning, so there is no cursor to move and no buffer to edit.
 the "any key" of canonical mode is the Enter key, and EOF dismisses
 the help screen too.
 
-src/tui/study.rs, lines 133–151:
+src/tui/study.rs, lines 133–166:
 
 ```rust
 impl<R: BufRead> InputSource for LineInput<R> {
@@ -180,6 +224,21 @@ impl<R: BufRead> InputSource for LineInput<R> {
         }
         Ok(line_outcome(&line, core))
     }
+
+    fn wait_any_key(&mut self) -> io::Result<()> {
+        // The "any key" of line mode is the Enter key: canonical mode
+        // delivers a line at a time, so one read dismisses the help
+        // screen. EOF dismisses it too.
+        let mut line = String::new();
+        self.reader.read_line(&mut line).map(|_| ())
+    }
+
+    /// Line mode has no normal mode: no single keys, no board cursor,
+    /// no `:` command line.
+    fn has_normal_mode(&self) -> bool {
+        false
+    }
+}
 ```
 
 Note the deliberate contrast with sub-chapter d's `ScriptedInput`
@@ -195,6 +254,31 @@ trims, delegates the empty line, and sends everything else through
 drift from it, the way the reference build's two line parsers drifted
 apart. A parse error becomes a `Message` with the parser's own text,
 the same as on the `:` command line.
+
+src/tui/study.rs, lines 168–184:
+
+```rust
+/// Translate one input line into an outcome: the line-mode mapping.
+///
+/// Everything non-empty goes through [`command::parse`]: one grammar
+/// exists, and a second parser here would drift from it, the way the
+/// reference build's two line parsers drifted apart. A parse error
+/// becomes a [`InputOutcome::Message`] with the parser's own text, the
+/// same as on the `:` command line of the full-screen shell.
+fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return empty_line_outcome(core);
+    }
+    match command::parse(trimmed) {
+        Ok(cmd) => InputOutcome::Command(cmd),
+        Err(err) => InputOutcome::Message(err.to_string()),
+    }
+}
+```
+
+The empty-line delegate holds the surviving half of Enter's
+normal-mode meaning:
 
 src/tui/study.rs, lines 186–209:
 
@@ -227,16 +311,30 @@ fn empty_line_outcome(core: &SessionCore) -> InputOutcome {
 
 ### The selection rule
 
-`run` (lines 229–265) lost the `Unsupported` error. The
+`run` (lines 229–263) lost the `Unsupported` error. The
 `SessionCore` is now built before the match, so a construction panic
 happens before the terminal is touched at all. The `FullScreen` arm
 is sub-chapter d's body unchanged; the `Line` arm constructs the
 fallback pair. Production stdin needs a lock: `StdinLock` implements
 `BufRead`, and `Stdin` itself does not.
 
-src/tui/study.rs, lines 243–263:
+src/tui/study.rs, lines 229–263:
 
 ```rust
+/// Run the study table.
+///
+/// The selection rule: a terminal gets the full-screen shell
+/// ([`AltScreen`] and [`RawInput`]); anything else gets the line-mode
+/// fallback ([`LineScreen`] and [`LineInput`]). Piped output, CI, and
+/// redirected sessions keep working: the fallback writes plain text
+/// and reads complete lines, so a script drives the same loop as a
+/// terminal.
+///
+/// `hint`, when given, is the first message on the message line — for
+/// example a note that the session starts inside the Swap2 ceremony.
+///
+/// # Errors
+/// Returns any I/O error from the terminal or the streams.
 pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
     let mut core = SessionCore::new(init);
     match select_shell(io::stdout().is_terminal()) {
@@ -260,16 +358,81 @@ pub fn run(init: SessionInit, hint: Option<&str>) -> io::Result<()> {
 }
 ```
 
-The decision is extracted (lines 267–289): a private `Shell` enum and
+The decision is extracted: a private `Shell` enum and
 `select_shell(stdout_is_terminal: bool) -> Shell`. One bit in, one
 choice out. The unit test pins both directions; `run` keeps only the
 side effects.
 
+src/tui/study.rs, lines 265–288:
+
+```rust
+/// Which shell serves the session.
+///
+/// The enum exists so the selection rule is a pure decision that a
+/// test can pin: the terminal check goes in, the shell choice comes
+/// out, and only [`run`] performs the side effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shell {
+    /// The full-screen shell: alternate screen, raw-mode keys.
+    FullScreen,
+    /// The line-mode fallback: plain output, complete lines.
+    Line,
+}
+
+/// The selection rule as a pure decision.
+///
+/// A terminal gets the full-screen shell; a pipe, a CI log, or a
+/// redirect gets the line-mode fallback. One bit in, one choice out.
+fn select_shell(stdout_is_terminal: bool) -> Shell {
+    if stdout_is_terminal {
+        Shell::FullScreen
+    } else {
+        Shell::Line
+    }
+}
+```
+
 ### The loop's two changed lines
 
-The first change is the cursor. `build_frame` (lines 346–375) now
-takes `cursor: Option<Move>` and sets it on the view only when
-present; the loop computes the option from the predicate.
+The first change is the cursor. `build_frame` now takes
+`cursor: Option<Move>` and sets it on the view only when present:
+
+src/tui/study.rs, lines 346–375:
+
+```rust
+/// Assemble the frame for one loop iteration.
+///
+/// The view carries what the renderer cannot know: the board cursor
+/// lives in the input state, and the message line lives in the loop.
+/// `cursor` is `None` when the input source has no cursor (line
+/// mode), and the frame then shows no cursor marker. One bottom line
+/// exists: while the command line is open it shows the buffer; in
+/// normal mode it shows the message, when there is one.
+fn build_frame(
+    core: &SessionCore,
+    state: &InputState,
+    cursor: Option<Move>,
+    events: &[Event],
+    message: Option<&str>,
+    styled: bool,
+) -> Vec<String> {
+    let view = StudyView::new(core, events).styled(styled);
+    let view = match cursor {
+        Some(mv) => view.cursor(mv),
+        None => view,
+    };
+    let view = match &state.mode {
+        InputMode::CommandLine(buffer) => view.command_line(buffer),
+        InputMode::Normal => match message {
+            Some(text) => view.message(text),
+            None => view,
+        },
+    };
+    render_study(&view)
+}
+```
+
+The loop computes the option from the predicate:
 
 src/tui/study.rs, lines 310–323:
 
@@ -344,19 +507,21 @@ would answer `Step`. One test pins the grammar mapping across the
 help words, the quit words, and the ceremony vocabulary. One example
 of the style:
 
+src/tui/study.rs, lines 770–781:
+
 ```rust
-#[test]
-fn the_empty_line_stays_quiet_during_the_ceremony() {
-    // An AI Black seat would qualify for a step during play, but
-    // the ceremony refuses step: the AI searches game positions,
-    // and ceremony stones are not a game position.
-    let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
-    core.execute(Command::Release {
-        seat: SeatSel::Black,
-    })
-    .unwrap();
-    assert_eq!(line_outcome("", &core), InputOutcome::None);
-}
+    #[test]
+    fn the_empty_line_stays_quiet_during_the_ceremony() {
+        // An AI Black seat would qualify for a step during play, but
+        // the ceremony refuses step: the AI searches game positions,
+        // and ceremony stones are not a game position.
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
 ```
 
 The remaining tests: the parse error is a `Message` with the parser's
@@ -436,7 +601,49 @@ the equality assertion, named assertions pin the individual
 properties — no `<` anywhere, the session's error text, the
 typed-language help without the key table, the Enter dismissal note —
 so a regression says what it broke before the byte comparison dumps
-two frames.
+two frames. The test:
+
+tests/line_mode.rs, lines 158–194:
+
+```rust
+#[test]
+fn the_two_move_transcript_is_byte_exact() {
+    let core = SessionCore::new(SessionInit::new_hotseat());
+    // Two moves, an illegal repeat of the first (the error line), the
+    // help screen dismissed with Enter, and quit.
+    let (core, transcript) = run_line_script(core, "h8\ni8\nh8\nhelp\n\nquit\n");
+
+    assert_eq!(transcript, TWO_MOVE_TRANSCRIPT);
+
+    // The named properties, asserted on their own so a regression says
+    // what it broke before the byte comparison dumps two frames:
+    // - no cursor marker anywhere (line mode has no cursor);
+    assert!(!transcript.contains('<'), "no cursor marker: {transcript}");
+    // - the error line is the session's own error text;
+    assert!(
+        transcript.contains("Illegal Move Cell is already occupied."),
+        "the illegal repeat lands on the message line: {transcript}"
+    );
+    // - the help screen shows the typed language, not the key table
+    //   for keys that do not exist here;
+    assert!(
+        transcript.contains("Commands (case-insensitive):"),
+        "the typed language: {transcript}"
+    );
+    assert!(
+        !transcript.contains("Normal-mode keys"),
+        "no key table in line mode: {transcript}"
+    );
+    assert!(
+        transcript.contains("Press Enter to return to the table."),
+        "the line-mode dismissal note: {transcript}"
+    );
+    // - and the stones landed.
+    assert_eq!(core.board().stone_at(mv(7, 7)), Some(Color::Black));
+    assert_eq!(core.board().stone_at(mv(7, 8)), Some(Color::White));
+    assert_eq!(core.snapshot().ply, 2);
+}
+```
 
 ### The typed ceremony
 

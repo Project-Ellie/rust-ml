@@ -88,17 +88,51 @@ The variant is `Selfplay`, not `SelfPlay`: clap kebab-cases variant
 names, and `SelfPlay` would spell the subcommand `self-play`. The doc
 comments on the variants become the subcommand help text.
 
-`PlayArgs` (lines 45–54) is the flattened `SearchArgs` plus the
-`--no-swap2` boolean. `SearchArgs` (lines 55–97) holds the search
-flags. Two details matter. The `sims` and `c_puct` flags carry
-`default_value_t`, because their defaults are plain values. The
-`temperature` and `noise` flags do not: they are `Option<f32>`, so an
-explicit flag is distinguishable from the default. The doc comments
-name the consequence.
+`PlayArgs` is the flattened `SearchArgs` plus the
+`--no-swap2` boolean:
 
-src/main.rs, lines 74–84:
+src/main.rs, lines 45–53:
 
 ```rust
+#[derive(Args, Debug, Clone)]
+struct PlayArgs {
+    #[command(flatten)]
+    search: SearchArgs,
+
+    /// Skip the Swap2 opening and start from an empty board.
+    #[arg(long)]
+    no_swap2: bool,
+}
+```
+
+`SearchArgs` holds the search flags. Two details matter. The `sims`
+and `c_puct` flags carry `default_value_t`, because their defaults
+are plain values. The `temperature` and `noise` flags do not: they
+are `Option<f32>`, so an explicit flag is distinguishable from the
+default. The doc comments name the consequence.
+
+src/main.rs, lines 55–97:
+
+```rust
+#[derive(Args, Debug, Clone)]
+struct SearchArgs {
+    /// AI occupant kind (currently only tactics). The AI takes the
+    /// seat opposite the human; see --color.
+    #[arg(long, value_name = "AI")]
+    ai: Option<AiKind>,
+
+    /// Human seat color when --ai is used (default: black).
+    #[arg(long, value_name = "COLOR")]
+    color: Option<PlayerColor>,
+
+    /// Number of MCTS simulations per move (default 400).
+    #[arg(long, value_name = "N", default_value_t = 400)]
+    sims: u32,
+
+    /// PUCT exploration constant (default 1.5).
+    #[arg(long, value_name = "F", default_value_t = 1.5)]
+    c_puct: f32,
+
     /// Move-selection temperature (default 0.0). An explicit value
     /// marks the selection as user-configured, which disables the
     /// opening schedule in AI-vs-AI sessions.
@@ -110,10 +144,40 @@ src/main.rs, lines 74–84:
     /// schedule in AI-vs-AI sessions.
     #[arg(long, value_name = "F")]
     noise: Option<f32>,
+
+    /// Override the simulation count of the Black seat.
+    #[arg(long, value_name = "N")]
+    black_sims: Option<u32>,
+
+    /// Override the simulation count of the White seat.
+    #[arg(long, value_name = "N")]
+    white_sims: Option<u32>,
+
+    /// Random seed for reproducible sessions.
+    #[arg(long, value_name = "N")]
+    seed: Option<u64>,
+}
 ```
 
-`AiKind` and `PlayerColor` (lines 99–110) are the two value enums,
-`rename_all = "lower"`, one `Tactics` variant and two color variants.
+`AiKind` and `PlayerColor` are the two value enums,
+`rename_all = "lower"`, one `Tactics` variant and two color variants:
+
+src/main.rs, lines 99–110:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "lower")]
+enum AiKind {
+    Tactics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "lower")]
+enum PlayerColor {
+    Black,
+    White,
+}
+```
 
 ### The dispatch
 
@@ -161,10 +225,21 @@ fn main() {
 }
 ```
 
-`usage_error` (lines 146–151) prints to stderr and exits with code 2
+`usage_error` prints to stderr and exits with code 2
 — the code clap itself uses for command-line errors, so the shell
 sees one convention. Runtime errors from `study::run` exit with code
 1.
+
+src/main.rs, lines 146–151:
+
+```rust
+/// Report a usage error and exit with code 2 — the code clap itself
+/// uses for command-line errors, so the shell sees one convention.
+fn usage_error(message: &str) -> ! {
+    eprintln!("error: {message}");
+    std::process::exit(2);
+}
+```
 
 ### The two runners
 
@@ -248,8 +323,31 @@ at all — the reference front-end still ran the Swap2 as a separate
 program that returned a board, and its `run_with_swap2` entry point
 is gone.
 
-`selfplay_init` (lines 215–227) seats the AI in both seats, each with
-its own config, and sets `swap2: false`. `ai_config_from` (lines
+`selfplay_init` seats the AI in both seats, each with
+its own config, and sets `swap2: false`:
+
+src/main.rs, lines 212–227:
+
+```rust
+/// Build the `SessionInit` for `selfplay`: both seats AI. The per-seat
+/// overrides let the two seats differ (`--black-sims 800 --sims 200`
+/// plays an 800-simulation Black against a 200-simulation White).
+fn selfplay_init(search: &SearchArgs) -> SessionInit {
+    let base = ai_config_from(search);
+    SessionInit {
+        black: Occupant::Ai(seat_config(&base, Color::Black, search)),
+        white: Occupant::Ai(seat_config(&base, Color::White, search)),
+        default_config: base,
+        black_sims: search.black_sims,
+        white_sims: search.white_sims,
+        seed: search.seed,
+        opening: Board::new(),
+        swap2: false,
+    }
+}
+```
+
+`ai_config_from` (lines
 237–246) applies the explicit-selection rule:
 
 src/main.rs, lines 237–246:
@@ -267,10 +365,44 @@ fn ai_config_from(search: &SearchArgs) -> AiConfig {
 }
 ```
 
-`seat_config` (lines 252–262) applies one seat's simulation override
-to a clone of the base config — the same request the `sims` command
-makes mid-session, made here at startup. `player_color` (lines
-265–270) maps the CLI color to the engine color.
+`seat_config` applies one seat's simulation override to a clone of
+the base config — the same request the `sims` command makes
+mid-session, made here at startup. `player_color` maps the CLI color
+to the engine color.
+
+src/main.rs, lines 248–262:
+
+```rust
+/// The configuration for one AI seat: the base config with that
+/// seat's simulation override applied. This mirrors the `sims`
+/// command, which updates the stored override and the live seat
+/// config together; the flag is the same request at startup.
+fn seat_config(base: &AiConfig, seat: Color, search: &SearchArgs) -> AiConfig {
+    let mut config = base.clone();
+    let sims = match seat {
+        Color::Black => search.black_sims,
+        Color::White => search.white_sims,
+    };
+    if let Some(n) = sims {
+        config.simulations = n;
+    }
+    config
+}
+```
+
+The mapping itself:
+
+src/main.rs, lines 264–270:
+
+```rust
+/// Map the CLI color to the engine color.
+fn player_color(color: PlayerColor) -> Color {
+    match color {
+        PlayerColor::Black => Color::Black,
+        PlayerColor::White => Color::White,
+    }
+}
+```
 
 A note on size: `main.rs` is 270 lines, past the chapter's
 approximate 250-line budget. The bulk is clap declarations and their
@@ -378,18 +510,55 @@ fn run_gomoku(args: &[&str], script: &str) -> Output {
 The ignored write error is deliberate: a process that exits early (a
 usage error) closes its end of the pipe before reading, and those
 tests assert on the exit code and stderr, not on the script.
-`stdout_text` and `stderr_text` (lines 42–49) decode the captures.
+`stdout_text` and `stderr_text` decode the captures:
+
+tests/binary.rs, lines 41–49:
+
+```rust
+/// The captured stdout as text.
+fn stdout_text(output: &Output) -> String {
+    String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
+}
+
+/// The captured stderr as text.
+fn stderr_text(output: &Output) -> String {
+    String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
+}
+```
 
 ### The session tests
 
-`selfplay_steps_at_empty_lines_and_terminates_at_eof` (lines 51–79)
-runs `selfplay --sims 25 --seed 7` with three empty lines and no
-`quit`. The assertions: exit success, both seat labels show
-`AI(25)`, moves happen (`Moved`, `by Ai`), `Ply: 3`. Then the
-determinism check — a second process with the same seed must print
-identical bytes:
+`selfplay_steps_at_empty_lines_and_terminates_at_eof` runs
+`selfplay --sims 25 --seed 7` with three empty lines and no `quit`.
+The assertions: exit success, both seat labels show `AI(25)`, moves
+happen (`Moved`, `by Ai`), `Ply: 3`. The determinism check closes
+the test: a second process with the same seed must print identical
+bytes.
+
+tests/binary.rs, lines 51–79:
 
 ```rust
+#[test]
+fn selfplay_steps_at_empty_lines_and_terminates_at_eof() {
+    // Both seats AI. An empty line steps the side to move, so three
+    // empty lines play three moves. The script has no `quit` line:
+    // end of input terminates the session.
+    let args = ["selfplay", "--sims", "25", "--seed", "7"];
+    let script = "\n\n\n";
+    let first = run_gomoku(&args, script);
+    assert!(
+        first.status.success(),
+        "selfplay exits successfully: {}",
+        stderr_text(&first)
+    );
+    let text = stdout_text(&first);
+    // The seat labels prove the search flags reached both seats.
+    assert!(text.contains("Black: AI(25)"), "the Black seat: {text}");
+    assert!(text.contains("White: AI(25)"), "the White seat: {text}");
+    assert!(text.contains("Moved"), "the AI played moves: {text}");
+    assert!(text.contains("by Ai"), "the mover is the AI seat: {text}");
+    assert!(text.contains("Ply: 3"), "three steps happened: {text}");
+
     // The seed makes the run reproducible: a second process prints
     // the same transcript, byte for byte.
     let second = run_gomoku(&args, script);
@@ -397,10 +566,11 @@ identical bytes:
         first.stdout, second.stdout,
         "the same seed reproduces the session"
     );
+}
 ```
 
-`play_against_the_ai_supports_a_scripted_short_win` (lines 81–122)
-runs `play --ai tactics --no-swap2`. Black plays five on row 8; the
+`play_against_the_ai_supports_a_scripted_short_win` runs
+`play --ai tactics --no-swap2`. Black plays five on row 8; the
 White replies are typed parking moves. The comment in the test
 explains why: `play` forces a move for the side to move regardless of
 the seat's occupant, and the session credits it to the AI seat — a
@@ -410,19 +580,129 @@ to. The assertions pin the seat labels (`Black: Human`,
 game-over lines (`Game over: Black wins` on the panel, `Game over:
 Won(Black)` as the event text).
 
-`play_no_swap2_starts_at_an_empty_board` (lines 124–145) is the
-negative control for the ceremony: two hotseat moves, `Ply: 2`, and
-no "Swap2" anywhere in the transcript. It ends at EOF.
+tests/binary.rs, lines 81–122:
 
-`the_default_invocation_runs_the_swap2_ceremony` (lines 147–203)
-passes no subcommand at all: the default path runs the ceremony. The
+```rust
+#[test]
+fn play_against_the_ai_supports_a_scripted_short_win() {
+    // `--ai tactics` seats the AI in White (the default human seat is
+    // Black); `--no-swap2` skips the ceremony. Black plays five on
+    // row 8. The White replies are typed parking moves: `play`
+    // forces a move for the side to move regardless of the seat's
+    // occupant, and the session credits it to the AI seat. A script
+    // cannot out-calculate the tactics evaluator, and it does not
+    // have to — the AI's own moves are covered by the selfplay test.
+    let output = run_gomoku(
+        &["play", "--ai", "tactics", "--no-swap2"],
+        "h8\na1\ni8\na2\nj8\na3\nk8\na4\nl8\nquit\n",
+    );
+    assert!(
+        output.status.success(),
+        "the session exits successfully: {}",
+        stderr_text(&output)
+    );
+    let text = stdout_text(&output);
+    assert!(text.contains("Black: Human"), "the human seat: {text}");
+    assert!(text.contains("White: AI(400)"), "the AI seat: {text}");
+    assert!(
+        text.contains("Moved h8 by Human"),
+        "the human's first move: {text}"
+    );
+    assert!(
+        text.contains("Moved a1 by Ai"),
+        "the typed White reply is credited to the AI seat: {text}"
+    );
+    assert!(
+        text.contains("Moved l8 by Human"),
+        "the winning move: {text}"
+    );
+    assert!(
+        text.contains("Game over: Black wins"),
+        "the panel's game-over line: {text}"
+    );
+    assert!(
+        text.contains("Game over: Won(Black)"),
+        "the game-over event: {text}"
+    );
+}
+```
+
+`play_no_swap2_starts_at_an_empty_board` is the negative
+control for the ceremony: two hotseat moves, `Ply: 2`, and no
+"Swap2" anywhere in the transcript. It ends at EOF.
+
+tests/binary.rs, lines 124–145:
+
+```rust
+#[test]
+fn play_no_swap2_starts_at_an_empty_board() {
+    let output = run_gomoku(&["play", "--no-swap2"], "h8\ni8\n");
+    assert!(
+        output.status.success(),
+        "the session exits successfully: {}",
+        stderr_text(&output)
+    );
+    let text = stdout_text(&output);
+    assert!(
+        text.contains("Black: Human") && text.contains("White: Human"),
+        "no --ai means hotseat: {text}"
+    );
+    assert!(
+        text.contains("Moved h8 by Human") && text.contains("Moved i8 by Human"),
+        "both moves played: {text}"
+    );
+    assert!(text.contains("Ply: 2"), "two plies happened: {text}");
+    assert!(!text.contains("Swap2"), "the ceremony did not run: {text}");
+    // The script has no `quit` line: end of input terminated the
+    // session.
+}
+```
+
+`the_default_invocation_runs_the_swap2_ceremony` passes no
+subcommand at all: the default path runs the ceremony. The
 script is the full protocol — alternated placements, an undo, the
 count-validated `done`, `more`, the second round, the final choice —
 followed by one game move. The phases must
 appear in protocol order, asserted with the forward-scan idiom from
-`tests/line_mode.rs`:
+`tests/line_mode.rs`. The test also asserts the ceremony hint, the
+finish event (`Swap2 finished: White chosen`), and that the game
+accepts moves afterwards (`Moved k8 by Human`, `Ply: 1`).
+
+tests/binary.rs, lines 147–203:
 
 ```rust
+#[test]
+fn the_default_invocation_runs_the_swap2_ceremony() {
+    // No subcommand at all: `play` is the default, and the ceremony
+    // is the default opening. The script runs the full protocol with
+    // typed commands: alternated placements, an undo, the
+    // count-validated `done`, the declined first choice, the second
+    // round, and the final choice. The `k8` afterwards is the first
+    // move of the game.
+    let script = "play h8\n\
+                  play i8\n\
+                  back\n\
+                  play i8\n\
+                  play j8\n\
+                  done\n\
+                  more\n\
+                  play g8\n\
+                  play f8\n\
+                  done\n\
+                  white\n\
+                  k8\n\
+                  quit\n";
+    let output = run_gomoku(&[], script);
+    assert!(
+        output.status.success(),
+        "the session exits successfully: {}",
+        stderr_text(&output)
+    );
+    let text = stdout_text(&output);
+    assert!(
+        text.contains("Swap2 opening in progress"),
+        "the hint names the ceremony: {text}"
+    );
     // The phases appear in protocol order across the frames.
     let mut at = 0;
     for phase in [
@@ -436,11 +716,19 @@ appear in protocol order, asserted with the forward-scan idiom from
             .unwrap_or_else(|| panic!("{phase} missing after byte {at}: {text}"));
         at += found + phase.len();
     }
+    assert!(
+        text.contains("Swap2 finished: White chosen"),
+        "the ceremony finished: {text}"
+    );
+    // After the ceremony the game runs from the opening board, White
+    // to move; `k8` is that first move.
+    assert!(
+        text.contains("Moved k8 by Human"),
+        "the game accepts moves after the ceremony: {text}"
+    );
+    assert!(text.contains("Ply: 1"), "one game ply happened: {text}");
+}
 ```
-
-The test also asserts the ceremony hint, the finish event
-(`Swap2 finished: White chosen`), and that the game accepts moves
-afterwards (`Moved k8 by Human`, `Ply: 1`).
 
 ### The usage-error tests
 
@@ -448,6 +736,8 @@ Four tests (lines 205–259) pin the exit-code convention: `--color`
 without `--ai`, `--color` in selfplay, `--no-swap2` before `selfplay`
 plus clap's own rejection of `--no-swap2` after it, and an invalid
 flag value. One example of the shape:
+
+tests/binary.rs, lines 205–219:
 
 ```rust
 #[test]
