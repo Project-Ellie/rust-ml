@@ -343,9 +343,9 @@ Undo shortens the log; the phase follows.
    commands, `OpeningPhase`, the events, and the errors to
    `command.rs`. Fix every construction site (the test kit absorbs
    most). Parser unit tests, failing first: `parse_swap2_commands`
-   (the new words parse), `parse_play_rejects_a_color_token` (a
-   trailing token on `play` is a usage error), `parse_errors` extended
-   for the new argument errors. Implement the parser arms and
+   (the new words parse, and extra arguments on them are usage
+   errors), `parse_play_rejects_a_color_token` (a trailing token on
+   `play` is a usage error). Implement the parser arms and
    `ensure_no_extra_play_token`. Green.
 2. **The machine.** Unit tests against `OpeningState`, failing first:
    `the_color_alternates_over_the_whole_ceremony_starting_with_black`

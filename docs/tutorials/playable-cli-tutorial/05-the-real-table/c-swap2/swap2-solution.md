@@ -228,11 +228,64 @@ fn ensure_no_extra_play_token<'a>(
 }
 ```
 
-The parser tests: `parse_play_rejects_a_color_token` (lines 496–511)
-pins the usage error on both `play` forms and the continued rejection
-of unknown tokens; `parse_swap2_commands` (lines 513–533) covers the
-four new commands and their extra-argument errors. The two pre-existing
-`play` tests assert the one-field struct variant.
+Two parser tests pin the grammar change. The first pins the usage
+error on both `play` forms and the rejection of any trailing token:
+
+src/command.rs, lines 496–511:
+
+```rust
+    #[test]
+    fn parse_play_rejects_a_color_token() {
+        // Ceremony placements follow strict alternation; there is no
+        // color token on `play` anymore, on either form of the
+        // command. The standalone `black`/`white` choice commands
+        // still parse (see parse_swap2_commands).
+        let err = parse("play h8 white").unwrap_err();
+        assert_eq!(
+            err,
+            CommandError::Parse("usage: play <square>, got extra 'white'".to_string())
+        );
+        assert!(parse("play h8 BLACK").is_err());
+        assert!(parse("h8 white").is_err());
+        assert!(parse("play h8 red").is_err());
+        assert!(parse("play h8 white extra").is_err());
+    }
+```
+
+The second covers the four new commands and their extra-argument
+errors:
+
+src/command.rs, lines 513–533:
+
+```rust
+    #[test]
+    fn parse_swap2_commands() {
+        assert_eq!(parse("done"), Ok(Command::Done));
+        assert_eq!(parse("DONE"), Ok(Command::Done));
+        assert_eq!(
+            parse("black"),
+            Ok(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            parse("white"),
+            Ok(Command::ChooseColor {
+                color: Color::White
+            })
+        );
+        assert_eq!(parse("more"), Ok(Command::More));
+        assert!(parse("done now").is_err());
+        assert!(parse("black now").is_err());
+        assert!(parse("more 2").is_err());
+    }
+```
+
+The two pre-existing `play` tests assert the one-field struct variant.
+`parse_errors` keeps its chapter-2 form byte for byte (lines 623–636):
+the extra-argument errors of the new commands are asserted in
+`parse_swap2_commands`, so the quote in chapter 2's solution still
+applies and is not repeated here.
 
 ## src/opening.rs (new, 364 lines)
 
@@ -520,8 +573,99 @@ fn rebuild_placing2(log: &[(Move, Color)]) -> Swap2<Placing2> {
 }
 ```
 
+### The tests
+
 The in-module tests (lines 303–364) pin the whole-ceremony
-alternation, the undo-to-phase rule, and the snapshot mirror.
+alternation, the undo-to-phase rule, and the snapshot mirror. The
+module header imports `mv` from the shared kit.
+
+src/opening.rs, lines 303–306 (the test module header):
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use testkit::mv;
+```
+
+The first test runs a full ceremony and asserts the color sequence B,
+W, B, W, B, with `None` at the choice phases.
+
+src/opening.rs, lines 308–326:
+
+```rust
+    #[test]
+    fn the_color_alternates_over_the_whole_ceremony_starting_with_black() {
+        let mut opening = OpeningState::new();
+        assert_eq!(opening.next_color(), Some(Color::Black));
+        opening.place(mv(7, 7)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::White));
+        opening.place(mv(8, 8)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::Black));
+        opening.place(mv(9, 9)).unwrap();
+        opening.done().unwrap();
+        // A choice phase has no next stone.
+        assert_eq!(opening.next_color(), None);
+        opening.more().unwrap();
+        // The alternation does not restart per round: the fourth
+        // stone overall is white, the fifth black.
+        assert_eq!(opening.next_color(), Some(Color::White));
+        opening.place(mv(5, 5)).unwrap();
+        assert_eq!(opening.next_color(), Some(Color::Black));
+    }
+```
+
+The second test removes the fourth stone across the round boundary:
+the phase follows the log length, and the next color follows the
+placement count.
+
+src/opening.rs, lines 328–349:
+
+```rust
+    #[test]
+    fn undo_recomputes_the_phase_from_the_log_length() {
+        let mut opening = OpeningState::new();
+        opening.place(mv(7, 7)).unwrap();
+        opening.place(mv(8, 8)).unwrap();
+        opening.place(mv(9, 9)).unwrap();
+        opening.done().unwrap();
+        opening.more().unwrap();
+        opening.place(mv(5, 5)).unwrap();
+        assert_eq!(opening.phase, OpeningPhase::Placing2);
+
+        // Removing the fourth stone crosses the round boundary: three
+        // stones on the log means the first round is open again and a
+        // fresh `done` is required.
+        opening.undo(1).unwrap();
+        assert_eq!(opening.phase, OpeningPhase::Placing3);
+        // The alternation follows the placement count: three stones
+        // are on the log, so the next placement is white.
+        assert_eq!(opening.next_color(), Some(Color::White));
+        opening.done().unwrap();
+        assert_eq!(opening.phase, OpeningPhase::FirstChoice);
+    }
+```
+
+The third test asserts the snapshot mirrors the phase, the log, and
+the next color.
+
+src/opening.rs, lines 351–363:
+
+```rust
+    #[test]
+    fn the_snapshot_mirrors_phase_log_and_next_color() {
+        let mut opening = OpeningState::new();
+        opening.place(mv(7, 7)).unwrap();
+        opening.place(mv(8, 8)).unwrap();
+        let snapshot = opening.snapshot();
+        assert_eq!(snapshot.phase, OpeningPhase::Placing3);
+        assert_eq!(
+            snapshot.placements,
+            vec![(mv(7, 7), Color::Black), (mv(8, 8), Color::White)]
+        );
+        assert_eq!(snapshot.next_color, Some(Color::Black));
+    }
+```
 
 ## src/session.rs
 
@@ -775,8 +919,77 @@ fn stone_count(board: &Board, color: Color) -> usize {
 `tests/opening.rs` (new, 500 lines, 18 tests) drives everything through
 the public API. Two local helpers carry the protocol: `place_first_round`
 plays the first round and ends it with `done`;
-`place_second_round` plays the `more` path. One test as an example of
-the style:
+`place_second_round` plays the `more` path. Every test body follows,
+grouped: the happy path, the typed errors, the rest of the protocol,
+the undo matrix, and the seam.
+
+### The happy path
+
+The take-black path runs the whole ceremony: three placements, `done`,
+the `black` choice, and the finished board with White to move. Play
+then continues with the normal command set.
+
+tests/opening.rs, lines 41–91:
+
+```rust
+#[test]
+fn take_black_finishes_the_ceremony_and_white_moves_first() {
+    let mut core = swap2_core();
+
+    // The placements alternate, black first.
+    let events = play(&mut core, 7, 7);
+    assert_eq!(
+        events,
+        vec![Event::StonePlaced {
+            mv: mv(7, 7),
+            color: Color::Black
+        }]
+    );
+    play(&mut core, 8, 8);
+    play(&mut core, 9, 9);
+
+    let done = core.execute(Command::Done).unwrap();
+    assert_eq!(
+        done,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::FirstChoice
+        }]
+    );
+
+    let events = core
+        .execute(Command::ChooseColor {
+            color: Color::Black,
+        })
+        .unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningFinished {
+            chosen: Color::Black
+        }]
+    );
+
+    // The ceremony is over: the snapshot carries no opening, and the
+    // game board holds the placed stones with White to move.
+    assert_eq!(core.snapshot().opening, None);
+    let board = core.board();
+    assert_eq!(board.to_move(), Color::White);
+    assert_eq!(board.stone_at(mv(7, 7)), Some(Color::Black));
+    assert_eq!(board.stone_at(mv(8, 8)), Some(Color::White));
+    assert_eq!(board.stone_at(mv(9, 9)), Some(Color::Black));
+
+    // Play continues with the normal command set; White moves first,
+    // so the next stone on the board is white.
+    let events = play(&mut core, 10, 10);
+    assert_eq!(event_types(&events), ["Moved"]);
+    assert_eq!(core.board().stone_at(mv(10, 10)), Some(Color::White));
+}
+```
+
+### The typed errors
+
+`back` with no placement to remove is its own typed error.
+
+tests/opening.rs, lines 250–255:
 
 ```rust
 #[test]
@@ -784,6 +997,257 @@ fn back_on_an_empty_log_is_a_typed_error() {
     let mut core = swap2_core();
     let err = core.execute(Command::Back { n: 1 }).unwrap_err();
     assert_eq!(err, CommandError::OpeningLogEmpty);
+}
+```
+
+A `done` with the wrong stone counts returns the engine's own error,
+`IllegalMove(PlayError::BadOpeningCounts)`, and the round continues
+untouched.
+
+tests/opening.rs, lines 257–277:
+
+```rust
+#[test]
+fn done_with_wrong_counts_is_rejected_and_the_round_continues() {
+    let mut core = swap2_core();
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+
+    // Two stones do not make a round: 2 black + 1 white are required.
+    let err = core.execute(Command::Done).unwrap_err();
+    assert_eq!(err, CommandError::IllegalMove(PlayError::BadOpeningCounts));
+
+    // The session stays in the phase: the third stone still places,
+    // and `done` then succeeds.
+    play(&mut core, 9, 9);
+    let events = core.execute(Command::Done).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::FirstChoice
+        }]
+    );
+}
+```
+
+An occupied square is `IllegalMove(PlayError::Occupied)`, and the
+failed placement never enters the log.
+
+tests/opening.rs, lines 279–288:
+
+```rust
+#[test]
+fn an_occupied_square_is_rejected_during_the_ceremony() {
+    let mut core = swap2_core();
+    play(&mut core, 7, 7);
+
+    let err = core.execute(Command::Play { mv: mv(7, 7) }).unwrap_err();
+    assert_eq!(err, CommandError::IllegalMove(PlayError::Occupied));
+    // The failed placement did not enter the log.
+    assert_eq!(core.snapshot().opening.unwrap().placements.len(), 1);
+}
+```
+
+Outside the ceremony the four ceremony commands are `NotInOpening`,
+before the ceremony starts and after it ends.
+
+tests/opening.rs, lines 322–346:
+
+```rust
+#[test]
+fn ceremony_commands_outside_the_ceremony_are_typed_errors() {
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    for cmd in [
+        Command::Done,
+        Command::More,
+        Command::ChooseColor {
+            color: Color::Black,
+        },
+        Command::ChooseColor {
+            color: Color::White,
+        },
+    ] {
+        assert_eq!(core.execute(cmd), Err(CommandError::NotInOpening));
+    }
+
+    // The same holds after a ceremony finished.
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+    core.execute(Command::ChooseColor {
+        color: Color::Black,
+    })
+    .unwrap();
+    assert_eq!(core.execute(Command::Done), Err(CommandError::NotInOpening));
+}
+```
+
+Inside the ceremony a phase-wrong command returns the error that names
+the phase it needs.
+
+tests/opening.rs, lines 348–388:
+
+```rust
+#[test]
+fn commands_in_the_wrong_phase_are_typed_errors() {
+    let mut core = swap2_core();
+
+    // Placing3: choices and `more` do not apply.
+    assert_eq!(
+        core.execute(Command::ChooseColor {
+            color: Color::Black
+        })
+        .unwrap_err(),
+        CommandError::NotAtChoicePhase
+    );
+    assert_eq!(
+        core.execute(Command::More).unwrap_err(),
+        CommandError::NotAtFirstChoice
+    );
+
+    place_first_round(&mut core);
+
+    // FirstChoice: placements and `done` do not apply.
+    assert_eq!(
+        core.execute(Command::Play { mv: mv(1, 1) }).unwrap_err(),
+        CommandError::NotAtPlacementPhase
+    );
+    assert_eq!(
+        core.execute(Command::Done).unwrap_err(),
+        CommandError::NotAtPlacementPhase
+    );
+
+    place_second_round(&mut core);
+
+    // FinalChoice: `more` no longer exists.
+    assert_eq!(
+        core.execute(Command::More).unwrap_err(),
+        CommandError::NotAtFirstChoice
+    );
+    assert_eq!(
+        core.execute(Command::Done).unwrap_err(),
+        CommandError::NotAtPlacementPhase
+    );
+}
+```
+
+`step` during the ceremony is `OpeningInProgress`: the AI searches
+game positions, and a ceremony is not one.
+
+tests/opening.rs, lines 390–397:
+
+```rust
+#[test]
+fn step_is_rejected_during_the_ceremony() {
+    let mut core = swap2_core();
+    assert_eq!(
+        core.execute(Command::Step).unwrap_err(),
+        CommandError::OpeningInProgress
+    );
+}
+```
+
+### The rest of the protocol
+
+The take-white path finishes the ceremony with the same stones:
+whoever chooses, White moves first, and the ceremony stones are the
+root position, not moves in the tree.
+
+tests/opening.rs, lines 93–119:
+
+```rust
+#[test]
+fn take_white_finishes_the_ceremony_with_the_same_stones() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+
+    let events = core
+        .execute(Command::ChooseColor {
+            color: Color::White,
+        })
+        .unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningFinished {
+            chosen: Color::White
+        }]
+    );
+
+    // Whoever chooses, the side to move is White: White always has
+    // fewer stones after the ceremony.
+    let board = core.board();
+    assert_eq!(board.to_move(), Color::White);
+    assert_eq!(stone_count(&board, Color::Black), 2);
+    assert_eq!(stone_count(&board, Color::White), 1);
+    // The ceremony stones are the root position, not moves in the tree.
+    assert_eq!(core.snapshot().ply, 0);
+    assert_eq!(core.snapshot().last_move, None);
+}
+```
+
+The `more` path declines the first choice and places two more stones
+— the fourth is White, the fifth Black, because the alternation
+does not restart per round — and player A chooses at the final
+choice.
+
+tests/opening.rs, lines 121–177:
+
+```rust
+#[test]
+fn more_places_two_more_stones_then_player_a_chooses() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+
+    let events = core.execute(Command::More).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::Placing2
+        }]
+    );
+
+    // The second round continues the alternation: the fourth stone
+    // overall is white, the fifth black.
+    let events = play(&mut core, 5, 5);
+    assert_eq!(
+        events,
+        vec![Event::StonePlaced {
+            mv: mv(5, 5),
+            color: Color::White
+        }]
+    );
+    let events = play(&mut core, 4, 4);
+    assert_eq!(
+        events,
+        vec![Event::StonePlaced {
+            mv: mv(4, 4),
+            color: Color::Black
+        }]
+    );
+
+    let events = core.execute(Command::Done).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::FinalChoice
+        }]
+    );
+
+    let events = core
+        .execute(Command::ChooseColor {
+            color: Color::White,
+        })
+        .unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningFinished {
+            chosen: Color::White
+        }]
+    );
+
+    let board = core.board();
+    assert_eq!(stone_count(&board, Color::Black), 3);
+    assert_eq!(stone_count(&board, Color::White), 2);
+    assert_eq!(board.to_move(), Color::White);
 }
 ```
 
@@ -823,6 +1287,241 @@ fn placements_follow_strict_alternation_across_both_rounds() {
             Color::White,
             Color::Black
         ]
+    );
+}
+```
+
+After the ceremony `back` is tree navigation again, and the root of
+the tree is the finished opening board.
+
+tests/opening.rs, lines 475–492:
+
+```rust
+#[test]
+fn back_after_the_ceremony_navigates_the_tree() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+    core.execute(Command::ChooseColor {
+        color: Color::Black,
+    })
+    .unwrap();
+    play(&mut core, 10, 10);
+
+    // `back` is tree navigation again.
+    let events = core.execute(Command::Back { n: 1 }).unwrap();
+    assert_eq!(event_types(&events), ["CursorMoved"]);
+    assert_eq!(core.snapshot().ply, 0);
+    // The root of the tree is the finished opening board.
+    assert_eq!(stone_count(&core.board(), Color::Black), 2);
+    assert_eq!(stone_count(&core.board(), Color::White), 1);
+}
+```
+
+A ceremony on a preset opening board is a programming error, so the
+constructor panics.
+
+tests/opening.rs, lines 494–500:
+
+```rust
+#[test]
+#[should_panic(expected = "swap2 requires an empty opening board")]
+fn swap2_with_a_preset_opening_is_a_construction_error() {
+    let mut board = Board::new();
+    board.play(mv(7, 7)).unwrap();
+    let _ = SessionCore::new(SessionInit::new_hotseat_from_opening(&board).with_swap2(true));
+}
+```
+
+### The undo matrix
+
+`back` removes placements one at a time or in counts and recomputes
+the phase from the log length. Across the round boundary, removing the
+stone that completed a round takes the `done` back with it.
+
+tests/opening.rs, lines 179–212:
+
+```rust
+#[test]
+fn back_removes_placements_and_recomputes_the_phase() {
+    let mut core = swap2_core();
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+
+    // Plain undo inside a round: one StoneRemoved, no phase change.
+    let events = core.execute(Command::Back { n: 1 }).unwrap();
+    assert_eq!(events, vec![Event::StoneRemoved { mv: mv(8, 8) }]);
+    let opening = core.snapshot().opening.unwrap();
+    assert_eq!(opening.placements.len(), 1);
+    assert_eq!(opening.phase, OpeningPhase::Placing3);
+
+    // Undo across a finished round: removing the stone that completed
+    // the round takes the `done` back with it.
+    play(&mut core, 8, 8);
+    play(&mut core, 9, 9);
+    core.execute(Command::Done).unwrap();
+    let events = core.execute(Command::Back { n: 1 }).unwrap();
+    assert_eq!(
+        events,
+        vec![
+            Event::StoneRemoved { mv: mv(9, 9) },
+            Event::OpeningPhaseChanged {
+                phase: OpeningPhase::Placing3
+            },
+        ]
+    );
+
+    // `back N` removes up to N placements.
+    let events = core.execute(Command::Back { n: 2 }).unwrap();
+    assert_eq!(event_types(&events), ["StoneRemoved", "StoneRemoved"]);
+    assert!(core.snapshot().opening.unwrap().placements.is_empty());
+}
+```
+
+`back` at the final choice returns to the second round. The removed
+stone can be placed elsewhere, and the ceremony finishes normally.
+
+tests/opening.rs, lines 214–248:
+
+```rust
+#[test]
+fn back_at_the_final_choice_returns_to_the_second_round() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+    place_second_round(&mut core);
+
+    let events = core.execute(Command::Back { n: 1 }).unwrap();
+    assert_eq!(
+        events,
+        vec![
+            Event::StoneRemoved { mv: mv(4, 4) },
+            Event::OpeningPhaseChanged {
+                phase: OpeningPhase::Placing2
+            },
+        ]
+    );
+
+    // The taken-back stone can be placed elsewhere; the ceremony
+    // continues normally to a finished opening. The re-placed fifth
+    // stone is black: the alternation follows the placement count.
+    play(&mut core, 3, 3);
+    core.execute(Command::Done).unwrap();
+    let events = core
+        .execute(Command::ChooseColor {
+            color: Color::Black,
+        })
+        .unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningFinished {
+            chosen: Color::Black
+        }]
+    );
+    assert_eq!(core.board().stone_at(mv(3, 3)), Some(Color::Black));
+}
+```
+
+### The seam
+
+`new` during the ceremony resets to the empty ceremony: Placing3, no
+placements, Black next.
+
+tests/opening.rs, lines 399–417:
+
+```rust
+#[test]
+fn new_restarts_the_ceremony() {
+    let mut core = swap2_core();
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+
+    let events = core.execute(Command::New).unwrap();
+    assert_eq!(events, vec![Event::Reset]);
+
+    // `new` returns to the initial phase: the ceremony.
+    let opening = core
+        .snapshot()
+        .opening
+        .expect("a Swap2 session resets into the ceremony");
+    assert_eq!(opening.phase, OpeningPhase::Placing3);
+    assert!(opening.placements.is_empty());
+    assert_eq!(opening.next_color, Some(Color::Black));
+    assert_eq!(core.board(), Board::new());
+}
+```
+
+`new` after the ceremony restarts the ceremony instead of staying in
+the finished game.
+
+tests/opening.rs, lines 419–432:
+
+```rust
+#[test]
+fn new_after_the_ceremony_restarts_the_ceremony() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+    core.execute(Command::ChooseColor {
+        color: Color::Black,
+    })
+    .unwrap();
+    play(&mut core, 10, 10);
+
+    core.execute(Command::New).unwrap();
+    assert!(core.snapshot().opening.is_some());
+    assert_eq!(core.board(), Board::new());
+}
+```
+
+The snapshot reports the ceremony state — phase, placements in
+order, next color — at each step.
+
+tests/opening.rs, lines 434–454:
+
+```rust
+#[test]
+fn the_snapshot_reports_the_ceremony_state() {
+    let mut core = swap2_core();
+    let opening = core.snapshot().opening.unwrap();
+    assert_eq!(opening.phase, OpeningPhase::Placing3);
+    assert!(opening.placements.is_empty());
+    assert_eq!(opening.next_color, Some(Color::Black));
+
+    play(&mut core, 7, 7);
+    let opening = core.snapshot().opening.unwrap();
+    assert_eq!(opening.placements, vec![(mv(7, 7), Color::Black)]);
+    assert_eq!(opening.next_color, Some(Color::White));
+
+    play(&mut core, 8, 8);
+    play(&mut core, 9, 9);
+    core.execute(Command::Done).unwrap();
+    let opening = core.snapshot().opening.unwrap();
+    assert_eq!(opening.phase, OpeningPhase::FirstChoice);
+    // A choice phase has no next placement.
+    assert_eq!(opening.next_color, None);
+}
+```
+
+The snapshot round-trips through serde with the ceremony intact, and
+an ordinary session keeps the old wire format.
+
+tests/opening.rs, lines 456–473:
+
+```rust
+#[test]
+fn the_snapshot_serializes_the_ceremony_state() {
+    let mut core = swap2_core();
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+    let snapshot = core.snapshot();
+    let json = serde_json::to_string(&snapshot).expect("snapshot must serialize");
+    let back: Snapshot = serde_json::from_str(&json).expect("snapshot must deserialize");
+    assert_eq!(back, snapshot, "round trip must be lossless: {json}");
+
+    // Without a ceremony the wire format carries no opening field.
+    let core = SessionCore::new(SessionInit::new_hotseat());
+    let value = serde_json::to_value(core.snapshot()).unwrap();
+    assert!(
+        value.get("opening").is_none(),
+        "ordinary sessions keep the old wire format"
     );
 }
 ```
