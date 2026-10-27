@@ -313,7 +313,9 @@ to before; the demo scripts prove it.
   commands, the parse error for a trailing token on `play`, and the
   argument errors.
 - `crates/testkit/src/lib.rs`: `play` builds the struct variant; the
-  new helper `swap2_core` builds a hotseat ceremony session;
+  new helper `swap2_core() -> SessionCore` is
+  `SessionCore::new(SessionInit::new_hotseat().with_swap2(true))` — a
+  hotseat session inside the ceremony, for the opening tests;
   `event_type` knows the four new events.
 
 ## Solution (opt-in)
@@ -325,27 +327,64 @@ the sub-chapter and want to compare your work.
 
 ## TDD checklist
 
-The rhythm is red, green, extend. Run from `gomoku/`.
+The rhythm is red, green, extend. Run from `gomoku/`. Each step lists
+the tests that define the behavior — write the tests first, watch them
+fail, then implement until they pass. The names below are the
+reference's; yours may differ, the behaviors may not. The solution
+quotes every test body if you want to compare after your own pass.
+
+The undo scenarios are the non-trivial part, so they are spelled out
+fully below. One invariant makes them all simple: the phase is a pure
+function of the placement log's length (0–2 stones: Placing3; 3
+stones: FirstChoice; 3–4 stones: Placing2; 5 stones: FinalChoice).
+Undo shortens the log; the phase follows.
 
 1. **Vocabulary.** Add the `Play` struct variant, the four new
    commands, `OpeningPhase`, the events, and the errors to
    `command.rs`. Fix every construction site (the test kit absorbs
-   most). Add the parser tests and watch them fail — the parser does
-   not know the words yet. Implement the parser arms and
+   most). Parser unit tests, failing first: `parse_swap2_commands`
+   (the new words parse), `parse_play_rejects_a_color_token` (a
+   trailing token on `play` is a usage error), `parse_errors` extended
+   for the new argument errors. Implement the parser arms and
    `ensure_no_extra_play_token`. Green.
-2. **The machine.** Write the failing tests for the strict
-   alternation (black first across both rounds, no per-round restart)
-   and the undo rule against `OpeningState`. Implement
+2. **The machine.** Unit tests against `OpeningState`, failing first:
+   `the_color_alternates_over_the_whole_ceremony_starting_with_black`
+   (next_color across a full ceremony reads B, W, B, W, B; `None` at
+   the choice phases), `undo_recomputes_the_phase_from_the_log_length`
+   (the invariant above, walked forward and backward),
+   `the_snapshot_mirrors_phase_log_and_next_color`. Implement
    `src/opening.rs`. Green.
-3. **Routing.** Write the failing integration tests in
-   `tests/opening.rs`: the take-black path first, then the errors.
-   Wire `SessionInit.swap2`, the `opening` field, and the phase
-   routing in `session.rs`. Green.
-4. **The rest of the protocol.** Extend the integration tests to the
-   take-white path, the `more` path, undo across rounds, `back N`,
-   and the construction panic. Extend the implementation where a test
-   demands it. Green.
-5. **The seam.** Add the snapshot and serde tests, then the `Snapshot`
+3. **Routing.** Integration tests in `tests/opening.rs`, failing
+   first. The happy path:
+   `take_black_finishes_the_ceremony_and_white_moves_first` (three
+   placements, choose black, the board holds the stones, White moves
+   first). Then the typed errors:
+   `back_on_an_empty_log_is_a_typed_error`,
+   `done_with_wrong_counts_is_rejected_and_the_round_continues`,
+   `an_occupied_square_is_rejected_during_the_ceremony`,
+   `ceremony_commands_outside_the_ceremony_are_typed_errors`,
+   `commands_in_the_wrong_phase_are_typed_errors`. Wire
+   `SessionInit.swap2`, the `opening` field, and the phase routing in
+   `session.rs`. Green.
+4. **The rest of the protocol.** Extend the integration tests:
+   `take_white_finishes_the_ceremony_with_the_same_stones`,
+   `more_places_two_more_stones_then_player_a_chooses` (the fourth
+   stone is White, the fifth Black — alternation continues across the
+   round boundary),
+   `placements_follow_strict_alternation_across_both_rounds`,
+   `back_removes_placements_and_recomputes_the_phase` (including the
+   round boundary and `back N`),
+   `back_at_the_final_choice_returns_to_the_second_round`,
+   `back_after_the_ceremony_navigates_the_tree` (phase routing: `back`
+   after the ceremony navigates the variation tree, it does not remove
+   placements),
+   `swap2_with_a_preset_opening_is_a_construction_error`. Extend the
+   implementation where a test demands it. Green.
+5. **The seam.** Add the snapshot and serde tests:
+   `new_restarts_the_ceremony`,
+   `new_after_the_ceremony_restarts_the_ceremony`,
+   `the_snapshot_reports_the_ceremony_state`,
+   `the_snapshot_serializes_the_ceremony_state`. Then the `Snapshot`
    field and the repl line. Run the gates and both transcript diffs.
 
 ## Verification commands
