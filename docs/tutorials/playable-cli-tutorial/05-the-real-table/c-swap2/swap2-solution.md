@@ -816,8 +816,36 @@ src/opening.rs, lines 351–363:
 
 ### Construction and state
 
-`SessionInit` gains the flag (line 37: `pub swap2: bool`), and every
-existing constructor sets it to `false`. The builder is chainable.
+`SessionInit` gains the flag, and every existing constructor sets it
+to `false` — the struct, with the new field last:
+
+src/session.rs, lines 18–38:
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionInit {
+    /// Black seat occupant
+    pub black: Occupant,
+    /// White seat occupant
+    pub white: Occupant,
+    /// Default AI config, applied when releasing a seat
+    pub default_config: AiConfig,
+    /// Number of MCTS simulations (override) for black
+    pub black_sims: Option<u32>,
+    /// Number of MCTS simulations (override) for white
+    pub white_sims: Option<u32>,
+    /// Optional RNG seed for reproducible sessions
+    pub seed: Option<u64>,
+    /// opening board, the root of the variation tree
+    pub opening: Board,
+    /// Start inside the Swap2 opening ceremony instead of at an empty
+    /// tree. Requires `opening` to be an empty board; [`SessionCore::new`]
+    /// asserts this.
+    pub swap2: bool,
+}
+```
+
+The builder is chainable.
 
 src/session.rs, lines 83–94:
 
@@ -836,9 +864,32 @@ src/session.rs, lines 83–94:
     }
 ```
 
-`SessionCore` gains the `opening: Option<OpeningState>` field (line
-236) with a comment that states the tree's role during the ceremony:
-it still holds the empty initial board, because ceremony placements are
+`SessionCore` gains the ceremony state — the whole struct, with the
+new field last:
+
+src/session.rs, lines 222–237:
+
+```rust
+pub struct SessionCore {
+    history: History,
+    black: Occupant,
+    white: Occupant,
+    default_config: AiConfig,
+    black_sims: Option<u32>,
+    white_sims: Option<u32>,
+    rng: StdRng,
+    init: SessionInit,
+    search_info: HashMap<HistoryNodeId, SearchInfo>,
+    /// The Swap2 ceremony state; `None` outside the ceremony. While
+    /// this is `Some`, the variation tree still holds the (empty)
+    /// initial board: ceremony placements are not game moves and enter
+    /// the tree only as the finished opening board.
+    opening: Option<OpeningState>,
+}
+```
+
+The field's comment states the tree's role during the ceremony: it
+still holds the empty initial board, because ceremony placements are
 not game moves. The construction assert and its reasoning:
 
 src/session.rs, lines 240–254:
@@ -863,7 +914,32 @@ src/session.rs, lines 240–254:
 
 ### The snapshot and the wire format
 
-`Snapshot` gains `pub opening: Option<OpeningSnapshot>` (line 152), and
+`Snapshot` gains the read model of the ceremony — the struct, with
+the new field last:
+
+src/session.rs, lines 136–153:
+
+```rust
+/// Read-only snapshot of a session, suitable for rendering or JSON export
+#[derive(Clone, Debug, PartialEq)]
+pub struct Snapshot {
+    /// Cursor ply in the variation tree.
+    pub ply: u32,
+    /// the branches from this position
+    pub branch_options: Vec<(usize, Move)>,
+    /// ai or human
+    pub black: OccupantKind,
+    /// ai or human
+    pub white: OccupantKind,
+    /// game status
+    pub status: Status,
+    /// most recent move
+    pub last_move: Option<Move>,
+    /// the Swap2 ceremony state, `None` when no ceremony is in progress
+    pub opening: Option<OpeningSnapshot>,
+}
+```
+
 `snapshot()` maps the machine into the read model (line 288:
 `opening: self.opening.as_ref().map(OpeningState::snapshot)`). The
 serde impl writes the field only when it is `Some`, which keeps the
