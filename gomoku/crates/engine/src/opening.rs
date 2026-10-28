@@ -37,29 +37,12 @@ pub struct Swap2<State> {
     _state: PhantomData<State>,
 }
 
-impl Swap2<Placing3> {
-    /// Start a fresh Swap2 opening.
-    pub fn new() -> Self {
-        Self {
-            black: Bitboard::EMPTY,
-            white: Bitboard::EMPTY,
-            _state: PhantomData,
-        }
-    }
-}
-
-impl Default for Swap2<Placing3> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Swap2<Placing3> {
+/// State-independent internals, shared by every phase. Private, so the
+/// public typestate contract keeps its exact shape: each phase exposes
+/// only its own legal verbs.
+impl<State> Swap2<State> {
     /// Place one stone of the given color on the board.
-    ///
-    /// # Errors
-    /// Returns `PlayError::Occupied` if the cell already has a stone.
-    pub fn place(&mut self, mv: Move, color: Color) -> Result<(), PlayError> {
+    fn place_stone(&mut self, mv: Move, color: Color) -> Result<(), PlayError> {
         let i = idx(mv.row(), mv.col());
         if (self.black | self.white).test(i) {
             return Err(PlayError::Occupied);
@@ -71,37 +54,8 @@ impl Swap2<Placing3> {
         Ok(())
     }
 
-    /// Finish the first placement phase.
-    ///
-    /// # Errors
-    /// Returns `PlayError::BadOpeningCounts` unless the position is exactly
-    /// 2 Black stones and 1 White stone.
-    pub fn finish(self) -> Result<Swap2<FirstChoice>, PlayError> {
-        if self.black.count() == 2 && self.white.count() == 1 {
-            Ok(Swap2 {
-                black: self.black,
-                white: self.white,
-                _state: PhantomData,
-            })
-        } else {
-            Err(PlayError::BadOpeningCounts)
-        }
-    }
-}
-
-impl Swap2<FirstChoice> {
-    /// Take Black and continue with White to move (White has fewer stones).
-    pub fn take_black(self) -> Board {
-        self.build_board(Color::Black)
-    }
-
-    /// Take White and continue with White to move (White has fewer stones).
-    pub fn take_white(self) -> Board {
-        self.build_board(Color::White)
-    }
-
-    /// Player B places two more stones instead of choosing a color.
-    pub fn place_two_more(self) -> Swap2<Placing2> {
+    /// Carry the stones into the next phase.
+    fn transition<Next>(self) -> Swap2<Next> {
         Swap2 {
             black: self.black,
             white: self.white,
@@ -109,7 +63,8 @@ impl Swap2<FirstChoice> {
         }
     }
 
-    fn build_board(self, _chosen: Color) -> Board {
+    /// Build the game board at a color choice.
+    fn into_board(self) -> Board {
         let black = moves_of(&self.black);
         let white = moves_of(&self.white);
         // The side to move is determined by stone counts, not by who chose.
@@ -123,21 +78,68 @@ impl Swap2<FirstChoice> {
     }
 }
 
+impl Default for Swap2<Placing3> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Swap2<Placing3> {
+    /// Start a fresh Swap2 opening.
+    pub fn new() -> Self {
+        Self {
+            black: Bitboard::EMPTY,
+            white: Bitboard::EMPTY,
+            _state: PhantomData,
+        }
+    }
+
+    /// Place one stone of the given color on the board.
+    ///
+    /// # Errors
+    /// Returns `PlayError::Occupied` if the cell already has a stone.
+    pub fn place(&mut self, mv: Move, color: Color) -> Result<(), PlayError> {
+        self.place_stone(mv, color)
+    }
+
+    /// Finish the first placement phase.
+    ///
+    /// # Errors
+    /// Returns `PlayError::BadOpeningCounts` unless the position is exactly
+    /// 2 Black stones and 1 White stone.
+    pub fn finish(self) -> Result<Swap2<FirstChoice>, PlayError> {
+        if self.black.count() == 2 && self.white.count() == 1 {
+            Ok(self.transition())
+        } else {
+            Err(PlayError::BadOpeningCounts)
+        }
+    }
+}
+
+impl Swap2<FirstChoice> {
+    /// Take Black and continue with White to move (White has fewer stones).
+    pub fn take_black(self) -> Board {
+        self.into_board()
+    }
+
+    /// Take White and continue with White to move (White has fewer stones).
+    pub fn take_white(self) -> Board {
+        self.into_board()
+    }
+
+    /// Player B places two more stones instead of choosing a color.
+    pub fn place_two_more(self) -> Swap2<Placing2> {
+        self.transition()
+    }
+}
+
 impl Swap2<Placing2> {
     /// Place one stone of the given color.
     ///
     /// # Errors
     /// Returns `PlayError::Occupied` if the cell is already occupied.
     pub fn place(&mut self, mv: Move, color: Color) -> Result<(), PlayError> {
-        let i = idx(mv.row(), mv.col());
-        if (self.black | self.white).test(i) {
-            return Err(PlayError::Occupied);
-        }
-        match color {
-            Color::Black => self.black = self.black.with_bit(i),
-            Color::White => self.white = self.white.with_bit(i),
-        }
-        Ok(())
+        self.place_stone(mv, color)
     }
 
     /// Finish the second placement phase.
@@ -147,11 +149,7 @@ impl Swap2<Placing2> {
     /// 3 Black stones and 2 White stones.
     pub fn finish(self) -> Result<Swap2<FinalChoice>, PlayError> {
         if self.black.count() == 3 && self.white.count() == 2 {
-            Ok(Swap2 {
-                black: self.black,
-                white: self.white,
-                _state: PhantomData,
-            })
+            Ok(self.transition())
         } else {
             Err(PlayError::BadOpeningCounts)
         }
@@ -161,24 +159,12 @@ impl Swap2<Placing2> {
 impl Swap2<FinalChoice> {
     /// Take Black and continue with White to move (White has fewer stones).
     pub fn take_black(self) -> Board {
-        self.build_board(Color::Black)
+        self.into_board()
     }
 
     /// Take White and continue with White to move (White has fewer stones).
     pub fn take_white(self) -> Board {
-        self.build_board(Color::White)
-    }
-
-    fn build_board(self, _chosen: Color) -> Board {
-        let black = moves_of(&self.black);
-        let white = moves_of(&self.white);
-        let to_move = if white.len() < black.len() {
-            Color::White
-        } else {
-            Color::Black
-        };
-        Board::from_position(&black, &white, to_move)
-            .expect("Swap2 invariant guarantees a valid position")
+        self.into_board()
     }
 }
 
