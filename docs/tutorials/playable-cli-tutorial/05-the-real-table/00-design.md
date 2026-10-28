@@ -10,9 +10,11 @@ architecture contract.
 Decided (2026-10, with the owner):
 
 - Folder layout: one subfolder per sub-chapter, named `a-refactor`,
-  `b-renderer`, and so on. Each subfolder contains two documents: the
-  tutorial (`refactor.md`) and the solution (`refactor-solution.md`).
-  The sub-chapter name appears in both file names.
+  `b-renderer`, and so on. Each subfolder contains two required
+  documents: the tutorial (`refactor.md`) and the solution
+  (`refactor-solution.md`). The sub-chapter name appears in every
+  file name. A subfolder may also contain optional supporting
+  documents, such as a conceptual design paper (`swap2-design.md`).
 - The old chapter-level files `01-solution.md` and `02-git-diff.md`
   are removed.
 - Input model: option C, vim-style modal input. The full-screen shell
@@ -318,6 +320,10 @@ second copy of the loop.*
     binary.md
     binary-solution.md
 ```
+
+Subfolders may carry optional supporting documents, such as a
+conceptual design paper (`c-swap2/swap2-design.md`,
+`d-shell/shell-design.md`).
 
 ## Status
 
