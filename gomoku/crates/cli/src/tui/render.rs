@@ -336,7 +336,7 @@ mod tests {
     use testkit::mv;
 
     fn play(core: &mut SessionCore, r: u8, c: u8) {
-        core.execute(Command::Play(mv(r, c))).unwrap();
+        core.execute(Command::Play { mv: mv(r, c) }).unwrap();
     }
 
     /// Remove ANSI escape sequences from a line.
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn the_panel_lists_recent_events() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
-        let events = core.execute(Command::Play(mv(7, 7))).unwrap();
+        let events = core.execute(Command::Play { mv: mv(7, 7) }).unwrap();
         let frame = render_study(&StudyView::new(&core, &events));
         let text = frame.join("\n");
         assert!(text.contains("Last events:"));
@@ -520,8 +520,8 @@ mod tests {
     #[test]
     fn styled_and_unstyled_frames_differ_only_in_escape_sequences() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
-        let mut events = core.execute(Command::Play(mv(7, 7))).unwrap();
-        events.extend(core.execute(Command::Play(mv(6, 7))).unwrap());
+        let mut events = core.execute(Command::Play { mv: mv(7, 7) }).unwrap();
+        events.extend(core.execute(Command::Play { mv: mv(6, 7) }).unwrap());
 
         // Exercise every styled element at once: stones, star points,
         // gutters, the last move, the cursor, and the panel lines.

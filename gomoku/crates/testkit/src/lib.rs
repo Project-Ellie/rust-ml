@@ -7,7 +7,7 @@
 use cli::actor::{AiConfig, EvaluatorKind};
 use cli::command::{Command, Event};
 use cli::history::History;
-use cli::session::SessionCore;
+use cli::session::{SessionCore, SessionInit};
 use engine::{Board, Color, Move};
 
 /// Build a `Move` from zero-based row/column, panicking if out of range.
@@ -39,7 +39,7 @@ pub fn replay_cursor_path(history: &History) -> Board {
 
 /// Play one move on the session and return the emitted events.
 pub fn play(core: &mut SessionCore, r: u8, c: u8) -> Vec<Event> {
-    core.execute(Command::Play(mv(r, c))).unwrap()
+    core.execute(Command::Play { mv: mv(r, c) }).unwrap()
 }
 
 /// Play a list of moves given as a flat array of row/col pairs.
@@ -66,7 +66,19 @@ pub fn event_type(ev: &Event) -> &'static str {
         Event::ConfigChanged { .. } => "ConfigChanged",
         Event::GameOver { .. } => "GameOver",
         Event::Reset => "Reset",
+        Event::StonePlaced { .. } => "StonePlaced",
+        Event::StoneRemoved { .. } => "StoneRemoved",
+        Event::OpeningPhaseChanged { .. } => "OpeningPhaseChanged",
+        Event::OpeningFinished { .. } => "OpeningFinished",
     }
+}
+
+/// The variant names of a whole event batch, in order.
+///
+/// Use this to assert an exact expected sequence:
+/// `assert_eq!(event_types(&events), ["Moved", "GameOver"])`.
+pub fn event_types(events: &[Event]) -> Vec<&'static str> {
+    events.iter().map(event_type).collect()
 }
 
 /// The actor tests' baseline AI config: tactics evaluator, 200
@@ -94,4 +106,9 @@ pub fn default_ai_config() -> AiConfig {
         noise_epsilon: 0.0,
         explicit_selection: false,
     }
+}
+
+/// A session core with swap2 bit set
+pub fn swap2_core() -> SessionCore {
+    SessionCore::new(SessionInit::new_hotseat().with_swap2(true))
 }

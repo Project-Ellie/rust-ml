@@ -9,22 +9,59 @@ use crate::actor::OccupantKind;
 use crate::history::HistoryError;
 use crate::notation::parse_algebraic;
 use engine::{Color, Move, PlayError, Status};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Play(Move),
+    Play {
+        mv: Move,
+    },
     Step,
-    Back { n: u32 },
-    Forward { n: u32 },
-    Var { index: usize },
-    Take { seat: SeatSel },
-    Release { seat: SeatSel },
-    SetSims { seat: SeatSel, n: u32 },
+    Back {
+        n: u32,
+    },
+    Forward {
+        n: u32,
+    },
+    Var {
+        index: usize,
+    },
+    Take {
+        seat: SeatSel,
+    },
+    Release {
+        seat: SeatSel,
+    },
+    SetSims {
+        seat: SeatSel,
+        n: u32,
+    },
+    /// End the current Swap2 placement round
+    Done,
+    /// Choose a color at the Swap2 choice phase
+    ChooseColor {
+        color: Color,
+    },
+    /// Decline the first Swap2 choicce and place two more stones
+    More,
     New,
     Help,
     Quit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpeningPhase {
+    /// Player A places three stones: black-white-black.
+    Placing3,
+    /// Player B chooses a color or the opportunity to place two more stones: white-black.
+    FirstChoice,
+    /// Player B places two more stones: white-black.
+    Placing2,
+    /// Player A chooses a color.
+    FinalChoice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +127,18 @@ pub enum Event {
     },
     /// The session was reset to its initial opening.
     Reset,
+    /// A stone was placed during Swap2 opening
+    StonePlaced { mv: Move, color: Color },
+    /// `back` removed the last Swap2 placement.
+    StoneRemoved { mv: Move },
+    /// The Swap2 Opening entered a new phase.
+    OpeningPhaseChanged { phase: OpeningPhase },
+    /// The Swap2 opening finished; the game starts from its result.
+    ///
+    /// The payload is the chosen color and nothing else. The side to
+    /// move is not carried: the engine guarantees that White moves
+    /// first after the ceremony, because White always has fewer stones.
+    OpeningFinished { chosen: Color },
 }
 
 impl fmt::Display for Event {
@@ -121,6 +170,10 @@ impl fmt::Display for Event {
             }
             Event::GameOver { result } => write!(f, "Game over: {result:?}"),
             Event::Reset => write!(f, "Reset"),
+            Event::StonePlaced { mv, color } => write!(f, "Placed {color:?} at {}", fmt_move(*mv)),
+            Event::StoneRemoved { mv } => write!(f, "Removed stone from {}", fmt_move(*mv)),
+            Event::OpeningPhaseChanged { phase } => write!(f, "Now in phase {phase:?}"),
+            Event::OpeningFinished { chosen } => write!(f, "Opening finished, chose {chosen:?}"),
         }
     }
 }
@@ -152,6 +205,18 @@ pub enum CommandError {
     StepRequiresAi { seat: Color },
     #[error("Simulations must be greater than zero")]
     ZeroSims,
+    #[error("No Swap2 opening is in progress.")]
+    NotInOpening,
+    #[error("The Swap2 opening is not at a placement phase.")]
+    NotAtPlacementPhase,
+    #[error("The Swap2 opening is not at a choice phase.")]
+    NotAtChoicePhase,
+    #[error("The Swap2 opening is not at the first Swap2 choice.")]
+    NotAtFirstChoice,
+    #[error("The Swap2 opening has no placement to remove.")]
+    OpeningLogEmpty,
+    #[error("The Swap2 opening is still in progress; choose a color first")]
+    OpeningInProgress,
 }
 
 impl From<HistoryError> for CommandError {
@@ -185,8 +250,31 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             let token = parse_required_token(&mut tokens, "square")?;
             let mv = parse_algebraic(&token).map_err(|err| CommandError::Parse(err.to_string()))?;
             ensure_no_more(&mut tokens, "play")?;
+            Ok(Command::Play { mv })
+        }
 
-            Ok(Command::Play(mv))
+        "done" => {
+            ensure_no_more(&mut tokens, "done")?;
+            Ok(Command::Done)
+        }
+
+        "black" => {
+            ensure_no_more(&mut tokens, "black")?;
+            Ok(Command::ChooseColor {
+                color: Color::Black,
+            })
+        }
+
+        "white" => {
+            ensure_no_more(&mut tokens, "white")?;
+            Ok(Command::ChooseColor {
+                color: Color::White,
+            })
+        }
+
+        "more" => {
+            ensure_no_more(&mut tokens, "more")?;
+            Ok(Command::More)
         }
 
         "step" => {
@@ -241,7 +329,7 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             let mv = parse_algebraic(first).map_err(|err| CommandError::Parse(err.to_string()))?;
             ensure_no_more(&mut tokens, "play")?;
 
-            Ok(Command::Play(mv))
+            Ok(Command::Play { mv })
         }
     }
 }
@@ -336,20 +424,37 @@ mod tests {
     use testkit::mv;
 
     #[test]
+    fn parse_play_rejects_a_color_token() {
+        // Ceremony placements follow strict alternation; there is no
+        // color token on `play` anymore, on either form of the
+        // command. The standalone `black`/`white` choice commands
+        // still parse (see parse_swap2_commands).
+        let err = parse("play h8 white").unwrap_err();
+        assert_eq!(
+            err,
+            CommandError::Parse("play takes no arguments, got extra 'white'".to_string())
+        );
+        assert!(parse("play h8 BLACK").is_err());
+        assert!(parse("h8 white").is_err());
+        assert!(parse("play h8 red").is_err());
+        assert!(parse("play h8 white extra").is_err());
+    }
+
+    #[test]
     fn parse_quit() {
         assert!(parse("q").is_ok());
     }
     #[test]
     fn parse_play_bare_numbers() {
-        assert_eq!(parse("h8"), Ok(Command::Play(mv(7, 7))));
-        assert_eq!(parse("o1"), Ok(Command::Play(mv(0, 14))));
-        assert_eq!(parse("a15"), Ok(Command::Play(mv(14, 0))));
+        assert_eq!(parse("h8"), Ok(Command::Play { mv: mv(7, 7) }));
+        assert_eq!(parse("o1"), Ok(Command::Play { mv: mv(0, 14) }));
+        assert_eq!(parse("a15"), Ok(Command::Play { mv: mv(14, 0) }));
     }
 
     #[test]
     fn parse_play_explicit() {
-        assert_eq!(parse("play H8"), Ok(Command::Play(mv(7, 7))));
-        assert_eq!(parse("PLAy o1"), Ok(Command::Play(mv(0, 14))));
+        assert_eq!(parse("play H8"), Ok(Command::Play { mv: mv(7, 7) }));
+        assert_eq!(parse("PLAy o1"), Ok(Command::Play { mv: mv(0, 14) }));
     }
 
     #[test]
@@ -459,5 +564,27 @@ mod tests {
     fn parse_out_of_bounds_move_is_error() {
         assert!(parse("h16").is_err());
         assert!(parse("p8").is_err());
+    }
+
+    #[test]
+    fn parse_supports_swap2_commands() {
+        assert_eq!(parse("done"), Ok(Command::Done));
+        assert_eq!(parse("DONE"), Ok(Command::Done));
+        assert_eq!(
+            parse("black"),
+            Ok(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            parse("white"),
+            Ok(Command::ChooseColor {
+                color: Color::White
+            })
+        );
+        assert_eq!(parse("more"), Ok(Command::More));
+        assert!(parse("done now").is_err());
+        assert!(parse("black now").is_err());
+        assert!(parse("more 2").is_err());
     }
 }
