@@ -34,6 +34,13 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit
+
+Swap2 opening (sessions started with swap2):
+  play SQUARE      place the next stone (colors alternate, black first)
+  back [N]         remove the last placement(s)
+  done             end the current placement round
+  black | white    choose that color at a choice phase
+  more             decline the first choice and place two more stones
 "#;
 
 /// The result of processing one input line.

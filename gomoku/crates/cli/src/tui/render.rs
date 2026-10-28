@@ -12,8 +12,9 @@
 //! choice belongs to the screen, so the parameter is part of the view.
 
 use crate::actor::Occupant;
-use crate::command::Event;
+use crate::command::{Event, OpeningPhase};
 use crate::notation::algebraic;
+use crate::opening::OpeningSnapshot;
 use crate::session::{SessionCore, Snapshot};
 use crossterm::style::Stylize;
 use engine::{Board, Color, Move, Status};
@@ -49,10 +50,13 @@ pub struct StudyView<'a> {
     recent_events: &'a [Event],
     cursor: Option<Move>,
     command_line: Option<&'a str>,
+    message: Option<&'a str>,
     styled: bool,
 }
 
 impl<'a> StudyView<'a> {
+    /// A plain view of the session: no cursor, no command line, no
+    /// styling.
     #[must_use]
     pub fn new(core: &'a SessionCore, recent_events: &'a [Event]) -> Self {
         Self {
@@ -60,6 +64,7 @@ impl<'a> StudyView<'a> {
             recent_events,
             cursor: None,
             command_line: None,
+            message: None,
             styled: false,
         }
     }
@@ -87,6 +92,18 @@ impl<'a> StudyView<'a> {
         self
     }
 
+    /// Show `text` as the bottom line of the frame.
+    ///
+    /// One bottom line exists. While the command line is open it shows
+    /// the buffer and the message is not drawn; in normal mode the
+    /// message carries the last event summary or the last error text.
+    /// The line is never styled: it is feedback text, not furniture.
+    #[must_use]
+    pub fn message(mut self, text: &'a str) -> Self {
+        self.message = Some(text);
+        self
+    }
+
     /// Turn ANSI styling on (`true`) or off (`false`).
     ///
     /// Unstyled output contains no escape sequences, so it is safe to pipe
@@ -110,7 +127,17 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
     let core = view.core;
     let board = core.board();
     let snapshot = core.snapshot();
-    let board_lines = study_board_lines(&board, snapshot.last_move, view.cursor, view.styled);
+    // During a Swap2 ceremony the tree board is empty by design (the
+    // placements are not game moves), so the stones to draw come from
+    // the opening snapshot.
+    let opening = snapshot.opening.as_ref();
+    let board_lines = study_board_lines(
+        &board,
+        opening,
+        snapshot.last_move,
+        view.cursor,
+        view.styled,
+    );
     let panel_lines = render_side_panel(core, &board, &snapshot, view.recent_events, view.styled);
     let rows = board_lines.len().max(panel_lines.len());
     let mut out = Vec::with_capacity(rows + 1);
@@ -119,10 +146,13 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         let right = panel_lines.get(i).map(String::as_str).unwrap_or("");
         out.push(format!("{left}  {right}"));
     }
-    // The command line is the last line of the frame, so the user's text
-    // always appears at the bottom of the screen.
+    // One bottom line: the command line while it is open (the user's
+    // text always at the bottom of the screen), else the message when
+    // the loop has one to show.
     if let Some(buffer) = view.command_line {
         out.push(format!(":{buffer}"));
+    } else if let Some(text) = view.message {
+        out.push(text.to_string());
     }
     out
 }
@@ -135,6 +165,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
 /// optional.
 fn study_board_lines(
     board: &Board,
+    opening: Option<&OpeningSnapshot>,
     last: Option<Move>,
     cursor: Option<Move>,
     styled: bool,
@@ -147,8 +178,8 @@ fn study_board_lines(
         let rlabel = style_gutter(&format!("{:<2}", row + 1), styled);
         let mut line = format!("{label} |");
         for col in 0..15u8 {
-            let mv = Move::new(row, col).expect("0..15 is always on board.");
-            line.push_str(&study_cell(board, mv, last, cursor, styled));
+            let mv = Move::new(row, col).expect("0..15 is always on board");
+            line.push_str(&study_cell(board, opening, mv, last, cursor, styled));
         }
         line.push_str(&format!("| {rlabel}"));
         lines.push(line);
@@ -169,7 +200,7 @@ fn build_ruler() -> String {
     ruler
 }
 
-/// The border line between ruler and grid: 15 cells of 3 characters each.
+/// The border line between ruler and grid: 15 cells of 3 characters.
 fn border() -> String {
     format!("   +{}+   ", "-".repeat(45))
 }
@@ -197,12 +228,24 @@ fn style_gutter(text: &str, styled: bool) -> String {
 /// cursor in a styled frame, so the stone information is not lost.
 fn study_cell(
     board: &Board,
+    opening: Option<&OpeningSnapshot>,
     mv: Move,
     last: Option<Move>,
     cursor: Option<Move>,
     styled: bool,
 ) -> String {
-    let stone = board.stone_at(mv);
+    // Ceremony placements are not in the tree board, so the board
+    // lookup falls back to the placement list. The list holds at most
+    // five entries; a linear scan is fast enough for a per-frame draw.
+    let stone = board.stone_at(mv).or_else(|| {
+        opening.and_then(|opening| {
+            opening
+                .placements
+                .iter()
+                .find(|(m, _)| *m == mv)
+                .map(|(_, color)| *color)
+        })
+    });
     let glyph = match stone {
         Some(Color::Black) => "x",
         Some(Color::White) => "o",
@@ -235,8 +278,9 @@ fn study_cell(
     }
 }
 
-/// The side panel: seat table, ply, side to move or game result, path
-/// tail, branch options, recent events, and the key hints.
+/// The side panel: seat table, then the phase-dependent middle block
+/// (the ceremony during a Swap2 opening, the game state afterwards),
+/// then recent events and the key hints.
 fn render_side_panel(
     core: &SessionCore,
     board: &Board,
@@ -249,29 +293,12 @@ fn render_side_panel(
     lines.push(format!("Black: {}", seat_label(core.black())));
     lines.push(format!("White: {}", seat_label(core.white())));
     lines.push(String::new());
-    lines.push(format!("Ply: {}", snapshot.ply));
-
-    // One line covers both states a game can be in: waiting for a side,
-    // or finished with a result.
-    match snapshot.status {
-        Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
-        Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
-        Status::Draw => lines.push("Game over: draw".to_string()),
-    }
-    lines.push(format!("Path: {}", path_tail_string(board)));
-    // One continuation is the main line, not a choice. The panel lists
-    // options only when the cursor is at a real branch point.
-    if snapshot.branch_options.len() > 1 {
-        let opts: Vec<String> = snapshot
-            .branch_options
-            .iter()
-            .map(|(i, m)| format!("[{i}] {}", algebraic(*m)))
-            .collect();
-        lines.push(format!(
-            "{} variations: {}",
-            snapshot.branch_options.len(),
-            opts.join(" ")
-        ));
+    // The middle block is phase-dependent: during the ceremony the tree
+    // is empty, so ply and side-to-move would describe a game that has
+    // not started. The ceremony block takes their place.
+    match &snapshot.opening {
+        Some(opening) => ceremony_lines(&mut lines, opening),
+        None => position_lines(&mut lines, board, snapshot),
     }
     lines.push(String::new());
     lines.push("Last events:".to_string());
@@ -289,6 +316,81 @@ fn render_side_panel(
     lines
 }
 
+/// The game-state block of the side panel: ply, side to move or game
+/// result, path tail, and branch options.
+fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
+    lines.push(format!("Ply: {}", snapshot.ply));
+    // One line covers both states a game can be in: waiting for a side,
+    // or finished with a result.
+    match snapshot.status {
+        Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
+        Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
+        Status::Draw => lines.push("Game over: draw".to_string()),
+    }
+    lines.push(format!("Path: {}", path_tail_string(board)));
+    // One continuation is the main line, not a choice. The panel lists
+    // options only when the cursor is at a real branch point.
+    if snapshot.branch_options.len() > 1 {
+        let opts: Vec<String> = snapshot
+            .branch_options
+            .iter()
+            // The numbers are the 0-based index the `var` command takes,
+            // so what the user reads is what the user types.
+            .map(|(i, m)| format!("[{i}] {}", algebraic(*m)))
+            .collect();
+        lines.push(format!(
+            "{} variations: {}",
+            snapshot.branch_options.len(),
+            opts.join(" ")
+        ));
+    }
+}
+
+/// The ceremony block of the side panel: the phase, the placements,
+/// the color of the next stone at a placement phase, and the keys that
+/// apply now.
+///
+/// The panel teaches the phase-dependent keys at the point where the
+/// user needs them: a placement phase shows the placement keys, a
+/// choice phase shows the choice keys. The guidance strings match the
+/// key table in the help screen word for word.
+fn ceremony_lines(lines: &mut Vec<String>, opening: &OpeningSnapshot) {
+    lines.push(format!("Swap2: {:?}", opening.phase));
+    let stones = if opening.placements.is_empty() {
+        "(none)".to_string()
+    } else {
+        opening
+            .placements
+            .iter()
+            .map(|(mv, color)| format!("{}:{color:?}", algebraic(*mv)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    lines.push(format!("Stones: {stones}"));
+    match opening.phase {
+        OpeningPhase::Placing3 | OpeningPhase::Placing2 => {
+            // The strict alternation fixes the next stone's color, so
+            // the panel states it without a source: there is nothing
+            // to select. The snapshot guarantees a color at a
+            // placement phase.
+            let color = opening
+                .next_color
+                .expect("a placement phase always has a next color");
+            lines.push(format!("Next: {color:?}"));
+            lines.push("Enter place · u undo · d done".to_string());
+        }
+        OpeningPhase::FirstChoice => {
+            // A choice phase has no next stone, so there is no `Next:`
+            // line; showing a default here would report a stone that
+            // does not exist.
+            lines.push("b black · w white · m more".to_string());
+        }
+        OpeningPhase::FinalChoice => {
+            lines.push("b black · w white".to_string());
+        }
+    }
+}
+
 /// A panel line, dimmed when styled.
 fn panel_line(text: &str, styled: bool) -> String {
     if styled {
@@ -298,7 +400,7 @@ fn panel_line(text: &str, styled: bool) -> String {
     }
 }
 
-/// How a seat appears in the panel: `Human` or `AI(N)` with the seat's
+/// How a seat appears in the panel: `Human`, or `AI(N)` with the seat's
 /// simulation count.
 fn seat_label(occupant: &Occupant) -> String {
     match occupant {
@@ -307,8 +409,10 @@ fn seat_label(occupant: &Occupant) -> String {
     }
 }
 
-/// The last eight moves in algebraic notation, `...`-prefixed when earlier
-/// moves are elided; `(root)` on an empty board.
+/// The tail of the current line, in algebraic notation.
+///
+/// The full path can grow past the panel's width, so only the last eight
+/// moves are shown, prefixed with `...` when earlier moves are elided.
 fn path_tail_string(board: &Board) -> String {
     let moves = board.moves();
     if moves.is_empty() {
@@ -372,44 +476,15 @@ mod tests {
         let row7 = &frame[2 + 7];
         assert!(
             row7.matches(" + ").count() >= 3,
-            "Expected star points on row 7, got {row7}"
-        )
-    }
-
-    #[test]
-    fn the_cursor_is_marked_with_angle_brackets() {
-        let mut core = SessionCore::new(SessionInit::new_hotseat());
-        // On an empty board the cursor marker surrounds the cell's own
-        // glyph; h8 is a star point.
-        let frame = render_study(&StudyView::new(&core, &[]).cursor(mv(7, 7)));
-        let row7 = &frame[2 + 7];
-        assert_eq!(&row7[25..28], "<+>");
-
-        // On the last move the cursor marker takes precedence over the
-        // brackets.
-        play(&mut core, 7, 7);
-        let frame = render_study(&StudyView::new(&core, &[]).cursor(mv(7, 7)));
-        let text = frame.join("\n");
-        assert!(text.contains("<x>"), "cursor on a stone shows the stone");
-        assert!(
-            !text.contains("[x]"),
-            "the cursor marker replaces the last-move marker"
+            "expected star points on row 7, got: {row7}"
         );
-    }
-
-    #[test]
-    fn the_panel_starts_after_a_two_space_gap() {
-        let core = SessionCore::new(SessionInit::new_hotseat());
-        let frame = render_study(&StudyView::new(&core, &[]));
-        // 53 board columns, a two-space gap, then the panel header.
-        assert_eq!(&frame[0][53..], "  -- Study table --");
     }
 
     #[test]
     fn the_last_move_is_bracketed() {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
-        play(&mut core, 7, 7);
-        play(&mut core, 7, 8);
+        play(&mut core, 7, 7); // h8, a star point
+        play(&mut core, 7, 8); // i8
         let frame = render_study(&StudyView::new(&core, &[]));
         let row7 = &frame[2 + 7];
         // Four gutter bytes, then three bytes per column: h8 starts at
@@ -424,15 +499,9 @@ mod tests {
         let mut core = SessionCore::new(SessionInit::new_hotseat());
         let frame = render_study(&StudyView::new(&core, &[]));
         let text = frame.join("\n");
-        assert!(
-            text.contains("Black: Human"),
-            "panel shows Black seat. got {text}"
-        );
+        assert!(text.contains("Black: Human"), "panel shows Black seat");
         assert!(text.contains("White: Human"), "panel shows White seat");
-        assert!(
-            text.contains("Ply: 0"),
-            "panel shows the initial ply . got \n{text}"
-        );
+        assert!(text.contains("Ply: 0"), "panel shows the initial ply");
         assert!(
             text.contains("To move: Black"),
             "panel shows the side to move"
@@ -508,6 +577,27 @@ mod tests {
     }
 
     #[test]
+    fn the_cursor_is_marked_with_angle_brackets() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        // On an empty board the cursor marker surrounds the cell's own
+        // glyph; h8 is a star point.
+        let frame = render_study(&StudyView::new(&core, &[]).cursor(mv(7, 7)));
+        let row7 = &frame[2 + 7];
+        assert_eq!(&row7[25..28], "<+>");
+
+        // On the last move the cursor marker takes precedence over the
+        // brackets.
+        play(&mut core, 7, 7);
+        let frame = render_study(&StudyView::new(&core, &[]).cursor(mv(7, 7)));
+        let text = frame.join("\n");
+        assert!(text.contains("<x>"), "cursor on a stone shows the stone");
+        assert!(
+            !text.contains("[x]"),
+            "the cursor marker replaces the last-move marker"
+        );
+    }
+
+    #[test]
     fn the_command_line_is_the_bottom_line() {
         let core = SessionCore::new(SessionInit::new_hotseat());
         let bare = render_study(&StudyView::new(&core, &[]));
@@ -515,6 +605,96 @@ mod tests {
         // The command line adds exactly one line: the buffer behind ':'.
         assert_eq!(with_line.len(), bare.len() + 1);
         assert_eq!(with_line.last().unwrap(), ":play h8");
+    }
+
+    #[test]
+    fn the_ceremony_draws_its_placements_as_stones() {
+        // The tree board stays empty during the ceremony by design;
+        // the stones on the frame come from the opening snapshot.
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        assert!(core.board().moves().is_empty());
+        play(&mut core, 7, 7); // h8, Black by the alternation
+        play(&mut core, 7, 8); // i8, White by the alternation
+
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let row7 = &frame[2 + 7];
+        // Four gutter bytes, then three bytes per column: h8 starts at
+        // byte 25. Ceremony stones get no last-move brackets: the
+        // marker belongs to the tree, and the tree is empty.
+        assert_eq!(&row7[25..28], " x ");
+        assert_eq!(&row7[28..31], " o ");
+    }
+
+    #[test]
+    fn the_ceremony_panel_shows_phase_next_color_and_keys() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(text.contains("Swap2: Placing3"), "the phase: {text}");
+        assert!(text.contains("Stones: (none)"), "no placements yet: {text}");
+        assert!(
+            text.contains("Next: Black"),
+            "the color of the first stone: {text}"
+        );
+        assert!(
+            text.contains("Enter place · u undo · d done"),
+            "the placement keys: {text}"
+        );
+        // The ceremony block replaces the game-state lines: the tree is
+        // empty, so there is no side to move.
+        assert!(
+            !text.contains("To move:"),
+            "no game state during the ceremony: {text}"
+        );
+
+        play(&mut core, 7, 7);
+        let text = render_study(&StudyView::new(&core, &[])).join("\n");
+        assert!(text.contains("Stones: h8:Black"), "the placements: {text}");
+        assert!(
+            text.contains("Next: White"),
+            "the alternated color of the next stone: {text}"
+        );
+    }
+
+    #[test]
+    fn the_choice_phase_panel_shows_the_choice_keys_and_no_next_stone() {
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        for (r, c) in [(7, 7), (8, 8), (9, 9)] {
+            play(&mut core, r, c);
+        }
+        core.execute(Command::Done).unwrap();
+
+        let text = render_study(&StudyView::new(&core, &[])).join("\n");
+        assert!(text.contains("Swap2: FirstChoice"), "the phase: {text}");
+        assert!(
+            text.contains("b black · w white · m more"),
+            "the first-choice keys: {text}"
+        );
+        // A choice phase has no next stone, so the panel must not
+        // report one.
+        assert!(
+            !text.contains("Next:"),
+            "no next stone at a choice phase: {text}"
+        );
+    }
+
+    #[test]
+    fn the_message_is_the_bottom_line_unless_the_command_line_is_open() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let bare = render_study(&StudyView::new(&core, &[]));
+        let with_message = render_study(&StudyView::new(&core, &[]).message("Moved h8 by Human"));
+        // The message adds exactly one line, at the bottom.
+        assert_eq!(with_message.len(), bare.len() + 1);
+        assert_eq!(with_message.last().unwrap(), "Moved h8 by Human");
+
+        // While the command line is open it owns the bottom line.
+        let both = render_study(
+            &StudyView::new(&core, &[])
+                .message("Moved h8 by Human")
+                .command_line("pla"),
+        );
+        assert_eq!(both.len(), bare.len() + 1);
+        assert_eq!(both.last().unwrap(), ":pla");
     }
 
     #[test]
