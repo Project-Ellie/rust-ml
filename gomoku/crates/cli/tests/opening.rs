@@ -177,6 +177,92 @@ fn more_places_two_more_stones_then_player_a_chooses() {
 }
 
 #[test]
+fn a_fourth_stone_within_placing3_returns_an_error() {
+    let mut core = swap2_core();
+    play(&mut core, 6, 6);
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+    let err = core.execute(Command::Play { mv: mv(9, 9) }).unwrap_err();
+    assert_eq!(err, CommandError::OpeningRoundFull);
+}
+
+#[test]
+fn a_sixth_stone_within_placing2_returns_an_error() {
+    let mut core = swap2_core();
+    play(&mut core, 6, 6);
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+    core.execute(Command::Done).unwrap();
+    core.execute(Command::More).unwrap();
+    play(&mut core, 9, 9);
+    play(&mut core, 5, 6);
+    let err = core.execute(Command::Play { mv: mv(10, 10) }).unwrap_err();
+
+    assert_eq!(err, CommandError::OpeningRoundFull);
+}
+
+#[test]
+fn the_refused_fourth_stone_leaves_the_first_round_intact() {
+    let mut core = swap2_core();
+    play(&mut core, 6, 6);
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+    core.execute(Command::Play { mv: mv(9, 9) }).unwrap_err();
+
+    // The refusal grew nothing: the round still holds its three
+    // stones, and `done` ends it as if the refusal never happened.
+    let opening = core.snapshot().opening.expect("the ceremony runs");
+    assert_eq!(opening.placements.len(), 3);
+    let events = core.execute(Command::Done).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::FirstChoice
+        }]
+    );
+}
+
+#[test]
+fn the_refused_sixth_stone_leaves_the_second_round_intact() {
+    let mut core = swap2_core();
+    place_first_round(&mut core);
+    core.execute(Command::More).unwrap();
+    play(&mut core, 5, 5);
+    play(&mut core, 4, 4);
+    core.execute(Command::Play { mv: mv(3, 3) }).unwrap_err();
+
+    let opening = core.snapshot().opening.expect("the ceremony runs");
+    assert_eq!(opening.placements.len(), 5);
+    let events = core.execute(Command::Done).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::OpeningPhaseChanged {
+            phase: OpeningPhase::FinalChoice
+        }]
+    );
+}
+
+#[test]
+fn a_full_round_and_a_choice_phase_refuse_differently() {
+    let mut core = swap2_core();
+    play(&mut core, 6, 6);
+    play(&mut core, 7, 7);
+    play(&mut core, 8, 8);
+
+    // Same command, two refusals: a full placement round is not a
+    // wrong phase — the error names the actual problem.
+    assert_eq!(
+        core.execute(Command::Play { mv: mv(9, 9) }).unwrap_err(),
+        CommandError::OpeningRoundFull
+    );
+    core.execute(Command::Done).unwrap();
+    assert_eq!(
+        core.execute(Command::Play { mv: mv(9, 9) }).unwrap_err(),
+        CommandError::NotAtPlacementPhase
+    );
+}
+
+#[test]
 fn back_removes_placements_and_recomputes_the_phase() {
     let mut core = swap2_core();
     play(&mut core, 7, 7);

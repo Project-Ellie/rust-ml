@@ -95,8 +95,18 @@ impl OpeningState {
             return Err(CommandError::NotAtPlacementPhase);
         };
         match self.phase {
-            OpeningPhase::Placing3 => rebuild_placing3(&self.log).place(mv, color)?,
-            OpeningPhase::Placing2 => rebuild_placing2(&self.log).place(mv, color)?,
+            OpeningPhase::Placing3 => {
+                if self.log.len() == 3 {
+                    return Err(CommandError::OpeningRoundFull);
+                }
+                rebuild_placing3(&self.log).place(mv, color)?
+            }
+            OpeningPhase::Placing2 => {
+                if self.log.len() == 5 {
+                    return Err(CommandError::OpeningRoundFull);
+                }
+                rebuild_placing2(&self.log).place(mv, color)?
+            }
             OpeningPhase::FirstChoice | OpeningPhase::FinalChoice => {
                 return Err(CommandError::NotAtPlacementPhase);
             }

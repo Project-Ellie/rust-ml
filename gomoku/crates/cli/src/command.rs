@@ -217,6 +217,8 @@ pub enum CommandError {
     OpeningLogEmpty,
     #[error("The Swap2 opening is still in progress; choose a color first")]
     OpeningInProgress,
+    #[error("The Swap2 opening round already has all stones it can hold")]
+    OpeningRoundFull,
 }
 
 impl From<HistoryError> for CommandError {

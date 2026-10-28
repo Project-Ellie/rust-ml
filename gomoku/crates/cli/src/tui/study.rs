@@ -632,6 +632,38 @@ mod tests {
     }
 
     #[test]
+    fn a_placement_beyond_the_round_lands_on_the_message_line() {
+        let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        // Three Enters fill the first round (h8, i8, j8); the fourth
+        // Enter at k8 is beyond the round and must be refused, not
+        // placed.
+        let keys = vec![
+            key(KeyCode::Enter),
+            key(KeyCode::Right),
+            key(KeyCode::Enter),
+            key(KeyCode::Right),
+            key(KeyCode::Enter),
+            key(KeyCode::Right),
+            key(KeyCode::Enter),
+            char_key('q'),
+        ];
+        let (core, screen) = run_scripted(core, keys).expect("a scripted ceremony runs clean");
+
+        // Frame 0 is initial; the refused fourth Enter is key index 6,
+        // so frame 7 carries its error on the message line.
+        assert!(
+            screen.frames[7]
+                .iter()
+                .any(|line| line.contains("all stones it can hold")),
+            "the message line shows the refusal: {:?}",
+            screen.frames[7]
+        );
+        // The round is untouched: three stones, still Placing3.
+        let opening = core.snapshot().opening.expect("the ceremony runs");
+        assert_eq!(opening.placements.len(), 3);
+    }
+
+    #[test]
     fn a_wrong_phase_key_lands_on_the_message_line() {
         let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
         let keys = vec![char_key('m'), char_key('q')];
