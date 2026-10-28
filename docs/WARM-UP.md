@@ -313,10 +313,18 @@ Two further tutorial tracks are written and verified, ready to work:
   strict-alternation simplification (no color token on `play`, no
   `b`/`w` arming keys at placement phases; colors alternate black
   first across both rounds), and the chapter-05
-  docs are amended to both. **Progress on main (2026-10-25)**: main at
-  d1a208b has the finished sub-chapter a (notation/fmt/repl
-  extraction + the testkit crate) landed as the owner's workspace
-  state. Next: sub-chapter b.
+  docs are amended to both. **Progress on main (2026-10-28)**: chapter
+  05 is COMPLETE. Sub-chapters a-c are the owner's own work
+  (d1a208b, 39dd819+47eddd0, d509327 — 05c redone with strict
+  alternation and the engine typestate as validated projection).
+  Sub-chapters d-f landed in 44a28b1, taken from
+  `reference/chapter-05-redesign` and reconciled with the redone 05c
+  (parse-error/event wordings; repl::HELP regained the Swap2 section).
+  All gates green. Caveat: the d-shell solution doc (06f1eff) is
+  partly stale — its input.rs/render.rs quotes match the code
+  byte-exactly, but its study.rs/screen.rs quotes describe an
+  abandoned restructure; the e/f solution docs are byte-exact against
+  main. Next: chapter 06 (seeing the mind).
 
 ## How the tutorials work (respect the pedagogy)
 
