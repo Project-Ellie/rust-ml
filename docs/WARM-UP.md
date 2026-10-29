@@ -324,7 +324,20 @@ Two further tutorial tracks are written and verified, ready to work:
   partly stale — its input.rs/render.rs quotes match the code
   byte-exactly, but its study.rs/screen.rs quotes describe an
   abandoned restructure; the e/f solution docs are byte-exact against
-  main. Next: chapter 06 (seeing the mind).
+  main. Chapter 06 (seeing the mind) was REDESIGNED as four
+  sub-chapters (06a value strip, 06b visits heatmap, 06c prior view,
+  06d TSS overlay + policy/TSS mutual exclusion), each with spec,
+  design, implementation-plan, and byte-exact solution artifacts —
+  docs on main, reference implementation on
+  `reference/chapter-06-redesign` (four slice commits, gates green;
+  worktree `../rust-ml-ref-chapter-06` kept for inspection). Note:
+  the study table had NO TSS overlay before 06d — the new-structure
+  chapter 05 never ported it; 06d restores it per spec §9. The code
+  is the learner's work, sub-chapter by sub-chapter. Known noise:
+  with the opening schedule's Dirichlet noise, real early-game
+  searches spread visits below the 10% hot threshold — the heatmap is
+  honest, the evaluator is weak; the trained net (net tutorial) makes
+  these views sharp.
 
 ## How the tutorials work (respect the pedagogy)
 
