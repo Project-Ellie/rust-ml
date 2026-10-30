@@ -333,7 +333,16 @@ Two further tutorial tracks are written and verified, ready to work:
   worktree `../rust-ml-ref-chapter-06` kept for inspection). Note:
   the study table had NO TSS overlay before 06d — the new-structure
   chapter 05 never ported it; 06d restores it per spec §9. The code
-  is the learner's work, sub-chapter by sub-chapter. Known noise:
+  is the learner's work, sub-chapter by sub-chapter.
+  **Progress on main (2026-10-30)**: sub-chapter 06a (value strip) is
+  implemented (7a724a7 — started as the owner's own work, completed
+  against the verified solution doc; `v` key / typed `v`/`value`
+  toggle, ShellState in the loop, line_outcome/empty_line_outcome
+  moved from study.rs into input.rs, staleness note vs the live seat
+  config; 16 spec tests green, scripted acceptance matches the
+  chapter's example frame). Follow-up d80c714: the space bar plays
+  and steps like Enter (both playing_key and opening_key). Known
+  noise:
   with the opening schedule's Dirichlet noise, real early-game
   searches spread visits below the 10% hot threshold — the heatmap is
   honest, the evaluator is weak; the trained net (net tutorial) makes
