@@ -21,7 +21,7 @@ use crate::command::{self, Command, OpeningPhase};
 use crate::opening::OpeningSnapshot;
 use crate::session::SessionCore;
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::{Color, Move};
+use engine::{Color, Move, Status};
 
 /// The message for the `m` key at a phase where it does not apply.
 ///
@@ -95,6 +95,8 @@ pub enum InputOutcome {
     /// Show this text on the message line. Parse errors and keys that
     /// do not apply in the current phase use this variant.
     Message(String),
+    /// Toggle the value strip in the side panel.
+    ToggleValueStrip,
     /// The key changed only input state (cursor moved, buffer edited),
     /// or the key is not mapped. Nothing reaches the session.
     None,
@@ -195,6 +197,7 @@ fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) 
         }
         KeyCode::Char('?') => return InputOutcome::Help,
         KeyCode::Char('q') => return InputOutcome::Quit,
+        KeyCode::Char('v') => return InputOutcome::ToggleValueStrip,
         _ => {}
     }
 
@@ -293,6 +296,53 @@ fn move_cursor(cursor: &mut Move, dr: i8, dc: i8) {
         _ => cursor.col(),
     };
     *cursor = Move::new(row, col).expect("clamped coordinates stay on the board");
+}
+
+/// Translate one input line into an outcome: the line-mode mapping.
+///
+/// Everything non-empty goes through [`command::parse`] except the
+/// shell-level words `v` and `value`, which toggle the value strip.
+/// The overlay is a shell concern, so the command grammar does not
+/// gain a variant for it. A parse error becomes an
+/// [`InputOutcome::Message`] with the parser's own text, the same as
+/// on the `:` command line of the full-screen shell.
+pub fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return empty_line_outcome(core);
+    }
+    if trimmed.eq_ignore_ascii_case("v") || trimmed.eq_ignore_ascii_case("value") {
+        return InputOutcome::ToggleValueStrip;
+    }
+    match command::parse(trimmed) {
+        Ok(cmd) => InputOutcome::Command(cmd),
+        Err(err) => InputOutcome::Message(err.to_string()),
+    }
+}
+
+/// The empty line, by the reference build's rule: `step` when the
+/// side-to-move seat is AI, nothing otherwise.
+///
+/// This is the surviving half of Enter's normal-mode meaning. Enter at
+/// a human seat plays at the cursor, and a cursor does not exist in
+/// line mode, so that half cannot apply. Two guards come first. A
+/// finished game has nothing to step (the reference's own guard). And
+/// a ceremony in progress refuses `step` — the AI searches game
+/// positions, and ceremony stones are not a game position — so the
+/// empty line stays quiet there instead of answering every Enter with
+/// the `OpeningInProgress` error. The reference predates the
+/// in-session ceremony, so the ceremony guard is this sub-chapter's
+/// extension of its rule.
+fn empty_line_outcome(core: &SessionCore) -> InputOutcome {
+    let board = core.board();
+    if core.snapshot().opening.is_some() || board.status() != Status::Ongoing {
+        return InputOutcome::None;
+    }
+    if core.occupant(board.to_move()).is_ai() {
+        InputOutcome::Command(Command::Step)
+    } else {
+        InputOutcome::None
+    }
 }
 
 #[cfg(test)]
@@ -668,5 +718,160 @@ mod tests {
             handle_key(key(KeyCode::Enter), &mut state, &core),
             InputOutcome::Command(Command::Help)
         );
+    }
+
+    #[test]
+    fn v_in_normal_mode_toggles_value_strip() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('v'), &mut state, &core),
+            InputOutcome::ToggleValueStrip
+        );
+    }
+
+    #[test]
+    fn v_and_value_in_line_mode_toggle_value_strip() {
+        let core = playing_core();
+        for word in ["v", "V", "value", "VALUE"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::ToggleValueStrip,
+                "{word} toggles the value strip"
+            );
+        }
+    }
+
+    // -------------------------------------------------------- line mode
+
+    fn hotseat_core() -> SessionCore {
+        SessionCore::new(SessionInit::new_hotseat())
+    }
+
+    #[test]
+    fn the_empty_line_steps_an_ai_seat_and_stays_quiet_for_a_human_seat() {
+        let mut core = hotseat_core();
+        // Both seats human: nothing to step.
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+        assert_eq!(line_outcome("   ", &core), InputOutcome::None);
+
+        // Black to move, Black released to the AI: the empty line steps.
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(
+            line_outcome("", &core),
+            InputOutcome::Command(Command::Step)
+        );
+
+        // White to move and human: quiet again. (`play` does not check
+        // seats; the seat table matters only to `step`.)
+        core.execute(Command::Play {
+            mv: Move::new(7, 7).unwrap(),
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn the_empty_line_stays_quiet_during_the_ceremony() {
+        // An AI Black seat would qualify for a step during play, but
+        // the ceremony refuses step: the AI searches game positions,
+        // and ceremony stones are not a game position.
+        let mut core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        core.execute(Command::Release {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn the_empty_line_stays_quiet_after_the_game_ends() {
+        let mut core = hotseat_core();
+        // Black completes five on row 8; White parks on row 1.
+        for (r, c) in [
+            (7, 3),
+            (0, 1),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 3),
+            (7, 6),
+            (0, 4),
+            (7, 7),
+        ] {
+            core.execute(Command::Play {
+                mv: Move::new(r, c).unwrap(),
+            })
+            .unwrap();
+        }
+        assert_eq!(core.board().status(), Status::Won(Color::Black));
+        // White to move, White released to the AI: without the status
+        // guard the rule would step; a finished game steps nothing.
+        core.execute(Command::Release {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+        assert_eq!(line_outcome("", &core), InputOutcome::None);
+    }
+
+    #[test]
+    fn a_line_maps_through_the_shared_grammar() {
+        let core = hotseat_core();
+        assert_eq!(
+            line_outcome("h8", &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap()
+            })
+        );
+        // There is no color token on `play`: ceremony placements
+        // follow strict alternation, so a trailing token is a parse
+        // error, shown as a message like any other.
+        let InputOutcome::Message(text) = line_outcome("play i8 white", &core) else {
+            panic!("a color token on play is a parse error");
+        };
+        assert!(text.contains("play takes no arguments"), "the text: {text}");
+        // Help and quit need no special cases in the line mapping: the
+        // grammar knows them, and the loop intercepts the commands.
+        for word in ["h", "help", "?", "HELP"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::Command(Command::Help),
+                "{word} maps to Help"
+            );
+        }
+        for word in ["q", "quit", "exit", "QUIT"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::Command(Command::Quit),
+                "{word} maps to Quit"
+            );
+        }
+        // The ceremony vocabulary parses like everything else.
+        assert_eq!(
+            line_outcome("done", &core),
+            InputOutcome::Command(Command::Done)
+        );
+        assert_eq!(
+            line_outcome("black", &core),
+            InputOutcome::Command(Command::ChooseColor {
+                color: Color::Black
+            })
+        );
+        assert_eq!(
+            line_outcome("more", &core),
+            InputOutcome::Command(Command::More)
+        );
+    }
+
+    #[test]
+    fn a_parse_error_is_a_message_with_the_parsers_text() {
+        let core = hotseat_core();
+        let InputOutcome::Message(text) = line_outcome("bogus", &core) else {
+            panic!("a parse error is a message");
+        };
+        assert!(text.contains("Parse error"), "the parser's text: {text}");
     }
 }

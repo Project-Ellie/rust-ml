@@ -31,6 +31,7 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   release black|white|both   release seat(s) to AI
   sims black|white N         set per-seat simulations
   info             show AI search info at the cursor
+  v, value         toggle the value strip
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit

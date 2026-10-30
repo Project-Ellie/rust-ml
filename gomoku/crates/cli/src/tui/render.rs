@@ -16,6 +16,7 @@ use crate::command::{Event, OpeningPhase};
 use crate::notation::algebraic;
 use crate::opening::OpeningSnapshot;
 use crate::session::{SessionCore, Snapshot};
+use crate::tui::overlay::{searching_seat_config, value_strip};
 use crossterm::style::Stylize;
 use engine::{Board, Color, Move, Status};
 
@@ -52,6 +53,7 @@ pub struct StudyView<'a> {
     command_line: Option<&'a str>,
     message: Option<&'a str>,
     styled: bool,
+    show_value_strip: bool,
 }
 
 impl<'a> StudyView<'a> {
@@ -66,6 +68,7 @@ impl<'a> StudyView<'a> {
             command_line: None,
             message: None,
             styled: false,
+            show_value_strip: false,
         }
     }
 
@@ -113,6 +116,16 @@ impl<'a> StudyView<'a> {
         self.styled = styled;
         self
     }
+
+    /// Show the value strip in the side panel.
+    ///
+    /// The strip shows the search info at the cursor position, or an
+    /// explanatory line when the cursor has no stored search.
+    #[must_use]
+    pub fn show_value_strip(mut self, show: bool) -> Self {
+        self.show_value_strip = show;
+        self
+    }
 }
 
 /// Render one frame of the study table.
@@ -138,7 +151,14 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         view.cursor,
         view.styled,
     );
-    let panel_lines = render_side_panel(core, &board, &snapshot, view.recent_events, view.styled);
+    let panel_lines = render_side_panel(
+        core,
+        &board,
+        &snapshot,
+        view.recent_events,
+        view.styled,
+        view.show_value_strip,
+    );
     let rows = board_lines.len().max(panel_lines.len());
     let mut out = Vec::with_capacity(rows + 1);
     for i in 0..rows {
@@ -287,6 +307,7 @@ fn render_side_panel(
     snapshot: &Snapshot,
     recent_events: &[Event],
     styled: bool,
+    show_value_strip: bool,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(panel_line("-- Study table --", styled));
@@ -299,6 +320,16 @@ fn render_side_panel(
     match &snapshot.opening {
         Some(opening) => ceremony_lines(&mut lines, opening),
         None => position_lines(&mut lines, board, snapshot),
+    }
+    if show_value_strip {
+        lines.push(String::new());
+        lines.push("Value strip:".to_string());
+        if let Some(info) = core.search_info() {
+            let current_config = searching_seat_config(core, info);
+            lines.extend(value_strip(Some(info), current_config));
+        } else {
+            lines.push("  (no search here yet)".to_string());
+        }
     }
     lines.push(String::new());
     lines.push("Last events:".to_string());
@@ -435,6 +466,7 @@ fn path_tail_string(board: &Board) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actor::AiConfig;
     use crate::command::Command;
     use crate::session::SessionInit;
     use testkit::mv;
@@ -729,5 +761,48 @@ mod tests {
 
         let stripped: Vec<String> = styled.iter().map(|l| strip_ansi(l)).collect();
         assert_eq!(stripped, unstyled);
+    }
+
+    #[test]
+    fn the_value_strip_is_hidden_by_default() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(
+            !text.contains("Value strip:"),
+            "the strip is off by default: {text}"
+        );
+    }
+
+    #[test]
+    fn the_value_strip_explains_when_there_is_no_search() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        let frame = render_study(&StudyView::new(&core, &[]).show_value_strip(true));
+        let text = frame.join("\n");
+        assert!(text.contains("Value strip:"), "the header appears: {text}");
+        assert!(
+            text.contains("(no search here yet)"),
+            "the no-search note appears: {text}"
+        );
+    }
+
+    #[test]
+    fn the_panel_shows_the_value_strip_when_enabled() {
+        let mut core = SessionCore::new(SessionInit::ai_vs_ai(AiConfig::default(), 1));
+        core.execute(Command::Step).unwrap();
+        assert!(core.search_info().is_some(), "a step stores search info");
+
+        let frame = render_study(&StudyView::new(&core, &[]).show_value_strip(true));
+        let text = frame.join("\n");
+        assert!(text.contains("Value strip:"), "the header appears: {text}");
+        assert!(text.contains("value "), "the value line appears: {text}");
+        assert!(
+            text.contains("total visits:"),
+            "the visits line appears: {text}"
+        );
+        assert!(
+            text.contains("top moves:"),
+            "the top moves line appears: {text}"
+        );
     }
 }
