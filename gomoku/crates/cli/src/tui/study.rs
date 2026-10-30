@@ -415,7 +415,7 @@ fn help_frame(normal_mode: bool) -> Vec<String> {
 /// during the ceremony and goes back one ply afterwards.
 const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
   arrows, hjkl   move the board cursor
-  Enter          play at the cursor (human seat), step the AI (AI seat);
+  Enter, Space   play at the cursor (human seat), step the AI (AI seat);
                  during Swap2 placement: place the next stone
   u              undo: remove a Swap2 placement / go back one ply
   d              Swap2 placement: end the round (done)

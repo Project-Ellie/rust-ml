@@ -215,9 +215,11 @@ fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) 
 fn opening_key(key: KeyEvent, state: &mut InputState, opening: &OpeningSnapshot) -> InputOutcome {
     match opening.phase {
         OpeningPhase::Placing3 | OpeningPhase::Placing2 => match key.code {
-            // Enter places the next stone at the cursor; the
-            // ceremony's strict alternation decides its color.
-            KeyCode::Enter => InputOutcome::Command(Command::Play { mv: state.cursor }),
+            // Enter or Space places the next stone at the cursor;
+            // the ceremony's strict alternation decides its color.
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                InputOutcome::Command(Command::Play { mv: state.cursor })
+            }
             // During the ceremony the session routes `back` to the
             // replay log, so `u` removes the last placement.
             KeyCode::Char('u') => InputOutcome::Command(Command::Back { n: 1 }),
@@ -258,11 +260,11 @@ fn opening_key(key: KeyEvent, state: &mut InputState, opening: &OpeningSnapshot)
 /// The phase-dependent keys during play, after any ceremony finished.
 fn playing_key(key: KeyEvent, state: &InputState, core: &SessionCore) -> InputOutcome {
     match key.code {
-        // Enter is the obvious next action: a human seat plays at the
-        // cursor, an AI seat searches. The seat table decides; the
-        // session validates the result (an occupied square, a finished
-        // game) and the loop shows the error.
-        KeyCode::Enter => {
+        // Enter (or Space) is the obvious next action: a human seat
+        // plays at the cursor, an AI seat searches. The seat table
+        // decides; the session validates the result (an occupied
+        // square, a finished game) and the loop shows the error.
+        KeyCode::Enter | KeyCode::Char(' ') => {
             let side = core.board().to_move();
             if core.occupant(side).is_human() {
                 InputOutcome::Command(Command::Play { mv: state.cursor })
@@ -489,6 +491,19 @@ mod tests {
     }
 
     #[test]
+    fn during_play_space_plays_at_the_cursor_for_a_human_seat() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        state.cursor = Move::new(3, 4).unwrap();
+        assert_eq!(
+            handle_key(char_key(' '), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(3, 4).unwrap()
+            })
+        );
+    }
+
+    #[test]
     fn during_play_enter_steps_for_an_ai_seat() {
         let mut core = playing_core();
         core.execute(Command::Release {
@@ -525,6 +540,18 @@ mod tests {
         let mut state = InputState::new();
         assert_eq!(
             handle_key(key(KeyCode::Enter), &mut state, &core),
+            InputOutcome::Command(Command::Play {
+                mv: Move::new(7, 7).unwrap()
+            })
+        );
+    }
+
+    #[test]
+    fn at_a_placement_phase_space_places_the_next_stone() {
+        let core = placing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key(' '), &mut state, &core),
             InputOutcome::Command(Command::Play {
                 mv: Move::new(7, 7).unwrap()
             })
