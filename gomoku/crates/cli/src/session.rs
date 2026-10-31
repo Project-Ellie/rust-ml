@@ -647,6 +647,15 @@ impl SessionCore {
             && self.default_config.noise_epsilon == 0.0
             && self.history.ply() < 10
     }
+
+    /// Store `info` as the cursor position's search, for tests.
+    ///
+    /// Real searches store their own info; this lets a test render a
+    /// deterministic overlay or value strip without running MCTS.
+    #[cfg(test)]
+    pub fn set_search_info(&mut self, info: SearchInfo) {
+        self.search_info.insert(self.history.cursor(), info);
+    }
 }
 
 #[cfg(test)]

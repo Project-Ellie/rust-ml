@@ -26,6 +26,7 @@ use crate::command::{Command, Event};
 use crate::repl;
 use crate::session::{SessionCore, SessionInit};
 use crate::tui::input::{InputMode, InputOutcome, InputState, handle_key, line_outcome};
+use crate::tui::overlay::PolicyOverlay;
 use crate::tui::render::{StudyView, render_study};
 use crate::tui::screen::{AltScreen, LineScreen, Screen};
 use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind};
@@ -278,7 +279,7 @@ pub fn study_loop<S: Screen, I: InputSource>(
             &events,
             message.as_deref(),
             screen.styled(),
-            shell.show_value_strip,
+            &shell,
         );
         screen.draw(&frame)?;
         match input.next_outcome(&mut state, core)? {
@@ -310,6 +311,16 @@ pub fn study_loop<S: Screen, I: InputSource>(
                     .to_string(),
                 );
             }
+            InputOutcome::CyclePolicy => {
+                shell.policy_overlay = shell.policy_overlay.cycle();
+                message = Some(
+                    if shell.policy_overlay != PolicyOverlay::Off && core.search_info().is_none() {
+                        "no search here yet".to_string()
+                    } else {
+                        format!("policy overlay: {}", shell.policy_overlay.label())
+                    },
+                );
+            }
         }
     }
 }
@@ -322,6 +333,8 @@ pub fn study_loop<S: Screen, I: InputSource>(
 struct ShellState {
     /// Whether the side panel shows the value strip.
     show_value_strip: bool,
+    /// The active board policy heatmap overlay.
+    policy_overlay: PolicyOverlay,
 }
 
 /// Assemble the frame for one loop iteration.
@@ -339,11 +352,12 @@ fn build_frame(
     events: &[Event],
     message: Option<&str>,
     styled: bool,
-    show_value_strip: bool,
+    shell: &ShellState,
 ) -> Vec<String> {
     let view = StudyView::new(core, events)
         .styled(styled)
-        .show_value_strip(show_value_strip);
+        .show_value_strip(shell.show_value_strip)
+        .policy_overlay(shell.policy_overlay);
     let view = match cursor {
         Some(mv) => view.cursor(mv),
         None => view,
@@ -422,6 +436,7 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
   b, w           Swap2 choice: choose that color
   m              Swap2 first choice: place two more stones (more)
   v              toggle value strip
+  p              cycle policy overlay (off → visits)
   :              open the command line (Esc cancels, Enter executes)
   ?              show this help
   q              quit
@@ -430,6 +445,7 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actor::AiConfig;
     use crate::session::SessionInit;
     use crossterm::event::{KeyCode, KeyModifiers};
     use engine::{Color, Move};
@@ -829,5 +845,80 @@ mod tests {
         assert!(plain.contains("Commands (case-insensitive):"));
         assert!(!plain.contains("Normal-mode keys"));
         assert!(plain.contains("Press Enter to return to the table."));
+    }
+
+    #[test]
+    fn p_at_a_fresh_cursor_says_no_search_here_yet() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        // `p` cycles the policy overlay on at a node with no search.
+        let keys = vec![char_key('p'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        let frame1 = &screen.frames[1];
+        let text = frame1.join("\n");
+        assert!(
+            text.contains("no search here yet"),
+            "the message line explains the empty search: {text}"
+        );
+        // The board stays bare: no heatmap background escapes and no
+        // numeric overlay cells beyond the row labels.
+        let board_text: String = frame1.iter().take(17).skip(2).cloned().collect();
+        assert!(
+            !board_text.contains('\x1b'),
+            "the board has no ANSI escapes: {board_text}"
+        );
+        // Every interior cell is either a stone glyph, a star point, or
+        // an empty marker; none are numeric.
+        for line in frame1.iter().take(17).skip(2) {
+            let interior = &line[5..50];
+            for cell in interior.as_bytes().chunks(3) {
+                let s = std::str::from_utf8(cell).unwrap();
+                assert!(
+                    !s.chars().any(|c| c.is_ascii_digit()),
+                    "no numeric overlay cell in '{s}' of: {line}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn p_after_an_ai_step_shows_the_visit_heatmap() {
+        use engine::{Color, Move};
+
+        // Build a deterministic search info directly so the test does not
+        // depend on the MCTS visit distribution. h7 is used instead of h8
+        // because the cursor starts at h8 and the cursor marker must not be
+        // over-painted.
+        let h7 = Move::new(6, 7).unwrap();
+        let info = crate::actor::SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![(h7, 300)],
+            prior: vec![],
+            value: 0.25,
+            config: AiConfig::default(),
+        };
+
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        core.set_search_info(info);
+
+        let keys = vec![char_key('p'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        let frame1 = &screen.frames[1];
+        let text = frame1.join("\n");
+        assert!(
+            text.contains("policy overlay: visits"),
+            "the message line reports visits mode: {text}"
+        );
+
+        // h7 is the hottest empty cell and shows its raw count in the
+        // board area.
+        let row_line = &frame1[2 + h7.row() as usize];
+        let cell_start = 4 + h7.col() as usize * 3;
+        let cell = &row_line[cell_start..cell_start + 3];
+        assert_eq!(
+            cell, "300",
+            "the hottest cell h7 shows 300, got '{cell}' in: {row_line}"
+        );
     }
 }

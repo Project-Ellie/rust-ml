@@ -122,6 +122,7 @@ Commands (case-insensitive):
   sims black|white N         set per-seat simulations
   info             show AI search info at the cursor
   v, value         toggle the value strip
+  p, policy        cycle policy overlay (off → visits)
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit

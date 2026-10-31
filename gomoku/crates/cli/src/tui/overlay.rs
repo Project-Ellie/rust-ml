@@ -1,13 +1,178 @@
 //! Search-info overlays — pure functions, no I/O.
 //!
-//! [`value_strip`] turns a cursor node's [`SearchInfo`] into the lines of
-//! the side-panel value strip. The helper is deliberately testable
-//! without a real MCTS search: callers can construct [`SearchInfo`]
-//! directly.
+//! Two overlays read a cursor node's [`SearchInfo`]. [`value_strip`]
+//! turns it into the lines of the side-panel value strip;
+//! [`overlay_cell`] — with [`heatmap_bg`] and the two
+//! `render_overlay_cell_*` functions — turns one board cell into a
+//! heatmapped empty-cell glyph. Both are deliberately testable without
+//! a real MCTS search: callers can construct [`SearchInfo`] directly.
 
 use crate::actor::{AiConfig, SearchInfo};
 use crate::fmt::format_move;
 use crate::session::SessionCore;
+use engine::Move;
+
+/// Active cell-overlay mode for the board heatmap.
+///
+/// The design paper's rule: cell overlays exclude each other, so at most
+/// one mode paints the empty cells at a time. Every mode is a view of the
+/// same stored search; none of them changes the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PolicyOverlay {
+    /// No overlay; show the bare board
+    #[default]
+    Off,
+    /// Heatmap by share of total visits
+    Visits,
+}
+
+impl PolicyOverlay {
+    /// Advance to the next mode: `Off → Visits → Off`.
+    ///
+    /// The cycle lives here rather than in the key handler, so one key can
+    /// keep meaning "cycle" as modes are added (the prior view joins the
+    /// walk in sub-chapter 06c).
+    #[must_use]
+    pub fn cycle(self) -> Self {
+        match self {
+            PolicyOverlay::Off => Self::Visits,
+            PolicyOverlay::Visits => Self::Off,
+        }
+    }
+
+    /// The lowercase word the message line shows after a cycle.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            PolicyOverlay::Off => "off",
+            PolicyOverlay::Visits => "visits",
+        }
+    }
+}
+
+/// What one board cell shows under a policy overlay.
+///
+/// The decision (is this cell hot? what text does it carry?) is kept
+/// separate from its presentation, so the styled and plain renderers
+/// share one computation and a test can assert the numbers without a
+/// terminal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OverlayCell {
+    /// Background intensity in 0.0–1.0, used to select the ANSI-256 colour.
+    pub intensity: f32,
+    /// Visible text for hot cells; empty for dim cells.
+    pub text: String,
+    /// Whether this cell is hot enough to print its value.
+    pub is_hot: bool,
+}
+
+/// Compute the overlay data for `mv` under `mode`.
+///
+/// Returns `None` in [`PolicyOverlay::Off`] mode, and also when the stored
+/// search holds no visits at all: a cell with nothing to show must render
+/// as a bare empty cell, not as a dimmed one. A move that is absent from
+/// the visit distribution is the coldest cell (intensity `0.0`, no text),
+/// because the distribution may be partial — absent means unvisited, not
+/// unknown.
+#[must_use]
+pub fn overlay_cell(info: &SearchInfo, mv: Move, mode: PolicyOverlay) -> Option<OverlayCell> {
+    match mode {
+        PolicyOverlay::Off => None,
+        PolicyOverlay::Visits => visits_cell(info, mv),
+    }
+}
+
+/// The visits-mode computation: share of total visits, hot from 10%.
+fn visits_cell(info: &SearchInfo, mv: Move) -> Option<OverlayCell> {
+    let total: u32 = info.visits.iter().map(|(_, n)| n).sum();
+    if total == 0 {
+        return None;
+    }
+    let visits = info
+        .visits
+        .iter()
+        .find(|(m, _)| *m == mv)
+        .map(|(_, n)| *n)
+        .unwrap_or(0);
+    let share = visits as f32 / total as f32;
+    let is_hot = share >= 0.1;
+    let text = if is_hot {
+        visits.to_string()
+    } else {
+        String::new()
+    };
+    Some(OverlayCell {
+        intensity: share,
+        text,
+        is_hot,
+    })
+}
+
+/// Map an intensity 0.0–1.0 to an ANSI-256 background colour.
+///
+/// This is the same discrete ramp used by `patterns::render_heatmap`:
+/// hot values glow red→orange→yellow, lower values fade to light grey,
+/// and the near-zero dim band uses a muted grey. The ramp is deliberately
+/// copied here so the `cli` crate can stay free of the `patterns`
+/// dependency.
+#[must_use]
+pub fn heatmap_bg(intensity: f32) -> u8 {
+    match (intensity * 10.0).round() as i32 {
+        10 => 196,
+        9 => 208,
+        8 => 220,
+        3 => 39,
+        _ => 250,
+    }
+}
+
+/// Render one styled cell with an ANSI-256 background.
+/// Render one styled cell: an ANSI-256 background plus three characters.
+///
+/// The background encodes the intensity; a hot cell puts its visit count
+/// in the three-character slot, a cold cell its empty-cell glyph. Every
+/// cell ends with a reset sequence, so a background never bleeds into the
+/// next cell.
+#[must_use]
+pub fn render_overlay_cell_styled(glyph: char, cell: &OverlayCell) -> String {
+    let bg = heatmap_bg(cell.intensity);
+    let content = cell_content(glyph, cell);
+    format!("\x1b[48;5;{bg}m{content}\x1b[0m")
+}
+
+/// Render one plain cell (no ANSI escapes).
+/// Render one plain cell: the same three characters, no escape sequences.
+///
+/// The plain twin serves pipes, CI logs, and the line-mode fallback. It
+/// drops the colour, which is decoration, but keeps the visit count, which
+/// is information.
+#[must_use]
+pub fn render_overlay_cell_plain(glyph: char, cell: &OverlayCell) -> String {
+    cell_content(glyph, cell)
+}
+
+/// The three characters inside a cell: the visit count when hot, the
+/// empty-cell glyph otherwise.
+fn cell_content(glyph: char, cell: &OverlayCell) -> String {
+    if cell.is_hot {
+        pad_numeric_cell(&cell.text)
+    } else {
+        format!(" {} ", glyph)
+    }
+}
+
+/// Fit a visit count into the three-character cell.
+///
+/// Cells are exactly three characters wide or the board's columns drift.
+/// A count longer than three digits truncates instead of breaking the
+/// grid; at 400 visits a single move never gets that hot in practice.
+fn pad_numeric_cell(text: &str) -> String {
+    if text.len() >= 3 {
+        text[..3].to_string()
+    } else {
+        format!("{:>3}", text)
+    }
+}
 
 /// Build the value-strip panel lines from a cursor's search info.
 ///
@@ -139,5 +304,91 @@ mod tests {
     fn value_strip_no_search_info_returns_empty() {
         let lines = value_strip(None, None);
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn cycle_order_is_off_visits_off() {
+        assert_eq!(PolicyOverlay::Off.cycle(), PolicyOverlay::Visits);
+        assert_eq!(PolicyOverlay::Visits.cycle(), PolicyOverlay::Off);
+    }
+
+    #[test]
+    fn overlay_off_returns_none() {
+        let info = search_info_with_visits(&[(mv(7, 7), 100)], &[], 0.0, Color::Black);
+        assert!(overlay_cell(&info, mv(7, 7), PolicyOverlay::Off).is_none());
+    }
+
+    #[test]
+    fn zero_visits_gives_zero_intensity_and_not_hot() {
+        let info = search_info_with_visits(&[(mv(7, 7), 100)], &[], 0.0, Color::Black);
+        let cell = overlay_cell(&info, mv(0, 0), PolicyOverlay::Visits).unwrap();
+        assert_eq!(cell.intensity, 0.0);
+        assert!(!cell.is_hot);
+        assert!(cell.text.is_empty());
+    }
+
+    #[test]
+    fn single_hot_move_has_full_intensity() {
+        let info = search_info_with_visits(&[(mv(7, 7), 400)], &[], 0.5, Color::Black);
+        let cell = overlay_cell(&info, mv(7, 7), PolicyOverlay::Visits).unwrap();
+        assert_eq!(cell.intensity, 1.0);
+        assert!(cell.is_hot);
+        assert_eq!(cell.text, "400");
+    }
+
+    #[test]
+    fn visit_share_computes_intensity_correctly() {
+        let info =
+            search_info_with_visits(&[(mv(7, 7), 300), (mv(6, 6), 100)], &[], 0.0, Color::Black);
+        let hot = overlay_cell(&info, mv(7, 7), PolicyOverlay::Visits).unwrap();
+        assert!((hot.intensity - 0.75).abs() < 1e-6);
+        assert!(hot.is_hot);
+
+        let warm = overlay_cell(&info, mv(6, 6), PolicyOverlay::Visits).unwrap();
+        assert!((warm.intensity - 0.25).abs() < 1e-6);
+        assert!(warm.is_hot); // 25% is above the 10% threshold
+    }
+
+    #[test]
+    fn small_visit_share_is_dim() {
+        let info =
+            search_info_with_visits(&[(mv(7, 7), 390), (mv(6, 6), 10)], &[], 0.0, Color::Black);
+        let dim = overlay_cell(&info, mv(6, 6), PolicyOverlay::Visits).unwrap();
+        assert_eq!(dim.intensity, 0.025);
+        assert!(!dim.is_hot);
+    }
+    #[test]
+    fn a_share_of_exactly_ten_percent_is_hot() {
+        // The threshold is inclusive: 10% of the visits is hot.
+        let info =
+            search_info_with_visits(&[(mv(7, 7), 900), (mv(6, 6), 100)], &[], 0.0, Color::Black);
+        let boundary = overlay_cell(&info, mv(6, 6), PolicyOverlay::Visits).unwrap();
+        assert_eq!(boundary.intensity, 0.1);
+        assert!(boundary.is_hot);
+    }
+
+    #[test]
+    fn styled_hot_cell_has_ansi_background() {
+        let cell = OverlayCell {
+            intensity: 1.0,
+            text: "400".to_string(),
+            is_hot: true,
+        };
+        let out = render_overlay_cell_styled('.', &cell);
+        assert!(out.contains("\x1b[48;5;196m"));
+        assert!(out.contains("400"));
+        assert!(out.contains("\x1b[0m"));
+    }
+
+    #[test]
+    fn plain_hot_cell_has_no_ansi_escapes() {
+        let cell = OverlayCell {
+            intensity: 1.0,
+            text: "400".to_string(),
+            is_hot: true,
+        };
+        let out = render_overlay_cell_plain('.', &cell);
+        assert!(!out.contains('\x1b'));
+        assert_eq!(out, "400");
     }
 }

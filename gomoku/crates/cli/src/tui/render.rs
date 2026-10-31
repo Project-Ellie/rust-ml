@@ -11,12 +11,15 @@
 //! crossterm) and to plain pipes and CI logs (no escape sequences). That
 //! choice belongs to the screen, so the parameter is part of the view.
 
-use crate::actor::Occupant;
+use crate::actor::{Occupant, SearchInfo};
 use crate::command::{Event, OpeningPhase};
 use crate::notation::algebraic;
 use crate::opening::OpeningSnapshot;
 use crate::session::{SessionCore, Snapshot};
-use crate::tui::overlay::{searching_seat_config, value_strip};
+use crate::tui::overlay::{
+    PolicyOverlay, overlay_cell, render_overlay_cell_plain, render_overlay_cell_styled,
+    searching_seat_config, value_strip,
+};
 use crossterm::style::Stylize;
 use engine::{Board, Color, Move, Status};
 
@@ -54,6 +57,7 @@ pub struct StudyView<'a> {
     message: Option<&'a str>,
     styled: bool,
     show_value_strip: bool,
+    policy_overlay: PolicyOverlay,
 }
 
 impl<'a> StudyView<'a> {
@@ -69,6 +73,7 @@ impl<'a> StudyView<'a> {
             message: None,
             styled: false,
             show_value_strip: false,
+            policy_overlay: PolicyOverlay::Off,
         }
     }
 
@@ -126,6 +131,18 @@ impl<'a> StudyView<'a> {
         self.show_value_strip = show;
         self
     }
+
+    /// Set the board heatmap overlay.
+    ///
+    /// `Off` leaves empty cells bare; `Visits` paints each empty cell with
+    /// the intensity of its share of the cursor's total visits. Stones,
+    /// the last move, and the cursor keep their own markers in every mode,
+    /// so the overlay never hides information the board already carries.
+    #[must_use]
+    pub fn policy_overlay(mut self, overlay: PolicyOverlay) -> Self {
+        self.policy_overlay = overlay;
+        self
+    }
 }
 
 /// Render one frame of the study table.
@@ -144,12 +161,15 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
     // placements are not game moves), so the stones to draw come from
     // the opening snapshot.
     let opening = snapshot.opening.as_ref();
+    let search_info = core.search_info();
     let board_lines = study_board_lines(
         &board,
         opening,
         snapshot.last_move,
         view.cursor,
         view.styled,
+        view.policy_overlay,
+        search_info,
     );
     let panel_lines = render_side_panel(
         core,
@@ -189,6 +209,8 @@ fn study_board_lines(
     last: Option<Move>,
     cursor: Option<Move>,
     styled: bool,
+    overlay: PolicyOverlay,
+    search_info: Option<&SearchInfo>,
 ) -> Vec<String> {
     let mut lines = Vec::with_capacity(19);
     lines.push(style_gutter(&build_ruler(), styled));
@@ -199,7 +221,18 @@ fn study_board_lines(
         let mut line = format!("{label} |");
         for col in 0..15u8 {
             let mv = Move::new(row, col).expect("0..15 is always on board");
-            line.push_str(&study_cell(board, opening, mv, last, cursor, styled));
+            let cell = study_or_policy_cell(
+                board,
+                opening,
+                mv,
+                last,
+                cursor,
+                styled,
+                overlay,
+                search_info,
+            );
+
+            line.push_str(&cell);
         }
         line.push_str(&format!("| {rlabel}"));
         lines.push(line);
@@ -207,6 +240,76 @@ fn study_board_lines(
     lines.push(style_gutter(&border(), styled));
     lines.push(style_gutter(&build_ruler(), styled));
     lines
+}
+
+/// Render one cell, using the policy overlay only for bare empty cells.
+///
+/// Stones, the last-move brackets, and the cursor marker are never
+/// over-painted by the heatmap. The overlay paints only empty cells that
+/// are neither the cursor nor the last move.
+#[allow(clippy::too_many_arguments)]
+fn study_or_policy_cell(
+    board: &Board,
+    opening: Option<&OpeningSnapshot>,
+    mv: Move,
+    last: Option<Move>,
+    cursor: Option<Move>,
+    styled: bool,
+    policy_overlay: PolicyOverlay,
+    search_info: Option<&SearchInfo>,
+) -> String {
+    // Ceremony placements are not in the tree board, so the board
+    // lookup falls back to the placement list. The list holds at most
+    // five entries; a linear scan is fast enough for a per-frame draw.
+    let is_stone = stone_at(board, opening, mv).is_some();
+    let is_cursor = cursor == Some(mv);
+    let is_last = last == Some(mv);
+
+    if is_stone || is_cursor || is_last {
+        study_cell(board, opening, mv, last, cursor, styled)
+    } else if policy_overlay == PolicyOverlay::Visits {
+        match search_info {
+            Some(info) => policy_empty_cell(mv, info, styled),
+            None => study_cell(board, opening, mv, last, cursor, styled),
+        }
+    } else {
+        study_cell(board, opening, mv, last, cursor, styled)
+    }
+}
+
+/// Render an empty cell under the visits overlay.
+///
+/// The empty-cell glyph is the one the bare board uses too (`+` on a star
+/// point, `.` elsewhere), so turning the overlay off changes only the
+/// background, never the board's furniture.
+fn policy_empty_cell(mv: Move, info: &crate::actor::SearchInfo, styled: bool) -> String {
+    let glyph = if HOSHI.contains(&mv.row()) && HOSHI.contains(&mv.col()) {
+        '+'
+    } else {
+        '.'
+    };
+    match overlay_cell(info, mv, PolicyOverlay::Visits) {
+        Some(cell) if styled => render_overlay_cell_styled(glyph, &cell),
+        Some(cell) => render_overlay_cell_plain(glyph, &cell),
+        None => format!(" {} ", glyph),
+    }
+}
+
+/// The stone at `mv`, from the tree board or the ceremony's placements.
+///
+/// Ceremony placements are not game moves, so they live in the opening
+/// snapshot rather than in the board. The overlay has to see them anyway:
+/// heat painted over a placed stone would report a cell as playable.
+fn stone_at(board: &Board, opening: Option<&OpeningSnapshot>, mv: Move) -> Option<Color> {
+    board.stone_at(mv).or_else(|| {
+        opening.and_then(|opening| {
+            opening
+                .placements
+                .iter()
+                .find(|(m, _)| *m == mv)
+                .map(|(_, color)| *color)
+        })
+    })
 }
 
 /// The column letters above and below the grid.
@@ -254,18 +357,7 @@ fn study_cell(
     cursor: Option<Move>,
     styled: bool,
 ) -> String {
-    // Ceremony placements are not in the tree board, so the board
-    // lookup falls back to the placement list. The list holds at most
-    // five entries; a linear scan is fast enough for a per-frame draw.
-    let stone = board.stone_at(mv).or_else(|| {
-        opening.and_then(|opening| {
-            opening
-                .placements
-                .iter()
-                .find(|(m, _)| *m == mv)
-                .map(|(_, color)| *color)
-        })
-    });
+    let stone = stone_at(board, opening, mv);
     let glyph = match stone {
         Some(Color::Black) => "x",
         Some(Color::White) => "o",
@@ -803,6 +895,107 @@ mod tests {
         assert!(
             text.contains("top moves:"),
             "the top moves line appears: {text}"
+        );
+    }
+
+    #[test]
+    fn policy_overlay_snapshot_is_displayed() {
+        use crate::actor::{AiConfig, SearchInfo};
+        use engine::{Color, Move};
+
+        let h8 = Move::new(7, 7).unwrap();
+        let i8 = Move::new(7, 8).unwrap();
+        let j8 = Move::new(7, 9).unwrap();
+        let info = SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![(h8, 300), (i8, 100)],
+            prior: vec![],
+            value: 0.25,
+            config: AiConfig::default(),
+        };
+
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        core.execute(Command::Play { mv: j8 }).unwrap();
+        core.set_search_info(info);
+
+        let frame = render_study(&StudyView::new(&core, &[]).policy_overlay(PolicyOverlay::Visits));
+        let text = frame.join("\n");
+
+        let row7 = &frame[2 + 7];
+        let h8_start = 4 + 7 * 3;
+        let i8_start = 4 + 8 * 3;
+        let j8_start = 4 + 9 * 3;
+
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            "300",
+            "h8 shows the hot visit count: {row7}"
+        );
+
+        // i8 is warm (25%) and also hot; it shows its count too.
+        assert_eq!(
+            &row7[i8_start..i8_start + 3],
+            "100",
+            "i8 shows the warm visit count: {row7}"
+        );
+
+        // j8 is a stone and the last move, so it keeps its brackets and
+        // must not show a count.
+        assert_eq!(
+            &row7[j8_start..j8_start + 3],
+            "[x]",
+            "j8 keeps its last-move brackets: {row7}"
+        );
+        // The cursor on a hot empty cell takes precedence over the count.
+        let frame_with_cursor = render_study(
+            &StudyView::new(&core, &[])
+                .policy_overlay(PolicyOverlay::Visits)
+                .cursor(h8),
+        );
+        let row7_cursor = &frame_with_cursor[2 + 7];
+        assert_eq!(
+            &row7_cursor[h8_start..h8_start + 3],
+            "<+>",
+            "the cursor on a hot empty cell keeps the cursor marker: {row7_cursor}"
+        );
+
+        // The cursor on a stone keeps the stone marker.
+        let frame_with_cursor_on_stone = render_study(
+            &StudyView::new(&core, &[])
+                .policy_overlay(PolicyOverlay::Visits)
+                .cursor(j8),
+        );
+        let row7_cursor_stone = &frame_with_cursor_on_stone[2 + 7];
+        assert_eq!(
+            &row7_cursor_stone[j8_start..j8_start + 3],
+            "<x>",
+            "the cursor on a stone keeps the stone marker: {row7_cursor_stone}"
+        );
+
+        // The last-move marker also takes precedence over the count.
+        // Make h8 the last move by playing only that stone.
+        let mut core2 = SessionCore::new(SessionInit::new_hotseat());
+        core2.execute(Command::Play { mv: h8 }).unwrap();
+        core2.set_search_info(SearchInfo {
+            side_to_move: Color::White,
+            visits: vec![(h8, 300)],
+            prior: vec![],
+            value: -0.25,
+            config: AiConfig::default(),
+        });
+        let frame_last =
+            render_study(&StudyView::new(&core2, &[]).policy_overlay(PolicyOverlay::Visits));
+        let row7_last = &frame_last[2 + 7];
+        assert_eq!(
+            &row7_last[h8_start..h8_start + 3],
+            "[x]",
+            "the last-move marker takes precedence: {row7_last}"
+        );
+
+        // Sanity: the panel is unchanged by the overlay.
+        assert!(
+            text.contains("Ply: 1"),
+            "the panel still shows game state: {text}"
         );
     }
 }

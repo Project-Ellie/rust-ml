@@ -97,6 +97,8 @@ pub enum InputOutcome {
     Message(String),
     /// Toggle the value strip in the side panel.
     ToggleValueStrip,
+    /// Cycle the policy heatmap overlay on the board.
+    CyclePolicy,
     /// The key changed only input state (cursor moved, buffer edited),
     /// or the key is not mapped. Nothing reaches the session.
     None,
@@ -198,6 +200,7 @@ fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) 
         KeyCode::Char('?') => return InputOutcome::Help,
         KeyCode::Char('q') => return InputOutcome::Quit,
         KeyCode::Char('v') => return InputOutcome::ToggleValueStrip,
+        KeyCode::Char('p') => return InputOutcome::CyclePolicy,
         _ => {}
     }
 
@@ -315,6 +318,9 @@ pub fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
     }
     if trimmed.eq_ignore_ascii_case("v") || trimmed.eq_ignore_ascii_case("value") {
         return InputOutcome::ToggleValueStrip;
+    }
+    if trimmed.eq_ignore_ascii_case("p") || trimmed.eq_ignore_ascii_case("policy") {
+        return InputOutcome::CyclePolicy;
     }
     match command::parse(trimmed) {
         Ok(cmd) => InputOutcome::Command(cmd),
@@ -745,6 +751,28 @@ mod tests {
             handle_key(key(KeyCode::Enter), &mut state, &core),
             InputOutcome::Command(Command::Help)
         );
+    }
+
+    #[test]
+    fn p_in_normal_mode_cycles_policy_overlay() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('p'), &mut state, &core),
+            InputOutcome::CyclePolicy
+        );
+    }
+
+    #[test]
+    fn p_and_policy_in_line_mode_cycle_policy_overlay() {
+        let core = playing_core();
+        for word in ["p", "P", "policy", "POLICY"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::CyclePolicy,
+                "{word} cycles the policy overlay"
+            );
+        }
     }
 
     #[test]
