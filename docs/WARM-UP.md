@@ -348,8 +348,17 @@ Two further tutorial tracks are written and verified, ready to work:
   `overlay_cell`, `heatmap_bg` and the styled/plain cell renderers
   (hot ≥10% prints the raw visit count; stones, last move, and the
   cursor are never over-painted), and all fourteen spec tests pass.
-  06c (prior view) and 06d (TSS overlay) remain. Known
-  noise:
+  06c (prior view) is implemented too: the cycle is
+  Off→Visits→Prior→Off, `prior_cell` normalizes by the maximum prior
+  (hot ≥10% prints the raw prior percentage, the brightest cell is always
+  the evaluator's favourite), `policy_empty_cell` now takes the active
+  mode instead of hard-coding visits, and all nine spec tests pass.
+  Review fix on landing: the 06c generalization first routed every
+  search-backed cell through the policy path, which dropped the study
+  board's dim grey empty cells whenever an overlay was Off — Off now
+  falls back to `study_cell`, with a frame-equality regression test
+  (`overlay_off_draws_the_same_board_as_no_search_info`); the help lines
+  read `off → visits → prior`. 06d (TSS overlay) remains. Known noise:
   with the opening schedule's Dirichlet noise, real early-game
   searches spread visits below the 10% hot threshold — the heatmap is
   honest, the evaluator is weak; the trained net (net tutorial) makes
