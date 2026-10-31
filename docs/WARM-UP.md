@@ -358,7 +358,19 @@ Two further tutorial tracks are written and verified, ready to work:
   board's dim grey empty cells whenever an overlay was Off — Off now
   falls back to `study_cell`, with a frame-equality regression test
   (`overlay_off_draws_the_same_board_as_no_search_info`); the help lines
-  read `off → visits → prior`. 06d (TSS overlay) remains. Known noise:
+  read `off → visits → prior`. 06d (TSS overlay) landed last and closes
+  chapter 06: `t` / typed `t`|`tss` run `prove_forced_win` with
+  `SearchBudget { max_nodes: 100_000, max_depth: 9 }` (the depth cap
+  keeps cell numbers single-digit), every painted line passes
+  `verify_line` first, the proof paints as numbered cells (attacker
+  plain, defender bracketed) with the verdict on the message line, and
+  the ceremony/last-move/cursor/finished-game guards hold. Mutual
+  exclusion is shell-enforced in both directions (a policy overlay
+  clears the proof, a stored proof clears the policy) with TSS winning
+  as the renderer's defensive default; the value strip still composes.
+  Chapters 06a–06d are COMPLETE — all 18 06d spec tests green, scripted
+  acceptance reproduces the chapter's frame, 451 workspace tests.
+  Known noise:
   with the opening schedule's Dirichlet noise, real early-game
   searches spread visits below the 10% hot threshold — the heatmap is
   honest, the evaluator is weak; the trained net (net tutorial) makes
