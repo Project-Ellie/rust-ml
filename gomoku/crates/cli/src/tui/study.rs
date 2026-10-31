@@ -436,7 +436,7 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
   b, w           Swap2 choice: choose that color
   m              Swap2 first choice: place two more stones (more)
   v              toggle value strip
-  p              cycle policy overlay (off → visits)
+  p              cycle policy overlay (off → visits → prior)
   :              open the command line (Esc cancels, Enter executes)
   ?              show this help
   q              quit
@@ -919,6 +919,54 @@ mod tests {
         assert_eq!(
             cell, "300",
             "the hottest cell h7 shows 300, got '{cell}' in: {row_line}"
+        );
+    }
+
+    #[test]
+    fn two_p_presses_reach_prior_and_show_prior_percentages() {
+        use engine::{Color, Move};
+
+        // h7 is used instead of h8 because the cursor starts at h8 and
+        // the cursor marker must not be over-painted.
+        let h7 = Move::new(6, 7).unwrap();
+        let i7 = Move::new(6, 8).unwrap();
+        let info = crate::actor::SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![],
+            prior: vec![(h7, 0.5), (i7, 0.25)],
+            value: 0.25,
+            config: AiConfig::default(),
+        };
+
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        core.set_search_info(info);
+
+        // Two `p` presses cycle Off → Visits → Prior.
+        let keys = vec![char_key('p'), char_key('p'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        let frame2 = &screen.frames[2];
+        let text = frame2.join("\n");
+        assert!(
+            text.contains("policy overlay: prior"),
+            "the message line reports prior mode: {text}"
+        );
+
+        // h7 is the evaluator's favourite and shows 50%.
+        let row_line = &frame2[2 + h7.row() as usize];
+        let h7_start = 4 + h7.col() as usize * 3;
+        let cell = &row_line[h7_start..h7_start + 3];
+        assert_eq!(
+            cell, "50%",
+            "the hottest cell h7 shows 50%, got '{cell}' in: {row_line}"
+        );
+
+        // i7 shows 25%.
+        let i7_start = 4 + i7.col() as usize * 3;
+        let cell = &row_line[i7_start..i7_start + 3];
+        assert_eq!(
+            cell, "25%",
+            "the warm cell i7 shows 25%, got '{cell}' in: {row_line}"
         );
     }
 }

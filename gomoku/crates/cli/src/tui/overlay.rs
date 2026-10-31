@@ -24,10 +24,16 @@ pub enum PolicyOverlay {
     Off,
     /// Heatmap by share of total visits
     Visits,
+    /// Heatmap by relative policy prior
+    ///
+    /// The evaluator's opinion before any simulation. Intensity is the
+    /// prior divided by the maximum prior, so the brightest cell is always
+    /// the evaluator's favourite; the label is the raw percentage.
+    Prior,
 }
 
 impl PolicyOverlay {
-    /// Advance to the next mode: `Off → Visits → Off`.
+    /// Advance to the next mode: `Off → Visits → Prior → Off`.
     ///
     /// The cycle lives here rather than in the key handler, so one key can
     /// keep meaning "cycle" as modes are added (the prior view joins the
@@ -36,7 +42,8 @@ impl PolicyOverlay {
     pub fn cycle(self) -> Self {
         match self {
             PolicyOverlay::Off => Self::Visits,
-            PolicyOverlay::Visits => Self::Off,
+            PolicyOverlay::Visits => Self::Prior,
+            PolicyOverlay::Prior => Self::Off,
         }
     }
 
@@ -46,6 +53,7 @@ impl PolicyOverlay {
         match self {
             PolicyOverlay::Off => "off",
             PolicyOverlay::Visits => "visits",
+            PolicyOverlay::Prior => "prior",
         }
     }
 }
@@ -69,17 +77,48 @@ pub struct OverlayCell {
 /// Compute the overlay data for `mv` under `mode`.
 ///
 /// Returns `None` in [`PolicyOverlay::Off`] mode, and also when the stored
-/// search holds no visits at all: a cell with nothing to show must render
-/// as a bare empty cell, not as a dimmed one. A move that is absent from
-/// the visit distribution is the coldest cell (intensity `0.0`, no text),
-/// because the distribution may be partial — absent means unvisited, not
-/// unknown.
+/// search holds nothing to paint with: no visits at all, or a prior vector
+/// whose maximum is zero. A cell with nothing to show must render as a bare
+/// empty cell, not as a dimmed one. A move that is absent from the visit
+/// distribution or the prior vector is the coldest cell (intensity `0.0`,
+/// no text), because both vectors may be partial — absent means unvisited,
+/// not unknown.
 #[must_use]
 pub fn overlay_cell(info: &SearchInfo, mv: Move, mode: PolicyOverlay) -> Option<OverlayCell> {
     match mode {
         PolicyOverlay::Off => None,
         PolicyOverlay::Visits => visits_cell(info, mv),
+        PolicyOverlay::Prior => prior_cell(info, mv),
     }
+}
+
+fn prior_cell(info: &SearchInfo, mv: Move) -> Option<OverlayCell> {
+    let max_prior = info
+        .prior
+        .iter()
+        .map(|(_, p)| p)
+        .fold(0.0f32, |a, &b| a.max(b));
+    if max_prior == 0.0 {
+        return None;
+    }
+    let prior = info
+        .prior
+        .iter()
+        .find(|(m, _)| *m == mv)
+        .map(|(_, p)| *p)
+        .unwrap_or(0.0);
+    let intensity = prior / max_prior;
+    let is_hot = intensity >= 0.1;
+    let text = if is_hot {
+        format!("{:.0}%", prior * 100.0)
+    } else {
+        String::new()
+    };
+    Some(OverlayCell {
+        intensity,
+        is_hot,
+        text,
+    })
 }
 
 /// The visits-mode computation: share of total visits, hot from 10%.
@@ -307,9 +346,10 @@ mod tests {
     }
 
     #[test]
-    fn cycle_order_is_off_visits_off() {
+    fn cycle_order_is_off_visits_prior_off() {
         assert_eq!(PolicyOverlay::Off.cycle(), PolicyOverlay::Visits);
-        assert_eq!(PolicyOverlay::Visits.cycle(), PolicyOverlay::Off);
+        assert_eq!(PolicyOverlay::Visits.cycle(), PolicyOverlay::Prior);
+        assert_eq!(PolicyOverlay::Prior.cycle(), PolicyOverlay::Off);
     }
 
     #[test]
@@ -390,5 +430,62 @@ mod tests {
         let out = render_overlay_cell_plain('.', &cell);
         assert!(!out.contains('\x1b'));
         assert_eq!(out, "400");
+    }
+
+    #[test]
+    fn prior_normalises_by_max_prior() {
+        let info =
+            search_info_with_visits(&[], &[(mv(7, 7), 0.5), (mv(6, 6), 0.25)], 0.0, Color::Black);
+        let best = overlay_cell(&info, mv(7, 7), PolicyOverlay::Prior).unwrap();
+        assert_eq!(best.intensity, 1.0);
+        assert!(best.is_hot);
+        assert_eq!(best.text, "50%");
+
+        let half = overlay_cell(&info, mv(6, 6), PolicyOverlay::Prior).unwrap();
+        assert_eq!(half.intensity, 0.5);
+        assert!(half.is_hot);
+        assert_eq!(half.text, "25%");
+    }
+
+    #[test]
+    fn below_threshold_prior_is_dim() {
+        let info =
+            search_info_with_visits(&[], &[(mv(7, 7), 0.5), (mv(6, 6), 0.04)], 0.0, Color::Black);
+        let dim = overlay_cell(&info, mv(6, 6), PolicyOverlay::Prior).unwrap();
+        assert_eq!(dim.intensity, 0.08);
+        assert!(!dim.is_hot);
+        assert!(dim.text.is_empty());
+    }
+
+    #[test]
+    fn a_normalized_prior_of_exactly_ten_percent_is_hot() {
+        // The threshold is inclusive, as in the visits path: 0.05 /
+        // 0.5 = 0.10 normalized is hot.
+        let info =
+            search_info_with_visits(&[], &[(mv(7, 7), 0.5), (mv(6, 6), 0.05)], 0.0, Color::Black);
+        let boundary = overlay_cell(&info, mv(6, 6), PolicyOverlay::Prior).unwrap();
+        assert_eq!(boundary.intensity, 0.1);
+        assert!(boundary.is_hot);
+    }
+
+    #[test]
+    fn empty_prior_list_gives_no_overlay_cells() {
+        let info = search_info_with_visits(&[(mv(7, 7), 100)], &[], 0.0, Color::Black);
+        assert!(overlay_cell(&info, mv(7, 7), PolicyOverlay::Prior).is_none());
+    }
+
+    #[test]
+    fn zero_max_prior_gives_no_overlay_cells() {
+        let info = search_info_with_visits(&[], &[(mv(7, 7), 0.0)], 0.0, Color::Black);
+        assert!(overlay_cell(&info, mv(7, 7), PolicyOverlay::Prior).is_none());
+    }
+
+    #[test]
+    fn prior_for_missing_move_is_zero_intensity() {
+        let info = search_info_with_visits(&[], &[(mv(7, 7), 0.5)], 0.0, Color::Black);
+        let cell = overlay_cell(&info, mv(0, 0), PolicyOverlay::Prior).unwrap();
+        assert_eq!(cell.intensity, 0.0);
+        assert!(!cell.is_hot);
+        assert!(cell.text.is_empty());
     }
 }

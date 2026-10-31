@@ -265,30 +265,36 @@ fn study_or_policy_cell(
     let is_cursor = cursor == Some(mv);
     let is_last = last == Some(mv);
 
-    if is_stone || is_cursor || is_last {
+    // An overlay that is off must leave the bare board untouched, dim grey
+    // empty cells included, so the mode is checked before the policy path.
+    if is_stone || is_cursor || is_last || policy_overlay == PolicyOverlay::Off {
         study_cell(board, opening, mv, last, cursor, styled)
-    } else if policy_overlay == PolicyOverlay::Visits {
+    } else {
         match search_info {
-            Some(info) => policy_empty_cell(mv, info, styled),
+            Some(info) => policy_empty_cell(mv, info, styled, policy_overlay),
             None => study_cell(board, opening, mv, last, cursor, styled),
         }
-    } else {
-        study_cell(board, opening, mv, last, cursor, styled)
     }
 }
 
-/// Render an empty cell under the visits overlay.
+/// Render an empty cell under an active policy overlay.
 ///
 /// The empty-cell glyph is the one the bare board uses too (`+` on a star
-/// point, `.` elsewhere), so turning the overlay off changes only the
-/// background, never the board's furniture.
-fn policy_empty_cell(mv: Move, info: &crate::actor::SearchInfo, styled: bool) -> String {
+/// point, `.` elsewhere), so the overlay changes only the background, never
+/// the board's furniture. Callers reach this only in a mode other than
+/// [`PolicyOverlay::Off`].
+fn policy_empty_cell(
+    mv: Move,
+    info: &crate::actor::SearchInfo,
+    styled: bool,
+    mode: PolicyOverlay,
+) -> String {
     let glyph = if HOSHI.contains(&mv.row()) && HOSHI.contains(&mv.col()) {
         '+'
     } else {
         '.'
     };
-    match overlay_cell(info, mv, PolicyOverlay::Visits) {
+    match overlay_cell(info, mv, mode) {
         Some(cell) if styled => render_overlay_cell_styled(glyph, &cell),
         Some(cell) => render_overlay_cell_plain(glyph, &cell),
         None => format!(" {} ", glyph),
@@ -996,6 +1002,99 @@ mod tests {
         assert!(
             text.contains("Ply: 1"),
             "the panel still shows game state: {text}"
+        );
+    }
+
+    #[test]
+    fn prior_overlay_shows_percentages_and_respects_precedence() {
+        let h8 = Move::new(7, 7).unwrap();
+        let i8 = Move::new(7, 8).unwrap();
+        let j8 = Move::new(7, 9).unwrap();
+        let info = SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![],
+            prior: vec![(h8, 0.5), (i8, 0.25)],
+            value: 0.25,
+            config: AiConfig::default(),
+        };
+
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        core.execute(Command::Play { mv: j8 }).unwrap();
+        core.set_search_info(info);
+
+        let frame = render_study(&StudyView::new(&core, &[]).policy_overlay(PolicyOverlay::Prior));
+        let row7 = &frame[2 + 7];
+        let h8_start = 4 + 7 * 3;
+        let i8_start = 4 + 8 * 3;
+        let j8_start = 4 + 9 * 3;
+
+        // h8 is the evaluator's favourite and shows 50%.
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            "50%",
+            "h8 shows the hot prior percentage: {row7}"
+        );
+
+        // i8 is warm (50% of max) and also hot; it shows 25%.
+        assert_eq!(
+            &row7[i8_start..i8_start + 3],
+            "25%",
+            "i8 shows the warm prior percentage: {row7}"
+        );
+
+        // j8 is a stone and the last move, so it keeps its brackets.
+        assert_eq!(
+            &row7[j8_start..j8_start + 3],
+            "[x]",
+            "j8 keeps its last-move brackets: {row7}"
+        );
+
+        // The cursor on a hot empty cell takes precedence.
+        let frame_with_cursor = render_study(
+            &StudyView::new(&core, &[])
+                .policy_overlay(PolicyOverlay::Prior)
+                .cursor(h8),
+        );
+        let row7_cursor = &frame_with_cursor[2 + 7];
+        assert_eq!(
+            &row7_cursor[h8_start..h8_start + 3],
+            "<+>",
+            "the cursor on a hot empty cell keeps the cursor marker: {row7_cursor}"
+        );
+    }
+
+    #[test]
+    fn overlay_off_draws_the_same_board_as_no_search_info() {
+        use crate::actor::SearchInfo;
+        use engine::{Color, Move};
+
+        // Two `p` presses away from Off must not leave a trace. The policy
+        // cell path paints empty cells without the study board's dim grey,
+        // so Off has to fall back to `study_cell` rather than reuse it.
+        let h7 = Move::new(6, 7).unwrap();
+
+        let mut bare = SessionCore::new(SessionInit::new_hotseat());
+        bare.execute(Command::Play { mv: h7 }).unwrap();
+        let no_search = render_study(&StudyView::new(&bare, &[]).styled(true));
+
+        let mut searched = SessionCore::new(SessionInit::new_hotseat());
+        searched.execute(Command::Play { mv: h7 }).unwrap();
+        searched.set_search_info(SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![(h7, 100)],
+            prior: vec![(h7, 0.5)],
+            value: 0.25,
+            config: AiConfig::default(),
+        });
+        let off = render_study(
+            &StudyView::new(&searched, &[])
+                .styled(true)
+                .policy_overlay(PolicyOverlay::Off),
+        );
+
+        assert_eq!(
+            off, no_search,
+            "an overlay that is off must draw the board exactly as the bare board does"
         );
     }
 }
