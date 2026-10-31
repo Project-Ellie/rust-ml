@@ -8,20 +8,19 @@ Verified green from `gomoku/`: `cargo test -p cli`, `cargo clippy --all-targets 
 
 ---
 
-The session layer imports the puzzle types. `Puzzle` is unused at this
-slice; the `#[allow(unused_imports)]` attribute keeps the build quiet
-until sub-chapter 07c references it.
+The session layer imports only the puzzle types it needs at this slice.
+`Puzzle` is not imported because it is unused until sub-chapter 07c; the
+import widens then.
 
-`gomoku/crates/cli/src/session.rs`, lines 12–13:
+`gomoku/crates/cli/src/session.rs`, line 12:
 
 ```rust
-#[allow(unused_imports)]
-use crate::puzzle::{Puzzle, PuzzleError, PuzzlePack};
+use crate::puzzle::{PuzzleError, PuzzlePack};
 ```
 
 `PathBuf` is also needed for the pack path stored in `PuzzleStudy`.
 
-`gomoku/crates/cli/src/session.rs`, line 19:
+`gomoku/crates/cli/src/session.rs`, line 18:
 
 ```rust
 use std::path::PathBuf;
@@ -30,7 +29,7 @@ use std::path::PathBuf;
 `SessionInit` grows the `puzzle` field. Every constructor and every
 struct literal in the crate must include it.
 
-`gomoku/crates/cli/src/session.rs`, lines 39–40:
+`gomoku/crates/cli/src/session.rs`, lines 38–39:
 
 ```rust
     /// Puzzle study context when the session was started from a pack.
@@ -41,7 +40,7 @@ struct literal in the crate must include it.
 parsed pack. Keeping the pack in memory lets later navigation switch
 puzzles without file I/O.
 
-`gomoku/crates/cli/src/session.rs`, lines 47–55:
+`gomoku/crates/cli/src/session.rs`, lines 46–54:
 
 ```rust
 /// Puzzle study context carried by a session started from a pack.
@@ -62,7 +61,7 @@ pub struct PuzzleStudy {
 `SessionInit::puzzle` validates the index, clones the puzzle board as
 the opening, and builds a hotseat session with Swap2 disabled.
 
-`gomoku/crates/cli/src/session.rs`, lines 143–169:
+`gomoku/crates/cli/src/session.rs`, lines 142–168:
 
 ```rust
     /// Hotseat study session seeded from puzzle `index` of `pack`.
@@ -97,7 +96,7 @@ the opening, and builds a hotseat session with Swap2 disabled.
 The existing constructors set `puzzle: None`. The hotseat constructor
 is shown below; the other three receive the same field.
 
-`gomoku/crates/cli/src/session.rs`, lines 72–84:
+`gomoku/crates/cli/src/session.rs`, lines 71–83:
 
 ```rust
     pub fn hotseat() -> Self {
@@ -118,7 +117,7 @@ is shown below; the other three receive the same field.
 `SessionCore` stores its own copy of the puzzle context so the public
 accessor can return it without exposing `init`.
 
-`gomoku/crates/cli/src/session.rs`, lines 273–274:
+`gomoku/crates/cli/src/session.rs`, lines 272–273:
 
 ```rust
     /// Puzzle study context; `Some` only for sessions started from a pack.
@@ -127,7 +126,7 @@ accessor can return it without exposing `init`.
 
 `SessionCore::new` copies the context from `init.puzzle`.
 
-`gomoku/crates/cli/src/session.rs`, lines 304–305:
+`gomoku/crates/cli/src/session.rs`, lines 303–304:
 
 ```rust
             puzzle: init.puzzle.clone(),
@@ -136,7 +135,7 @@ accessor can return it without exposing `init`.
 
 The accessor returns the active `PuzzleStudy` by reference.
 
-`gomoku/crates/cli/src/session.rs`, lines 338–342:
+`gomoku/crates/cli/src/session.rs`, lines 337–341:
 
 ```rust
     /// The puzzle study context, if this session was started from a pack.
@@ -149,7 +148,7 @@ The accessor returns the active `PuzzleStudy` by reference.
 `reset` restores the puzzle context from `init.puzzle`, so `new`
 returns to the initially loaded puzzle.
 
-`gomoku/crates/cli/src/session.rs`, line 672:
+`gomoku/crates/cli/src/session.rs`, line 671:
 
 ```rust
         self.puzzle = self.init.puzzle.clone();
@@ -158,7 +157,7 @@ returns to the initially loaded puzzle.
 The `puzzle: None` ripple reaches the binary constructors. `play_init`
 and `selfplay_init` each add the field to their `SessionInit` literals.
 
-`gomoku/crates/cli/src/main.rs`, lines 200–211:
+`gomoku/crates/cli/src/main.rs`, lines 258–269:
 
 ```rust
     SessionInit {
@@ -174,7 +173,7 @@ and `selfplay_init` each add the field to their `SessionInit` literals.
     }
 ```
 
-`gomoku/crates/cli/src/main.rs`, lines 217–229:
+`gomoku/crates/cli/src/main.rs`, lines 276–286:
 
 ```rust
     SessionInit {

@@ -1,8 +1,8 @@
 # Chapter 07 redesign — positions from files: puzzles
 
 Status: the reference build is on the `reference/chapter-07-redesign`
-branch (four slice commits: a `f2eb9ae`, b `b2548ea`, c `418389a`, d
-`0489ecc`, gates green per slice). The code is the learner's work,
+branch (four slice commits: a `e6dc12b`, b `bc1ef42`, c `4fc4190`, d
+`48b9fb9`, gates green per slice). The code is the learner's work,
 sub-chapter by sub-chapter. This paper is the design authority for the
 four sub-chapters.
 
@@ -75,6 +75,12 @@ explicitly, because `Board::from_position` would silently collapse
 them. The board itself is built with
 `Board::from_position(&black, &white, attacker)`, which enforces the
 Gomoku turn invariant (stone counts consistent with the attacker).
+
+The parser's schema lists only the fields the table reads; `v`, `d`,
+and the corpora's `u`/`f` are ignored by serde. A field earns a place
+when a consumer needs it — format-version validation and the claimed
+depth are open questions, deferred in
+[sub-chapter 07a's design paper](a-pack-parser/pack-parser-design.md).
 
 ## Decision 3 — Unlabelled packs are not errors
 

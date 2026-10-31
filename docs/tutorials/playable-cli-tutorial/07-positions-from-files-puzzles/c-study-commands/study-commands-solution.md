@@ -170,8 +170,8 @@ cases.
 
 ## `gomoku/crates/cli/src/session.rs`
 
-The puzzle import is now used, so the `#[allow(unused_imports)]` from
-sub-chapter 07b is removed.
+The `crate::puzzle` import widens from sub-chapter 07b to include
+`Puzzle`, because `puzzle_context` now returns the current puzzle.
 
 `gomoku/crates/cli/src/session.rs`, line 12:
 

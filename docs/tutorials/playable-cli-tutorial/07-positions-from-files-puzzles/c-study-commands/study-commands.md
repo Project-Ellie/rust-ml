@@ -217,8 +217,8 @@ workspace.
 
 ### [`gomoku/crates/cli/src/session.rs`](../../../../../gomoku/crates/cli/src/session.rs)
 
-* Remove the `#[allow(unused_imports)]` left by sub-chapter 07b;
-  `PuzzlePack` is now used.
+* Widen the `crate::puzzle` import from sub-chapter 07b to include
+  `Puzzle`; `Puzzle` is now used by `puzzle_context`.
 * Add dispatch arms for the four new `Command` variants in
   `SessionCore::execute`.
 * Add `execute_hint`, `execute_reveal`, and `execute_puzzle_nav`.

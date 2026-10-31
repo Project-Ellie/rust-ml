@@ -79,10 +79,11 @@ Run `cargo test -p cli --lib command::tests`.
 
 ## Step 1 — `session.rs`: dispatch and helpers
 
-### 1.1 Clean up the import
+### 1.1 Widen the import
 
-Remove the `#[allow(unused_imports)]` above `use crate::puzzle::...`;
-the import is now used by the new helpers.
+At sub-chapter 07b the import named `PuzzleError` and `PuzzlePack`.
+Add `Puzzle` to the import because `puzzle_context` now returns a
+reference to the current `Puzzle`.
 
 ### 1.2 Add dispatch arms
 
@@ -300,7 +301,7 @@ cargo fmt --all -- --check
 | `src/command.rs` | `CommandError::NoPuzzleLoaded/NoSolutionLine/AtLastPuzzle/AtFirstPuzzle` | variants added |
 | `src/command.rs` | parser arms | `hint`/`reveal`/`next`/`prev`, each rejects extra tokens |
 | `src/command.rs` | `parse_puzzle_commands` | passes |
-| `src/session.rs` | import cleanup | `#[allow(unused_imports)]` removed |
+| `src/session.rs` | import widened | `Puzzle` added to the 07b import |
 | `src/session.rs` | `execute` dispatch | four new arms route to helpers |
 | `src/session.rs` | `execute_hint` | emits `Hint` or `NoSolutionLine` |
 | `src/session.rs` | `execute_reveal` | emits `SolutionRevealed` or `NoSolutionLine` |

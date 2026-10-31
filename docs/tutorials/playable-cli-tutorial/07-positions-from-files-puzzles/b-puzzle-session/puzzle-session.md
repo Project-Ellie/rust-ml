@@ -24,7 +24,6 @@ chapters 01–06 still works by construction.
 | **`SessionInit::puzzle`** | The constructor that seeds a hotseat session from one puzzle of a pack. |
 | **Attacker** | The side to move in the loaded puzzle position. |
 | **Initial puzzle** | The puzzle index the session started with; `new` returns to it. |
-| **`#[allow(unused_imports)]`** | The attribute on the `puzzle` import in `session.rs` at this slice, because `Puzzle` is not used until sub-chapter 07c. |
 
 ## Context
 
@@ -139,19 +138,19 @@ The test `new_resets_to_the_initially_loaded_puzzle` plays one move to
 dirty the tree, runs `Command::New`, and asserts that the board and
 puzzle index match the original puzzle.
 
-### 6. The unused-import attribute is intentional
+### 6. The import is narrow at this slice
 
-`src/session.rs` imports `Puzzle`, `PuzzleError`, and `PuzzlePack` with
-`#[allow(unused_imports)]` at this slice. `Puzzle` is not referenced
-until sub-chapter 07c adds the command handlers. The attribute keeps
-the compiler quiet while the slice stays focused on enrollment.
+`src/session.rs` imports `PuzzleError` and `PuzzlePack` from
+`crate::puzzle`. `Puzzle` is not needed until sub-chapter 07c adds the
+command handlers, so it is not imported here. The import widens when a
+consumer first needs it.
 
 ## Low-level design
 
 ### [`gomoku/crates/cli/src/session.rs`](../../../../../gomoku/crates/cli/src/session.rs)
 
-* Add the `puzzle` import from `crate::puzzle` with
-  `#[allow(unused_imports)]`.
+* Add the `puzzle` import from `crate::puzzle` with `PuzzleError` and
+  `PuzzlePack`.
 * Add the `puzzle: Option<PuzzleStudy>` field to `SessionInit`.
 * Add the `PuzzleStudy` struct with `pack_path`, `index`, and `pack`.
 * Add `SessionInit::puzzle(pack_path, pack, index)`.

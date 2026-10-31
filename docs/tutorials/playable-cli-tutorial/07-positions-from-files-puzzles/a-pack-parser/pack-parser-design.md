@@ -36,8 +36,8 @@ checked.
 The legacy puzzle viewer rendered these packs with `x` as the column and
 `y` as the row. The engine stores moves as `Move::new(row, col)`. So the
 parser maps file `[x, y]` to `Move::new(y, x)`. This happens in
-`parse_stones` (`src/puzzle.rs`, lines 285–289) and in the line parser
-(lines 273).
+`parse_stones` (`src/puzzle.rs`, lines 284–288) and in the line parser
+(line 272).
 
 The trap is that a swapped mapping still produces a legal board. Stones
 stay inside the 15×15 grid, fives stay fives, and the parser tests still
@@ -49,8 +49,8 @@ exists because the bug is otherwise invisible.
 
 The corpus uses integers for line sides. `1` means Black and `2` means
 White. This mapping is hard-coded in `parse_item` (`src/puzzle.rs`,
-lines 255–265). The first move of the line must belong to the attacker;
-otherwise the parser returns `InvalidSolutionSide` (lines 266–272).
+lines 254–263). The first move of the line must belong to the attacker;
+otherwise the parser returns `InvalidSolutionSide` (lines 265–271).
 
 Requiring the first line move to be the attacker's guarantees that the
 pack's claim matches the position it describes. A line that starts with
@@ -61,14 +61,14 @@ the defender would be a different puzzle.
 `Board::from_position` would silently collapse duplicate stones within a
 color and would reject overlapping colors only at the position level.
 The parser checks duplicates and overlap explicitly in `parse_item`
-(`src/puzzle.rs`, lines 219–242). This produces `DuplicateStone` and
+(`src/puzzle.rs`, lines 220–241). This produces `DuplicateStone` and
 `OverlappingColors` errors that name the item, instead of a quiet data
 loss.
 
 The same strictness applies to the turn invariant. The parser lets
 `Board::from_position` enforce the invariant, but it maps the error to a
 rich `InvalidCounts` variant that records the stone counts and the
-attacker (`src/puzzle.rs`, lines 244–252).
+attacker (`src/puzzle.rs`, lines 243–251).
 
 ## Decision 4 — The turn invariant is enforced by `Board::from_position`
 
@@ -77,14 +77,27 @@ lists and the attacker to `Board::from_position` and translates the
 result. This keeps the rules in one place: the engine. The parser only
 adds the item number and the counts to the error message.
 
-## Decision 5 — Unknown fields are ignored by the private schema
+## Decision 5 — The private schema reads only what it keeps
 
-The corpora contain extra keys such as `u` and `f`. Serde ignores
-unknown fields by default, and the private `PackFile` / `PackItem`
-types declare only the fields the parser needs (`src/puzzle.rs`, lines
-178–202). The schema is private so that unknown keys do not leak into
-the public API. If the format changes later, the schema can change
-without affecting callers.
+The corpora contain extra keys such as `v`, `d`, `u`, and `f`. Serde
+ignores unknown fields by default, and the private `PackFile` /
+`PackItem` types declare only the fields the parser actually uses
+(`src/puzzle.rs`, lines 183–201). The schema does not carry `v` or `d`
+because no consumer reads them yet. A field earns a place in the schema
+when a consumer needs it, not before.
+
+This keeps the public API small and makes the parser's memory footprint
+honest: it does not keep data it cannot use. If the format changes
+later, the schema can change without affecting callers.
+
+### Open questions
+
+* Format-version validation: the pack format carries a top-level `v`.
+  The parser currently ignores it because only version 1 exists. Add
+  `v` to `PackFile` and validate it when a version 2 format appears.
+* Claimed depth: items carry `d`, a claimed line depth. Add it to
+  `PackItem` if a consumer (for example, a solver-hint command) needs
+  it.
 
 ## Decision 6 — Unlabelled packs are data, not errors
 

@@ -6,7 +6,7 @@ compare your work.
 
 Verified green from `gomoku/`: `cargo test -p cli`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 
-Quotes slice commit 0489ecc on reference/chapter-07-redesign.
+Quotes slice commit 48b9fb9 on reference/chapter-07-redesign.
 
 ---
 

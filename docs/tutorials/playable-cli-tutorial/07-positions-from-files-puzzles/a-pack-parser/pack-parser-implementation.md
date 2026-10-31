@@ -129,8 +129,6 @@ Write:
 
 ```rust
 struct PackFile {
-    #[allow(dead_code)]
-    v: u32,
     count: usize,
     items: Vec<PackItem>,
 }
@@ -144,14 +142,14 @@ Write:
 
 ```rust
 struct PackItem {
+    /// The file's own puzzle number; used in error messages.
     i: u32,
     a: String,
-    #[allow(dead_code)]
-    d: Option<u32>,
     #[serde(rename = "b")]
     black: Vec<[u8; 2]>,
     #[serde(rename = "w")]
     white: Vec<[u8; 2]>,
+    /// Claimed forced-win line; absent in unlabelled packs.
     #[serde(rename = "l", default)]
     line: Vec<[u8; 3]>,
 }

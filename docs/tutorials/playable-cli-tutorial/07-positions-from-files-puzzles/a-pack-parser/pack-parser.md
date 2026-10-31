@@ -111,6 +111,11 @@ validation → index lookup.
 
 ## Walkthrough
 
+The parser keeps an honest schema: it declares only the fields the
+table reads. The pack format carries more (`v` format version, `d`
+claimed depth, and the corpora's `u`/`f` keys), and serde ignores all
+of them. A field earns a place in the schema when a consumer needs it.
+
 ### 1. The file text arrives
 
 `PuzzlePack::from_json` takes an `&str`. It does not open a file. That
@@ -121,9 +126,9 @@ strings or `include_str!("fixtures/mini-pack.json")`.
 
 `from_json` calls `serde_json::from_str::<PackFile>(text)`. The schema
 types `PackFile` and `PackItem` are private. Serde ignores unknown
-fields by default, so the extra `u` and `f` keys in the corpora are
-ignored. The `l` field is renamed to `line` and defaults to an empty
-vector when it is missing.
+fields by default, so the extra `v`, `d`, `u`, and `f` keys in the
+corpora are ignored. The `l` field is renamed to `line` and defaults to
+an empty vector when it is missing.
 
 ### 3. Count is checked first
 

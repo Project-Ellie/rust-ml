@@ -14,10 +14,10 @@ for more than twenty minutes, or after the sub-chapter is complete.
 
 ### 0.1 Add the `puzzle` import
 
-In `src/session.rs`, import `Puzzle`, `PuzzleError`, and `PuzzlePack`
-from `crate::puzzle`. Mark the import with
-`#[allow(unused_imports)]` because `Puzzle` is not referenced until
-sub-chapter 07c.
+In `src/session.rs`, import `PuzzleError` and `PuzzlePack` from
+`crate::puzzle`. `Puzzle` is not imported because it is not referenced
+until sub-chapter 07c; the import widens when `puzzle_context` first
+needs it.
 
 ### 0.2 Add `PathBuf` to the imports
 
@@ -181,7 +181,7 @@ cargo fmt --all -- --check
 
 | File | Item | Contract |
 |------|------|----------|
-| `src/session.rs` | `#[allow(unused_imports)]` puzzle import | present; `Puzzle` unused until 07c |
+| `src/session.rs` | narrow puzzle import | imports `PuzzleError` and `PuzzlePack`; `Puzzle` is added in 07c |
 | `src/session.rs` | `SessionInit::puzzle` field | `Option<PuzzleStudy>`, present in every literal |
 | `src/session.rs` | `PuzzleStudy` | has `pack_path`, `index`, `pack` |
 | `src/session.rs` | `SessionInit::puzzle` | validates index, sets opening from puzzle board, `swap2: false`, both seats human |

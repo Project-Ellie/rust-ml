@@ -4,7 +4,7 @@ This file is opt-in. Read it only if you have been stuck for more than
 twenty minutes, or after you have finished the sub-chapter and want to
 compare your work.
 
-Verified green from `gomoku/`: `cargo test -p cli`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`. Quotes slice commit f2eb9ae on reference/chapter-07-redesign.
+Verified green from `gomoku/`: `cargo test -p cli`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`. Quotes slice commit e6dc12b on reference/chapter-07-redesign.
 
 ---
 
@@ -54,7 +54,12 @@ This file is the whole slice. It declares the public `Puzzle` and
 `PuzzlePack` types, the `PuzzleError` enum, the private serde schema,
 and the validation pipeline.
 
-`gomoku/crates/cli/src/puzzle.rs`, lines 1–290:
+The schema lists only the fields the table reads. `v`, `d`, and the
+corpora's `u`/`f` keys are still present in the file format, but serde
+ignores them because they are not declared. A field earns a place in the
+schema when a consumer needs it.
+
+`gomoku/crates/cli/src/puzzle.rs`, lines 1–289:
 
 ```rust
 //! Puzzle pack loading — positions with a claimed solution line.
@@ -233,12 +238,14 @@ pub enum PuzzleError {
 }
 
 // ------------------------------------------------------------------ pack file schema
+//
+// The schema lists only what the table reads. The pack format carries
+// more (`v` format version, `d` claimed depth, the corpora's `u`/`f`),
+// and serde ignores all of it: a field earns a place here when a
+// consumer needs it, not before.
 
 #[derive(Debug, Deserialize)]
 struct PackFile {
-    /// Format version, currently always 1.
-    #[allow(dead_code)]
-    v: u32,
     count: usize,
     items: Vec<PackItem>,
 }
@@ -248,9 +255,6 @@ struct PackItem {
     /// The file's own puzzle number; used in error messages.
     i: u32,
     a: String,
-    /// Claimed line depth, if the format provides one.
-    #[allow(dead_code)]
-    d: Option<u32>,
     #[serde(rename = "b")]
     black: Vec<[u8; 2]>,
     #[serde(rename = "w")]
@@ -403,7 +407,7 @@ for the error cases. It never reads `data/`.
 
 `gomoku/crates/cli/tests/puzzle.rs`, lines 1–215:
 
-```rust
+```I rust
 //! Parser tests for puzzle packs (spec amendment "positions from files").
 //!
 //! The valid-pack tests load the committed mini fixture; malformed inputs
