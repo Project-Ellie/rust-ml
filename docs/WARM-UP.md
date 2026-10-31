@@ -341,7 +341,14 @@ Two further tutorial tracks are written and verified, ready to work:
   moved from study.rs into input.rs, staleness note vs the live seat
   config; 16 spec tests green, scripted acceptance matches the
   chapter's example frame). Follow-up d80c714: the space bar plays
-  and steps like Enter (both playing_key and opening_key). Known
+  and steps like Enter (both playing_key and opening_key).
+  Sub-chapter 06b (visits heatmap) is implemented in the same working
+  session: `p` / typed `p`|`policy` cycle the board cell overlay
+  Off→Visits→Off, `overlay.rs` gained `PolicyOverlay`, `OverlayCell`,
+  `overlay_cell`, `heatmap_bg` and the styled/plain cell renderers
+  (hot ≥10% prints the raw visit count; stones, last move, and the
+  cursor are never over-painted), and all fourteen spec tests pass.
+  06c (prior view) and 06d (TSS overlay) remain. Known
   noise:
   with the opening schedule's Dirichlet noise, real early-game
   searches spread visits below the 10% hot threshold — the heatmap is
