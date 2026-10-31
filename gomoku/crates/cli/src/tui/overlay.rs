@@ -10,7 +10,7 @@
 use crate::actor::{AiConfig, SearchInfo};
 use crate::fmt::format_move;
 use crate::session::SessionCore;
-use engine::Move;
+use engine::{Color, Move, Proof};
 
 /// Active cell-overlay mode for the board heatmap.
 ///
@@ -145,6 +145,107 @@ fn visits_cell(info: &SearchInfo, mv: Move) -> Option<OverlayCell> {
         text,
         is_hot,
     })
+}
+
+/// Which side a move in a TSS line belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TssSide {
+    /// The side that can force the win.
+    Attacker,
+    /// The opposite side, forced to block.
+    Defender,
+}
+
+/// A verified TSS proof turned into per-cell render data.
+///
+/// The overlay numbers cells in the order they appear in the proof line.
+/// Attacker moves render plain; defender moves render bracketed.
+#[derive(Debug, Clone)]
+pub struct TssOverlay<'a> {
+    proof: &'a Proof,
+    cells: [Option<TssOverlayCell>; 225],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TssOverlayCell {
+    number: usize,
+    side: TssSide,
+}
+
+impl<'a> TssOverlay<'a> {
+    /// Build an overlay from a verified proof.
+    #[must_use]
+    pub fn new(proof: &'a Proof) -> Self {
+        let mut cells = [None; 225];
+        for (i, &mv) in proof.line.iter().enumerate() {
+            let side = if i % 2 == 0 {
+                TssSide::Attacker
+            } else {
+                TssSide::Defender
+            };
+            cells[mv.index()] = Some(TssOverlayCell {
+                number: i + 1,
+                side,
+            });
+        }
+        Self { proof, cells }
+    }
+
+    /// The underlying proof.
+    #[must_use]
+    pub fn proof(&self) -> &'a Proof {
+        self.proof
+    }
+
+    /// Look up the overlay data for one cell.
+    #[must_use]
+    pub fn get(&self, mv: Move) -> Option<(usize, TssSide)> {
+        self.cells[mv.index()].map(|c| (c.number, c.side))
+    }
+}
+
+/// Verdict text for a verified proof overlay.
+#[must_use]
+pub fn tss_verdict(proof: &Proof) -> String {
+    format!(
+        "certified forced win for {:?} in {} ply",
+        proof.winner,
+        proof.line.len()
+    )
+}
+
+/// Render one plain TSS overlay cell.
+///
+/// Numbers stay single-digit because the CLI budget caps `max_depth` at 9.
+#[must_use]
+pub fn render_tss_cell_plain(n: usize, side: TssSide) -> String {
+    debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
+    match side {
+        TssSide::Attacker => format!(" {n} "),
+        TssSide::Defender => format!("[{n}]"),
+    }
+}
+
+/// Render one styled TSS overlay cell.
+#[must_use]
+pub fn render_tss_cell_styled(n: usize, side: TssSide, winner: Color) -> String {
+    debug_assert!(n < 10, "single-digit overlay numbers (max_depth = 9)");
+    let s = n.to_string();
+    let color = match side {
+        TssSide::Attacker => winner,
+        TssSide::Defender => winner.other(),
+    };
+    // Raw SGR escapes, like the policy renderer above: overlay.rs
+    // stays crossterm-free. The winner's side is cyan and bold, the
+    // loser yellow — the legacy UI's convention.
+    let styled = match color {
+        Color::Black => format!("\x1b[1;36m{s}\x1b[0m"),
+        Color::White => format!("\x1b[33m{s}\x1b[0m"),
+    };
+    match side {
+        TssSide::Attacker => format!(" {styled} "),
+        TssSide::Defender => format!("[{styled}]"),
+    }
 }
 
 /// Map an intensity 0.0–1.0 to an ANSI-256 background colour.
@@ -487,5 +588,59 @@ mod tests {
         assert_eq!(cell.intensity, 0.0);
         assert!(!cell.is_hot);
         assert!(cell.text.is_empty());
+    }
+
+    // -------------------------------------------------------- TSS overlay
+
+    #[test]
+    fn tss_overlay_numbers_attacker_and_defender_cells() {
+        let proof = Proof {
+            winner: Color::Black,
+            line: vec![mv(7, 7), mv(6, 7), mv(5, 5)],
+        };
+        let overlay = TssOverlay::new(&proof);
+
+        let first = overlay.get(mv(7, 7)).unwrap();
+        assert_eq!(first, (1, TssSide::Attacker));
+
+        let second = overlay.get(mv(6, 7)).unwrap();
+        assert_eq!(second, (2, TssSide::Defender));
+
+        let third = overlay.get(mv(5, 5)).unwrap();
+        assert_eq!(third, (3, TssSide::Attacker));
+
+        assert!(overlay.get(mv(0, 0)).is_none());
+    }
+
+    #[test]
+    fn tss_verdict_names_winner_and_length() {
+        let proof = Proof {
+            winner: Color::White,
+            line: vec![mv(7, 7), mv(6, 7)],
+        };
+        assert_eq!(
+            tss_verdict(&proof),
+            "certified forced win for White in 2 ply"
+        );
+    }
+
+    #[test]
+    fn tss_plain_cells_follow_the_old_convention() {
+        assert_eq!(render_tss_cell_plain(3, TssSide::Attacker), " 3 ");
+        assert_eq!(render_tss_cell_plain(2, TssSide::Defender), "[2]");
+    }
+
+    #[test]
+    fn tss_styled_attacker_uses_winner_color() {
+        let out = render_tss_cell_styled(1, TssSide::Attacker, Color::Black);
+        assert!(out.contains('\x1b'));
+        assert!(out.contains('1'));
+    }
+
+    #[test]
+    fn tss_styled_defender_uses_winner_other_color() {
+        let out = render_tss_cell_styled(1, TssSide::Defender, Color::Black);
+        assert!(out.contains('\x1b'));
+        assert!(out.contains('1'));
     }
 }

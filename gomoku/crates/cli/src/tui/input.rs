@@ -99,6 +99,8 @@ pub enum InputOutcome {
     ToggleValueStrip,
     /// Cycle the policy heatmap overlay on the board.
     CyclePolicy,
+    /// Toggle the TSS forced-win overlay on the board.
+    ToggleTss,
     /// The key changed only input state (cursor moved, buffer edited),
     /// or the key is not mapped. Nothing reaches the session.
     None,
@@ -201,6 +203,7 @@ fn handle_normal_key(key: KeyEvent, state: &mut InputState, core: &SessionCore) 
         KeyCode::Char('q') => return InputOutcome::Quit,
         KeyCode::Char('v') => return InputOutcome::ToggleValueStrip,
         KeyCode::Char('p') => return InputOutcome::CyclePolicy,
+        KeyCode::Char('t') => return InputOutcome::ToggleTss,
         _ => {}
     }
 
@@ -321,6 +324,9 @@ pub fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
     }
     if trimmed.eq_ignore_ascii_case("p") || trimmed.eq_ignore_ascii_case("policy") {
         return InputOutcome::CyclePolicy;
+    }
+    if trimmed.eq_ignore_ascii_case("t") || trimmed.eq_ignore_ascii_case("tss") {
+        return InputOutcome::ToggleTss;
     }
     match command::parse(trimmed) {
         Ok(cmd) => InputOutcome::Command(cmd),
@@ -793,6 +799,28 @@ mod tests {
                 line_outcome(word, &core),
                 InputOutcome::ToggleValueStrip,
                 "{word} toggles the value strip"
+            );
+        }
+    }
+
+    #[test]
+    fn t_in_normal_mode_toggles_tss_overlay() {
+        let core = playing_core();
+        let mut state = InputState::new();
+        assert_eq!(
+            handle_key(char_key('t'), &mut state, &core),
+            InputOutcome::ToggleTss
+        );
+    }
+
+    #[test]
+    fn t_and_tss_in_line_mode_toggle_tss_overlay() {
+        let core = playing_core();
+        for word in ["t", "T", "tss", "TSS"] {
+            assert_eq!(
+                line_outcome(word, &core),
+                InputOutcome::ToggleTss,
+                "{word} toggles the TSS overlay"
             );
         }
     }

@@ -33,6 +33,7 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   info             show AI search info at the cursor
   v, value         toggle the value strip
   p, policy        cycle policy overlay (off → visits → prior)
+  t, tss           toggle the TSS forced-win overlay
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit

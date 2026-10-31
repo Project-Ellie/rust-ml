@@ -26,11 +26,11 @@ use crate::command::{Command, Event};
 use crate::repl;
 use crate::session::{SessionCore, SessionInit};
 use crate::tui::input::{InputMode, InputOutcome, InputState, handle_key, line_outcome};
-use crate::tui::overlay::PolicyOverlay;
+use crate::tui::overlay::{PolicyOverlay, tss_verdict};
 use crate::tui::render::{StudyView, render_study};
 use crate::tui::screen::{AltScreen, LineScreen, Screen};
 use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind};
-use engine::Move;
+use engine::{Move, SearchBudget, Status};
 use std::io::{self, BufRead, IsTerminal};
 
 /// The maximum number of events the panel keeps.
@@ -313,6 +313,11 @@ pub fn study_loop<S: Screen, I: InputSource>(
             }
             InputOutcome::CyclePolicy => {
                 shell.policy_overlay = shell.policy_overlay.cycle();
+                if shell.policy_overlay != PolicyOverlay::Off {
+                    // Mutual exclusion: a policy overlay and a TSS proof
+                    // overlay cannot be shown at the same time.
+                    shell.tss_proof = None;
+                }
                 message = Some(
                     if shell.policy_overlay != PolicyOverlay::Off && core.search_info().is_none() {
                         "no search here yet".to_string()
@@ -320,6 +325,9 @@ pub fn study_loop<S: Screen, I: InputSource>(
                         format!("policy overlay: {}", shell.policy_overlay.label())
                     },
                 );
+            }
+            InputOutcome::ToggleTss => {
+                message = Some(toggle_tss(core, &mut shell));
             }
         }
     }
@@ -335,6 +343,8 @@ struct ShellState {
     show_value_strip: bool,
     /// The active board policy heatmap overlay.
     policy_overlay: PolicyOverlay,
+    /// The active TSS forced-win proof overlay.
+    tss_proof: Option<engine::Proof>,
 }
 
 /// Assemble the frame for one loop iteration.
@@ -357,7 +367,8 @@ fn build_frame(
     let view = StudyView::new(core, events)
         .styled(styled)
         .show_value_strip(shell.show_value_strip)
-        .policy_overlay(shell.policy_overlay);
+        .policy_overlay(shell.policy_overlay)
+        .tss_proof(shell.tss_proof.as_ref());
     let view = match cursor {
         Some(mv) => view.cursor(mv),
         None => view,
@@ -370,6 +381,50 @@ fn build_frame(
         },
     };
     render_study(&view)
+}
+
+/// Toggle the TSS forced-win overlay.
+///
+/// If a proof is currently shown, hide it. Otherwise run the engine's
+/// threat-space search prover on the current board and, on success,
+/// store the verified proof and clear any active policy overlay.
+fn toggle_tss(core: &SessionCore, shell: &mut ShellState) -> String {
+    if shell.tss_proof.is_some() {
+        shell.tss_proof = None;
+        return "TSS overlay hidden".to_string();
+    }
+
+    // The prover searches game positions; ceremony placements are not
+    // a game position, so refuse the same way an AI step is refused.
+    if core.snapshot().opening.is_some() {
+        return "TSS is not available during the Swap2 ceremony".to_string();
+    }
+
+    let board = core.board();
+    if board.status() != Status::Ongoing {
+        return "TSS demo is only available during ongoing games".to_string();
+    }
+
+    // The depth cap keeps the painted move numbers single-digit, so a
+    // proof cell always fits its three-character slot.
+    let budget = SearchBudget {
+        max_nodes: 100_000,
+        max_depth: 9,
+    };
+    let side = board.to_move();
+    let Some(proof) = engine::prove_forced_win(&board, side, budget) else {
+        return "no forced win proven within budget".to_string();
+    };
+
+    // Verify before paint: no unverified line ever reaches the board.
+    if !engine::verify_line(&board, &proof) {
+        return "internal error: unverifiable proof".to_string();
+    }
+
+    let verdict = tss_verdict(&proof);
+    shell.tss_proof = Some(proof);
+    shell.policy_overlay = PolicyOverlay::Off;
+    verdict
 }
 
 /// Append one batch of events to the capped list and update the
@@ -437,6 +492,7 @@ const NORMAL_MODE_KEYS: &str = r#"Normal-mode keys (single keys, no Enter):
   m              Swap2 first choice: place two more stones (more)
   v              toggle value strip
   p              cycle policy overlay (off → visits → prior)
+  t              toggle TSS forced-win overlay
   :              open the command line (Esc cancels, Enter executes)
   ?              show this help
   q              quit
@@ -451,6 +507,7 @@ mod tests {
     use engine::{Color, Move};
     use std::collections::VecDeque;
     use std::io::Cursor;
+    use testkit::mv;
 
     /// A screen that records every frame it is asked to draw.
     ///
@@ -967,6 +1024,195 @@ mod tests {
         assert_eq!(
             cell, "25%",
             "the warm cell i7 shows 25%, got '{cell}' in: {row_line}"
+        );
+    }
+
+    // -------------------------------------------------------- TSS overlay
+
+    /// The engine's VCF position: a black three on row 8 plus a black two
+    /// that the proof turns into a double threat. Black wins in 3 ply.
+    const VCF_SCRIPT: [(u8, u8); 10] = [
+        (7, 4),
+        (7, 3),
+        (7, 5),
+        (0, 0),
+        (7, 6),
+        (0, 2),
+        (6, 6),
+        (0, 4),
+        (8, 8),
+        (0, 6),
+    ];
+
+    fn vcf_core() -> SessionCore {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        for &(r, c) in &VCF_SCRIPT {
+            core.execute(Command::Play { mv: mv(r, c) }).unwrap();
+        }
+        core
+    }
+
+    #[test]
+    fn t_paints_the_forced_win_line_and_verdict() {
+        let core = vcf_core();
+        // Move the cursor away from h8 so it does not hide the first
+        // attacker move; `t` toggles the overlay on; `q` quits.
+        let keys = vec![
+            key(KeyCode::Down),
+            key(KeyCode::Down),
+            char_key('t'),
+            char_key('q'),
+        ];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        // Frame 3 follows the `t` key and carries the overlay.
+        let frame3 = &screen.frames[3];
+        let text = frame3.join("\n");
+        assert!(
+            text.contains("certified forced win for Black in 3 ply"),
+            "the verdict appears on the message line: {text}"
+        );
+
+        // Move 1 is on row 8, column h: plain ` 1 `.
+        let row7 = &frame3[2 + 7];
+        let h8_start = 4 + 7 * 3;
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            " 1 ",
+            "h8 shows the first attacker move: {row7}"
+        );
+
+        // Move 2 is the defender block at i8: bracketed `[2]`.
+        let i8_start = 4 + 8 * 3;
+        assert_eq!(
+            &row7[i8_start..i8_start + 3],
+            "[2]",
+            "i8 shows the defender block: {row7}"
+        );
+    }
+
+    #[test]
+    fn t_after_p_clears_the_policy_overlay() {
+        use crate::actor::SearchInfo;
+
+        let mut core = vcf_core();
+        let h8 = Move::new(7, 7).unwrap();
+        core.set_search_info(SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![(h8, 999)],
+            prior: vec![],
+            value: 0.0,
+            config: AiConfig::default(),
+        });
+
+        // `p` turns on visits mode; `t` turns on TSS and must clear it.
+        let keys = vec![char_key('p'), char_key('t'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        // Frame 1 has the policy overlay.
+        let frame1 = &screen.frames[1];
+        assert!(
+            frame1.join("\n").contains("policy overlay: visits"),
+            "frame 1 shows visits mode"
+        );
+
+        // Frame 2 has the TSS overlay and no policy cells.
+        let frame2 = &screen.frames[2];
+        let text = frame2.join("\n");
+        assert!(
+            text.contains("certified forced win for Black in 3 ply"),
+            "frame 2 shows the TSS verdict: {text}"
+        );
+        assert!(
+            !text.contains("policy overlay:"),
+            "frame 2 has no policy overlay message: {text}"
+        );
+    }
+
+    #[test]
+    fn p_after_t_clears_the_tss_overlay() {
+        let core = vcf_core();
+        // `t` turns on TSS; `p` cycles policy on and must clear TSS.
+        let keys = vec![char_key('t'), char_key('p'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        // Frame 1 has the TSS overlay.
+        let frame1 = &screen.frames[1];
+        assert!(
+            frame1
+                .join("\n")
+                .contains("certified forced win for Black in 3 ply"),
+            "frame 1 shows the TSS verdict"
+        );
+
+        // Frame 2 has no TSS numbers: the policy overlay is on but there
+        // is no search info, so the board is bare and the message says so.
+        let frame2 = &screen.frames[2];
+        let text = frame2.join("\n");
+        assert!(
+            !text.contains("certified forced win"),
+            "frame 2 has no TSS verdict: {text}"
+        );
+        assert!(
+            text.contains("no search here yet"),
+            "frame 2 explains the empty search: {text}"
+        );
+    }
+
+    #[test]
+    fn t_toggling_twice_removes_the_overlay() {
+        let core = vcf_core();
+        let keys = vec![char_key('t'), char_key('t'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        // Frame 1 shows the overlay and verdict.
+        let frame1 = &screen.frames[1];
+        assert!(
+            frame1
+                .join("\n")
+                .contains("certified forced win for Black in 3 ply"),
+            "frame 1 shows the TSS verdict"
+        );
+
+        // Frame 2 shows the overlay hidden message and no numbers.
+        let frame2 = &screen.frames[2];
+        let text = frame2.join("\n");
+        assert!(
+            text.contains("TSS overlay hidden"),
+            "frame 2 reports the overlay is hidden: {text}"
+        );
+        assert!(
+            !text.contains("certified forced win"),
+            "frame 2 has no verdict: {text}"
+        );
+    }
+
+    #[test]
+    fn t_with_no_forced_win_shows_the_budget_message() {
+        let core = SessionCore::new(SessionInit::new_hotseat());
+        // `t` on an empty board finds no forced win within the budget.
+        let keys = vec![char_key('t'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        let frame1 = &screen.frames[1];
+        let text = frame1.join("\n");
+        assert!(
+            text.contains("no forced win proven within budget"),
+            "frame 1 explains the empty result: {text}"
+        );
+    }
+
+    #[test]
+    fn t_during_a_ceremony_is_refused() {
+        let core = SessionCore::new(SessionInit::new_hotseat().with_swap2(true));
+        let keys = vec![char_key('t'), char_key('q')];
+        let (_core, screen) = run_scripted(core, keys).expect("a scripted session runs clean");
+
+        let frame1 = &screen.frames[1];
+        let text = frame1.join("\n");
+        assert!(
+            text.contains("TSS is not available during the Swap2 ceremony"),
+            "frame 1 refuses the ceremony: {text}"
         );
     }
 }

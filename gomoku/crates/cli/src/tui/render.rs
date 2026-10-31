@@ -17,11 +17,11 @@ use crate::notation::algebraic;
 use crate::opening::OpeningSnapshot;
 use crate::session::{SessionCore, Snapshot};
 use crate::tui::overlay::{
-    PolicyOverlay, overlay_cell, render_overlay_cell_plain, render_overlay_cell_styled,
-    searching_seat_config, value_strip,
+    PolicyOverlay, TssOverlay, overlay_cell, render_overlay_cell_plain, render_overlay_cell_styled,
+    render_tss_cell_plain, render_tss_cell_styled, searching_seat_config, value_strip,
 };
 use crossterm::style::Stylize;
-use engine::{Board, Color, Move, Status};
+use engine::{Board, Color, Move, Proof, Status};
 
 /// The zero-based rows and columns of the nine star points: 4, 8, and 12
 /// in one-based notation. An empty cell on a star point renders as `+`
@@ -58,6 +58,7 @@ pub struct StudyView<'a> {
     styled: bool,
     show_value_strip: bool,
     policy_overlay: PolicyOverlay,
+    tss_proof: Option<&'a Proof>,
 }
 
 impl<'a> StudyView<'a> {
@@ -74,6 +75,7 @@ impl<'a> StudyView<'a> {
             styled: false,
             show_value_strip: false,
             policy_overlay: PolicyOverlay::Off,
+            tss_proof: None,
         }
     }
 
@@ -143,6 +145,13 @@ impl<'a> StudyView<'a> {
         self.policy_overlay = overlay;
         self
     }
+
+    /// Set the TSS forced-win overlay.
+    #[must_use]
+    pub fn tss_proof(mut self, proof: Option<&'a Proof>) -> Self {
+        self.tss_proof = proof;
+        self
+    }
 }
 
 /// Render one frame of the study table.
@@ -169,6 +178,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         view.cursor,
         view.styled,
         view.policy_overlay,
+        view.tss_proof,
         search_info,
     );
     let panel_lines = render_side_panel(
@@ -203,6 +213,7 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
 /// `last` is the most recent move, drawn with square brackets. `cursor`
 /// is the shell's board cursor, drawn with angle brackets. Both are
 /// optional.
+#[allow(clippy::too_many_arguments)]
 fn study_board_lines(
     board: &Board,
     opening: Option<&OpeningSnapshot>,
@@ -210,8 +221,14 @@ fn study_board_lines(
     cursor: Option<Move>,
     styled: bool,
     overlay: PolicyOverlay,
+    tss_proof: Option<&Proof>,
     search_info: Option<&SearchInfo>,
 ) -> Vec<String> {
+    // TSS and policy overlays are mutually exclusive in the shell. The
+    // shell enforces it, but the renderer gives TSS precedence if both
+    // are somehow active: a deterministic proof overlay outranks a
+    // sampled heatmap.
+    let tss_overlay = tss_proof.map(TssOverlay::new);
     let mut lines = Vec::with_capacity(19);
     lines.push(style_gutter(&build_ruler(), styled));
     lines.push(style_gutter(&border(), styled));
@@ -229,6 +246,7 @@ fn study_board_lines(
                 cursor,
                 styled,
                 overlay,
+                tss_overlay.as_ref(),
                 search_info,
             );
 
@@ -256,8 +274,15 @@ fn study_or_policy_cell(
     cursor: Option<Move>,
     styled: bool,
     policy_overlay: PolicyOverlay,
+    tss_overlay: Option<&TssOverlay>,
     search_info: Option<&SearchInfo>,
 ) -> String {
+    // TSS and policy are mutually exclusive; if both are active, TSS
+    // wins. The shell clears one when the other is activated.
+    if let Some(overlay) = tss_overlay {
+        return tss_cell(board, opening, mv, last, cursor, styled, overlay);
+    }
+
     // Ceremony placements are not in the tree board, so the board
     // lookup falls back to the placement list. The list holds at most
     // five entries; a linear scan is fast enough for a per-frame draw.
@@ -299,6 +324,39 @@ fn policy_empty_cell(
         Some(cell) => render_overlay_cell_plain(glyph, &cell),
         None => format!(" {} ", glyph),
     }
+}
+
+/// Render one cell under a TSS proof overlay.
+///
+/// Stones, the cursor marker, and the last-move marker are never
+/// over-painted. Empty cells in the proof line show the move number;
+/// attacker moves are plain, defender moves are bracketed.
+fn tss_cell(
+    board: &Board,
+    opening: Option<&OpeningSnapshot>,
+    mv: Move,
+    last: Option<Move>,
+    cursor: Option<Move>,
+    styled: bool,
+    overlay: &TssOverlay,
+) -> String {
+    let proof = overlay.proof();
+    let is_stone = stone_at(board, opening, mv).is_some();
+    let is_cursor = cursor == Some(mv);
+    let is_last = last == Some(mv);
+
+    if is_stone || is_cursor || is_last {
+        return study_cell(board, opening, mv, last, cursor, styled);
+    }
+
+    if let Some((n, side)) = overlay.get(mv) {
+        if styled {
+            return render_tss_cell_styled(n, side, proof.winner);
+        }
+        return render_tss_cell_plain(n, side);
+    }
+
+    study_cell(board, opening, mv, last, cursor, styled)
 }
 
 /// The stone at `mv`, from the tree board or the ceremony's placements.
@@ -1096,5 +1154,189 @@ mod tests {
             off, no_search,
             "an overlay that is off must draw the board exactly as the bare board does"
         );
+    }
+
+    // -------------------------------------------------------- TSS overlay
+
+    /// Build the engine's VCF win-in-3 test position and prove it.
+    fn vcf_proof() -> engine::Proof {
+        let mut b = engine::Board::new();
+        for &(r, c) in &VCF_SCRIPT {
+            b.play(engine::Move::new(r, c).unwrap()).unwrap();
+        }
+        engine::prove_forced_win(
+            &b,
+            engine::Color::Black,
+            engine::SearchBudget {
+                max_nodes: 2000,
+                max_depth: 6,
+            },
+        )
+        .expect("the VCF puzzle is proven")
+    }
+
+    /// The VCF position as a session: a black three on row 8, a black two
+    /// that the proof turns into a double threat.
+    const VCF_SCRIPT: [(u8, u8); 10] = [
+        (7, 4),
+        (7, 3),
+        (7, 5),
+        (0, 0),
+        (7, 6),
+        (0, 2),
+        (6, 6),
+        (0, 4),
+        (8, 8),
+        (0, 6),
+    ];
+
+    fn core_with_vcf_position() -> SessionCore {
+        let mut core = SessionCore::new(SessionInit::new_hotseat());
+        for &(r, c) in &VCF_SCRIPT {
+            core.execute(Command::Play { mv: mv(r, c) }).unwrap();
+        }
+        core
+    }
+
+    #[test]
+    fn tss_overlay_paints_numbered_cells() {
+        let proof = vcf_proof();
+        let core = core_with_vcf_position();
+        let frame = render_study(&StudyView::new(&core, &[]).tss_proof(Some(&proof)));
+        let row7 = &frame[2 + 7];
+        let row5 = &frame[2 + 5];
+
+        // Move 1: the attacker plays h8 (7,7), rendered plain.
+        let h8_start = 4 + 7 * 3;
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            " 1 ",
+            "the attacker cell shows a plain number: {row7}"
+        );
+
+        // Move 2: the defender blocks at i8 (7,8), rendered bracketed.
+        let i8_start = 4 + 8 * 3;
+        assert_eq!(
+            &row7[i8_start..i8_start + 3],
+            "[2]",
+            "the defender cell shows a bracketed number: {row7}"
+        );
+
+        // Move 3: the attacker plays f6 (5,5), rendered plain.
+        let f6_start = 4 + 5 * 3;
+        assert_eq!(
+            &row5[f6_start..f6_start + 3],
+            " 3 ",
+            "the final attacker cell shows a plain number: {row5}"
+        );
+
+        // The verdict line is not part of the rendered frame; the shell
+        // puts it on the message line. The board alone carries the overlay.
+        let board_text: String = frame.iter().take(19).cloned().collect();
+        assert!(!board_text.contains("certified"));
+    }
+
+    #[test]
+    fn tss_overlay_preserves_stones_and_last_move() {
+        let proof = vcf_proof();
+        let core = core_with_vcf_position();
+        let frame = render_study(&StudyView::new(&core, &[]).tss_proof(Some(&proof)));
+        let row7 = &frame[2 + 7];
+
+        // (7,6) is g8, an existing Black stone in the puzzle and not the
+        // last move, so it keeps the plain stone glyph.
+        let g8_start = 4 + 6 * 3;
+        assert_eq!(
+            &row7[g8_start..g8_start + 3],
+            " x ",
+            "an existing stone keeps its glyph: {row7}"
+        );
+
+        // The last move is (0,6) = g1 and keeps its brackets.
+        let row0 = &frame[2];
+        let g1_start = 4 + 6 * 3;
+        assert_eq!(
+            &row0[g1_start..g1_start + 3],
+            "[o]",
+            "the last move keeps its brackets: {row0}"
+        );
+    }
+
+    #[test]
+    fn tss_overlay_cursor_takes_precedence_over_numbers() {
+        let proof = vcf_proof();
+        let core = core_with_vcf_position();
+        let h8 = Move::new(7, 7).unwrap();
+        let frame = render_study(
+            &StudyView::new(&core, &[])
+                .tss_proof(Some(&proof))
+                .cursor(h8),
+        );
+        let row7 = &frame[2 + 7];
+        let h8_start = 4 + 7 * 3;
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            "<+>",
+            "the cursor on a numbered empty cell keeps the cursor marker: {row7}"
+        );
+    }
+
+    #[test]
+    fn tss_and_policy_overlay_mutual_exclusion_prefers_tss() {
+        use crate::actor::SearchInfo;
+
+        let proof = vcf_proof();
+        let mut core = core_with_vcf_position();
+        // Plant a policy overlay on the same cell.
+        let h8 = Move::new(7, 7).unwrap();
+        core.set_search_info(SearchInfo {
+            side_to_move: Color::Black,
+            visits: vec![(h8, 999)],
+            prior: vec![],
+            value: 0.0,
+            config: AiConfig::default(),
+        });
+
+        // Both overlays active: TSS wins.
+        let frame = render_study(
+            &StudyView::new(&core, &[])
+                .policy_overlay(PolicyOverlay::Visits)
+                .tss_proof(Some(&proof)),
+        );
+        let row7 = &frame[2 + 7];
+        let h8_start = 4 + 7 * 3;
+        assert_eq!(
+            &row7[h8_start..h8_start + 3],
+            " 1 ",
+            "TSS takes precedence over policy: {row7}"
+        );
+    }
+
+    #[test]
+    fn tss_styled_and_unstyled_frames_differ_only_in_escapes() {
+        let proof = vcf_proof();
+        let core = core_with_vcf_position();
+        let styled = render_study(
+            &StudyView::new(&core, &[])
+                .tss_proof(Some(&proof))
+                .styled(true),
+        );
+        let plain = render_study(
+            &StudyView::new(&core, &[])
+                .tss_proof(Some(&proof))
+                .styled(false),
+        );
+
+        assert!(
+            styled.iter().any(|l| l.contains('\x1b')),
+            "the styled frame has escape sequences"
+        );
+        assert!(
+            plain.iter().all(|l| !l.contains('\x1b')),
+            "the plain frame has no escape sequences"
+        );
+
+        let stripped: Vec<String> = styled.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
     }
 }
