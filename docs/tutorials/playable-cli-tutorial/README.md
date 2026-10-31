@@ -69,6 +69,9 @@ Written 2026-10-17 against the approved spec (as amended: algebraic
 notation, single CLI, positions from files); chapters 07–08 (positions
 from files) added 2026-10-18. What you will have built by the end of
 chapter 09: a `cli` crate with 136 tests green (one ignored
-measurement), workspace green, gates clean. The solution files quote
-that end state byte-for-byte; each carries its verification provenance
-in its header.
+measurement), workspace green, gates clean. Chapters 05–07 have since
+been restructured into sub-chapters (05: six, 06: four, 07: four), each
+sub-chapter with its own tutorial, design paper, implementation notes,
+and opt-in solution verified against a slice commit on its
+`reference/chapter-NN-redesign` branch; the solution files quote the
+verified state, each carrying its verification provenance in its header.

@@ -370,7 +370,16 @@ Two further tutorial tracks are written and verified, ready to work:
   as the renderer's defensive default; the value strip still composes.
   Chapters 06a–06d are COMPLETE — all 18 06d spec tests green, scripted
   acceptance reproduces the chapter's frame, 451 workspace tests.
-  Known noise:
+  Chapter 07 (positions from files: puzzles) was REDESIGNED as four
+  sub-chapters (07a pack parser, 07b puzzle session, 07c study
+  commands hint/reveal/next/prev, 07d the --puzzle/--index flag on
+  `play`), following the chapter-06 pattern: four artifacts per
+  sub-chapter on main, reference implementation on
+  `reference/chapter-07-redesign` (four slice commits, gates green
+  per slice, 235 cli tests on the branch; worktree
+  `../rust-ml-ref-chapter-07` kept for inspection). The old
+  monolithic 07 doc and its pre-redesign 01-solution.md (quoted
+  `d6c2af3`) are replaced. Known noise:
   with the opening schedule's Dirichlet noise, real early-game
   searches spread visits below the 10% hot threshold — the heatmap is
   honest, the evaluator is weak; the trained net (net tutorial) makes
