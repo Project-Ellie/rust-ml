@@ -4,6 +4,7 @@ pub mod fmt;
 pub mod history;
 pub mod notation;
 pub mod opening;
+pub mod puzzle;
 pub mod repl;
 pub mod session;
 pub mod tui;
