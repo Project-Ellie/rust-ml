@@ -9,11 +9,13 @@ use crate::command::{Command, CommandError, Event, SeatSel};
 use crate::history::NodeId as HistoryNodeId;
 use crate::history::{ForwardOutcome, History, PlayOutcome};
 use crate::opening::{OpeningSnapshot, OpeningState};
+use crate::puzzle::{PuzzleError, PuzzlePack};
 use engine::{Board, Color, Move, Status};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionInit {
@@ -33,6 +35,22 @@ pub struct SessionInit {
     pub opening: Board,
     /// opening variant Swap2
     pub swap2: bool,
+    /// puzzle study context when the session was started from a pack
+    pub puzzle: Option<PuzzleStudy>,
+}
+
+/// Puzzle study context carried by a session started from a pack.
+///
+/// The whole pack stays in memory so `next` / `prev` can load adjacent
+/// puzzles without further I/O.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PuzzleStudy {
+    /// Path the pack was loaded from
+    pub pack_path: PathBuf,
+    /// Zero-based index
+    pub index: usize,
+    /// the parsed pack
+    pub pack: PuzzlePack,
 }
 
 impl SessionInit {
@@ -60,6 +78,7 @@ impl SessionInit {
             seed: None,
             opening: Board::new(),
             swap2: false,
+            puzzle: None,
         }
     }
 
@@ -75,6 +94,7 @@ impl SessionInit {
             seed: None,
             opening: opening.clone(),
             swap2: false,
+            puzzle: None,
         }
     }
 
@@ -97,6 +117,7 @@ impl SessionInit {
             seed: None,
             opening: Board::new(),
             swap2: false,
+            puzzle: None,
         }
     }
 
@@ -114,6 +135,7 @@ impl SessionInit {
             seed: Some(seed),
             opening: Board::new(),
             swap2: false,
+            puzzle: None,
         }
     }
 
@@ -121,6 +143,34 @@ impl SessionInit {
     pub fn with_swap2(mut self, swap2: bool) -> Self {
         self.swap2 = swap2;
         self
+    }
+
+    /// Hotseat study session seeded from puzzle `index` of `pack`.
+    ///
+    /// The puzzle position becomes the root of the variation tree with
+    /// the attacker to move; both seats start human. Seats and AI
+    /// configuration can be adjusted afterwards with struct-update
+    /// syntax, exactly as for the other constructors.
+    ///
+    /// # Errors
+    /// Returns `PuzzleError::IndexOutOfRange` if `index` is not in the pack.
+    pub fn puzzle(pack_path: PathBuf, pack: PuzzlePack, index: usize) -> Result<Self, PuzzleError> {
+        let opening = pack.get(index)?.board.clone();
+        Ok(Self {
+            black: Occupant::Human,
+            white: Occupant::Human,
+            default_config: Default::default(),
+            black_sims: None,
+            white_sims: None,
+            seed: None,
+            opening,
+            swap2: false,
+            puzzle: Some(PuzzleStudy {
+                pack_path,
+                index,
+                pack,
+            }),
+        })
     }
 }
 
@@ -221,6 +271,7 @@ pub struct SessionCore {
     init: SessionInit,
     search_info: HashMap<HistoryNodeId, SearchInfo>,
     opening: Option<OpeningState>,
+    puzzle: Option<PuzzleStudy>,
 }
 
 impl SessionCore {
@@ -249,6 +300,7 @@ impl SessionCore {
             } else {
                 None
             },
+            puzzle: init.puzzle.clone(),
             init,
             search_info: HashMap::new(),
         }
@@ -269,6 +321,12 @@ impl SessionCore {
             last_move: self.history.board().moves().last().copied(),
             opening: self.opening.as_ref().map(OpeningState::snapshot),
         }
+    }
+
+    /// The puzzle study context, if this session was started from a pack.
+    #[must_use]
+    pub fn puzzle(&self) -> Option<&PuzzleStudy> {
+        self.puzzle.as_ref()
     }
 
     #[must_use]
@@ -617,7 +675,8 @@ impl SessionCore {
             Some(OpeningState::new())
         } else {
             None
-        }
+        };
+        self.puzzle = self.init.puzzle.clone();
         // Keep the same RNG; reset does not reseed.
     }
 

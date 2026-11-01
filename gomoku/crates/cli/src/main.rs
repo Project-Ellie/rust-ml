@@ -206,6 +206,7 @@ fn play_init(search: &SearchArgs, swap2: bool) -> SessionInit {
         seed: search.seed,
         opening: Board::new(),
         swap2,
+        puzzle: None,
     }
 }
 
@@ -223,6 +224,7 @@ fn selfplay_init(search: &SearchArgs) -> SessionInit {
         seed: search.seed,
         opening: Board::new(),
         swap2: false,
+        puzzle: None,
     }
 }
 

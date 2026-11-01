@@ -38,6 +38,7 @@ fn tactics_ai_takes_win_in_one() {
         seed: Some(1),
         opening: board,
         swap2: false,
+        puzzle: None,
     });
 
     let events = core.execute(Command::Step).unwrap();
@@ -102,6 +103,7 @@ fn tactics_ai_blocks_opponent_open_four() {
         seed: Some(1),
         opening: board,
         swap2: false,
+        puzzle: None,
     });
 
     let events = core.execute(Command::Step).unwrap();
@@ -155,6 +157,7 @@ fn different_sims_per_seat_yield_different_total_visits() {
         seed: Some(1),
         opening: Board::new(),
         swap2: false,
+        puzzle: None,
     });
 
     core.execute(Command::Release {

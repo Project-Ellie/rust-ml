@@ -4,6 +4,7 @@
 
 use cli::actor::OccupantKind;
 use cli::command::{Command, CommandError, Event, SeatSel};
+use cli::puzzle;
 use cli::session::{SessionCore, SessionInit, Snapshot};
 use engine::{Board, Color, PlayError, Status};
 use testkit::{mv, play, play_some};
@@ -309,4 +310,75 @@ fn snapshot_deserialization_rejects_bad_input() {
     let mut missing = good.clone();
     missing.as_object_mut().unwrap().remove("status");
     assert!(serde_json::from_value::<Snapshot>(missing).is_err());
+}
+
+fn mini_pack() -> puzzle::PuzzlePack {
+    puzzle::PuzzlePack::from_json(include_str!("fixtures/mini-pack.json")).unwrap()
+}
+
+fn puzzle_session(index: usize) -> SessionCore {
+    let init = SessionInit::puzzle(
+        std::path::PathBuf::from("mini-pack.json"),
+        mini_pack(),
+        index,
+    )
+    .unwrap();
+    SessionCore::new(init)
+}
+
+#[test]
+fn puzzle_session_roots_at_puzzle_position_with_attacker_to_move() {
+    let core = puzzle_session(1);
+    assert_eq!(core.board(), mini_pack().items[1].board);
+    assert_eq!(core.board().to_move(), Color::White);
+    let study = core.puzzle().expect("puzzle context");
+    assert_eq!(study.index, 1);
+    assert_eq!(study.pack.items.len(), 3);
+}
+
+#[test]
+fn puzzle_init_rejects_out_of_range_index() {
+    let err = SessionInit::puzzle(std::path::PathBuf::from("mini-pack.json"), mini_pack(), 3)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        puzzle::PuzzleError::IndexOutOfRange { index: 3, count: 3 }
+    ));
+}
+
+#[test]
+fn puzzle_position_supports_full_study_flow() {
+    let mut core = puzzle_session(2);
+    play(&mut core, 7, 10);
+    core.execute(Command::Back { n: 1 }).unwrap();
+    let events = play(&mut core, 10, 10);
+    assert!(
+        events.iter().any(|e| matches!(e, &Event::Branched { .. })),
+        "expected Branched, got {events:?}"
+    );
+    core.execute(Command::Back { n: 1 }).unwrap();
+    let events = core.execute(Command::Forward { n: 1 }).unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, &Event::BranchPoint { .. })),
+        "Expected BranchPoint, got {events:?}"
+    );
+    let events = core.execute(Command::Var { index: 0 }).unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, &Event::CursorMoved { .. })),
+        "expected CursorMoved, got {events:?}"
+    );
+}
+
+#[test]
+fn new_resets_to_the_initially_loaded_puzzle() {
+    let mut core = puzzle_session(0);
+    play(&mut core, 9, 9);
+    let events = core.execute(Command::New).unwrap();
+    assert!(events.iter().any(|e| matches! {e, &Event::Reset}));
+    assert_eq!(core.puzzle().unwrap().index, 0);
+    assert_eq!(core.board(), mini_pack().items[0].board);
 }

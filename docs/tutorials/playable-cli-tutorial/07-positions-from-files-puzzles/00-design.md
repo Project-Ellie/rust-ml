@@ -4,15 +4,18 @@ Status: the reference build is on the `reference/chapter-07-redesign`
 branch (four slice commits: a `e6dc12b`, b `bc1ef42`, c `4fc4190`, d
 `48b9fb9`, gates green per slice). The code is the learner's work,
 sub-chapter by sub-chapter. This paper is the design authority for the
-four sub-chapters.
+five sub-chapters. Sub-chapter e (the picker) is specified — tutorial
+and design paper — and awaits its slice commit.
 
 Decided (2026-10, with the owner):
 
 - Folder layout: one subfolder per sub-chapter, named `a-pack-parser`,
-  `b-puzzle-session`, `c-study-commands`, and `d-puzzle-flag`. Each
-  subfolder contains the tutorial, the design paper, the implementation
-  notes, and the opt-in solution file. The sub-chapter name appears in
-  every file name.
+  `b-puzzle-session`, `c-study-commands`, `d-puzzle-flag`, and
+  `e-the-picker`. Each subfolder contains the tutorial, the design
+  paper, the implementation notes, and the opt-in solution file. The
+  sub-chapter name appears in every file name. (`e-the-picker`
+  currently holds the tutorial and the design paper; the
+  implementation notes and solution land with the slice.)
 - The old chapter-level `01-solution.md` file is removed. Its content
   is split across the four sub-chapter solution files and re-verified
   against the new-structure reference build (the old file quoted the
@@ -137,6 +140,20 @@ move, a horizontal four on row 5 with the one-move line `i5`; (3) a
 three-ply line. Every stone list satisfies the turn invariant for its
 attacker, and the extra `u` / `f` fields prove the schema ignores
 unknown keys.
+
+## Decision 8 — A bare `--puzzle` opens the native picker, and cancel is not an error
+
+Decided (2026-10-31, with the owner): the `--puzzle` flag gains an
+optional value. A bare `gomoku play --puzzle` opens the native OS file
+dialog — one blocking [`rfd`](https://docs.rs/rfd) call in `main.rs`,
+running before the TUI starts — while `--puzzle pack.json` keeps the
+07d contract byte-for-byte so scripts, `sessiondemo`, and tests never
+see a dialog. Cancelling the dialog prints `no pack selected` and
+exits 0: exit 2 stays reserved for usage and data errors. The full
+reasoning — crate choice, the blocking API under the no-async lock,
+the closure seam, the corpus-directory fallback, and the chapter-08
+reuse contract — is in
+[the sub-chapter's design paper](e-the-picker/the-picker-design.md).
 
 ## References
 

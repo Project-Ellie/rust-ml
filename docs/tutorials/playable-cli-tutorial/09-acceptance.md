@@ -33,7 +33,10 @@ rendered board, the overlays that show what the AI thinks, and the
 puzzle and game-record positions that enroll into the table from
 files. Everything works in isolation; every behavior is reachable
 through the public `execute(Command) -> Result<Vec<Event>, CommandError>`
-contract.
+contract — with one deliberate exception: the native file picker from
+sub-chapter 07e. A GUI dialog cannot be scripted, so the picker is
+verified manually in its own chapter and stays out of the acceptance
+artifacts below.
 
 What remains is the proof that the whole thing hangs together under
 three different lenses:

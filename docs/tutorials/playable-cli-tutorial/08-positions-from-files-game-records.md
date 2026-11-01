@@ -199,6 +199,17 @@ source per session), and `selfplay` rejects `--game` with exit 2 —
 self-play from a finished game is meaningless, and from an unfinished
 one it is just `play` with AI seats.
 
+The picker contract from sub-chapter 07e applies here too: a bare
+`--game` will open the same native file dialog — the shared
+`pick_file` helper with a `.psq` filter, starting at
+`data/gomocup-games/` with the working-directory fallback — and
+cancelling it exits 0 exactly as for packs. This chapter's reference
+build predates the picker, so `--game` still requires a value; the
+bare form lands in a follow-up slice on the 07e terms (bare asks,
+valued tells, `sessiondemo` keeps requiring a path, automation never
+drives the dialog). Explicit paths remain the scripted and tested
+form in either case.
+
 ### Sidebar: the `History::forward` AtLeaf quirk
 
 A pre-existing behavior from chapter 01 surfaces in record sessions.

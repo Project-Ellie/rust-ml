@@ -25,8 +25,9 @@ SessionInit::puzzle ─────► SessionCore
                                  └── next/prev ─► Event::PuzzleLoaded
                                                  (clamp at the pack ends)
    │
-   ├── main.rs: gomoku play --puzzle pack.json [--index N]
-   │     (exit 2 + fetch.sh hint on a missing or invalid pack)
+   ├── main.rs: gomoku play --puzzle [pack.json] [--index N]
+   │     (a bare --puzzle opens the native pack picker — 07e;
+   │      exit 2 + fetch.sh hint on a missing or invalid pack)
    │
    └── sessiondemo --puzzle pack.json --script puzzle_demo.txt
          (the scripted capstone)
@@ -42,11 +43,13 @@ every test.
 
 ## The sub-chapters
 
-The old monolithic chapter 07 has been restructured into four
+The old monolithic chapter 07 has been restructured into five
 sub-chapters. Each sub-chapter has its own tutorial, design paper,
 implementation notes, and opt-in solution file in its folder, and a
 slice commit on `reference/chapter-07-redesign` that the solution
-quotes verbatim.
+quotes verbatim. Sub-chapter e is the exception: its tutorial and
+design paper are written, and its implementation notes, solution, and
+slice commit land when the slice is built.
 
 | sub-chapter | what it teaches |
 |---|---|
@@ -54,6 +57,7 @@ quotes verbatim.
 | [b — The puzzle enrolls](07-positions-from-files-puzzles/b-puzzle-session/puzzle-session.md) | Loading a puzzle seeds the study table: the position is the root, the attacker is to move, and every tool still works. |
 | [c — The study commands](07-positions-from-files-puzzles/c-study-commands/study-commands.md) | `hint`, try, take back, `reveal`, `next` — the study flow through the command language. |
 | [d — The puzzle flag](07-positions-from-files-puzzles/d-puzzle-flag/puzzle-flag.md) | `gomoku play --puzzle pack.json --index N` at the real table, with the panel line and the fetch.sh error path. |
+| [e — The picker](07-positions-from-files-puzzles/e-the-picker/the-picker.md) | A bare `--puzzle` opens the native file dialog at the corpus; a valued flag stays scriptable; cancel is a quiet exit. |
 
 ## Background documents
 
@@ -75,6 +79,7 @@ Next: [Chapter 08 — Positions from files: game records](08-positions-from-file
 | **Reveal** | The command that shows the full claimed line. |
 | **Clamp** | `next` / `prev` stop at the pack ends with a typed error instead of wrapping around. |
 | **`PuzzleStudy`** | The session context carrying the pack path, the current index, and the whole parsed pack, so `next` / `prev` need no further I/O. |
+| **Picker** | The native OS file dialog opened by a bare `--puzzle` flag (sub-chapter 07e). Cancel is a quiet exit 0, not an error. |
 | **Fixture discipline** | Tests load only the committed `crates/cli/tests/fixtures/mini-pack.json`, never the git-ignored corpora under `data/`. |
 
 ## References
