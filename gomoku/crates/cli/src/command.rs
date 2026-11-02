@@ -13,39 +13,58 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 
+/// A command issued to `SessionCore`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
+    /// Play a move at the cursor.
     Play {
+        /// The move to play.
         mv: Move,
     },
+    /// Let the AI play one move.
     Step,
+    /// Go back `n` plies in the variation tree.
     Back {
+        /// Number of plies to undo.
         n: u32,
     },
+    /// Go forward `n` plies along the current line.
     Forward {
+        /// Number of plies to redo.
         n: u32,
     },
+    /// Choose a child variation by index.
     Var {
+        /// Zero-based child index.
         index: usize,
     },
+    /// Make a seat human.
     Take {
+        /// Seat or seats to take.
         seat: SeatSel,
     },
+    /// Release a seat to the AI.
     Release {
+        /// Seat or seats to release.
         seat: SeatSel,
     },
+    /// Set the simulation count for a seat.
     SetSims {
+        /// Seat or seats to configure.
         seat: SeatSel,
+        /// Number of MCTS simulations.
         n: u32,
     },
-    /// End the current Swap2 placement round
+    /// End the current Swap2 placement round.
     Done,
-    /// Choose a color at the Swap2 choice phase
+    /// Choose a color at the Swap2 choice phase.
     ChooseColor {
+        /// The chosen color.
         color: Color,
     },
-    /// Decline the first Swap2 choicce and place two more stones
+    /// Decline the first Swap2 choice and place two more stones.
     More,
+    /// Reset the session to its opening.
     New,
     /// Show the first move of the loaded puzzle's claimed line.
     Hint,
@@ -61,10 +80,13 @@ pub enum Command {
     /// Navigation clamps: at the first puzzle this is an error, not a
     /// wrap-around.
     PrevPuzzle,
+    /// Show help.
     Help,
+    /// Leave the session.
     Quit,
 }
 
+/// Phase of a Swap2 opening ceremony.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OpeningPhase {
@@ -78,10 +100,14 @@ pub enum OpeningPhase {
     FinalChoice,
 }
 
+/// One seat, or both seats at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeatSel {
+    /// The Black seat.
     Black,
+    /// The White seat.
     White,
+    /// Both seats.
     Both,
 }
 
@@ -141,18 +167,32 @@ pub enum Event {
     },
     /// The session was reset to its initial opening.
     Reset,
-    /// A stone was placed during Swap2 opening
-    StonePlaced { mv: Move, color: Color },
+    /// A stone was placed during Swap2 opening.
+    StonePlaced {
+        /// The placed stone.
+        mv: Move,
+        /// Its color.
+        color: Color,
+    },
     /// `back` removed the last Swap2 placement.
-    StoneRemoved { mv: Move },
+    StoneRemoved {
+        /// The removed stone.
+        mv: Move,
+    },
     /// The Swap2 Opening entered a new phase.
-    OpeningPhaseChanged { phase: OpeningPhase },
+    OpeningPhaseChanged {
+        /// The new phase.
+        phase: OpeningPhase,
+    },
     /// The Swap2 opening finished; the game starts from its result.
     ///
     /// The payload is the chosen color and nothing else. The side to
     /// move is not carried: the engine guarantees that White moves
     /// first after the ceremony, because White always has fewer stones.
-    OpeningFinished { chosen: Color },
+    OpeningFinished {
+        /// The chosen color.
+        chosen: Color,
+    },
     /// The first move of the loaded puzzle's claimed line.
     Hint {
         /// First move of the claimed line.
@@ -233,41 +273,60 @@ fn fmt_move(mv: Move) -> String {
     crate::fmt::format_move(mv)
 }
 
+/// Why a command could not be executed.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum CommandError {
+    /// Text input did not match any command grammar.
     #[error("Parse error {0}")]
     Parse(String),
+    /// The game is already over.
     #[error("Can't execute anything anymore. This game is over.")]
     GameOver,
+    /// The move is illegal in the cursor position.
     #[error("Illegal Move {0}")]
     IllegalMove(#[from] PlayError),
+    /// The chosen variation index does not exist.
     #[error("choice out of bound: {index}. Options: {count}")]
     VarOutOfBounds {
-        /// Requested index
+        /// Requested index.
         index: usize,
-        /// Number of children available
+        /// Number of children available.
         count: usize,
     },
+    /// `forward` reached a leaf.
     #[error("Tried to forward at a leaf. Choose a move instead.")]
     ForwardAtLeaf,
+    /// `var` was used when the cursor is not at a branch point.
     #[error("Not at branch point. Simply move")]
     NotAtBranchPoint,
+    /// `step` was issued for a human seat.
     #[error("Step for {seat:?} requires AI")]
-    StepRequiresAi { seat: Color },
+    StepRequiresAi {
+        /// The seat that must be AI.
+        seat: Color,
+    },
+    /// The simulation count must be positive.
     #[error("Simulations must be greater than zero")]
     ZeroSims,
+    /// No Swap2 opening is in progress.
     #[error("No Swap2 opening is in progress.")]
     NotInOpening,
+    /// The Swap2 opening is not at a placement phase.
     #[error("The Swap2 opening is not at a placement phase.")]
     NotAtPlacementPhase,
+    /// The Swap2 opening is not at a choice phase.
     #[error("The Swap2 opening is not at a choice phase.")]
     NotAtChoicePhase,
+    /// `more` was used outside the first Swap2 choice.
     #[error("The Swap2 opening is not at the first Swap2 choice.")]
     NotAtFirstChoice,
+    /// `back` has nothing to remove in the opening log.
     #[error("The Swap2 opening has no placement to remove.")]
     OpeningLogEmpty,
+    /// A game command was issued while the Swap2 ceremony is open.
     #[error("The Swap2 opening is still in progress; choose a color first")]
     OpeningInProgress,
+    /// A placement would exceed the round's stone count.
     #[error("The Swap2 opening round already has all stones it can hold")]
     OpeningRoundFull,
     /// A puzzle command was issued but no puzzle pack is loaded.
@@ -307,6 +366,13 @@ impl From<HistoryError> for CommandError {
     }
 }
 
+/// Parse one line of text into a [`Command`].
+///
+/// The grammar is case-insensitive. A bare algebraic square (`h8`) is
+/// shorthand for `play h8`.
+///
+/// # Errors
+/// Returns [`CommandError::Parse`] for empty, unknown, or malformed input.
 pub fn parse(input: &str) -> Result<Command, CommandError> {
     let trimmed = input.trim();
     if trimmed.is_empty() {

@@ -38,8 +38,11 @@ use crate::command::{CommandError, Event, OpeningPhase};
 /// the next `play` will place.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpeningSnapshot {
+    /// Current ceremony phase.
     pub phase: OpeningPhase,
+    /// Placements made so far, in order.
     pub placements: Vec<(Move, Color)>,
+    /// Color of the next placement, when applicable.
     pub next_color: Option<Color>,
 }
 
@@ -63,6 +66,7 @@ impl Default for OpeningState {
 }
 
 impl OpeningState {
+    /// Create a new Swap2 ceremony in the first placement phase.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -71,6 +75,7 @@ impl OpeningState {
         }
     }
 
+    /// Build the read-model snapshot of the ceremony.
     #[must_use]
     pub fn snapshot(&self) -> OpeningSnapshot {
         OpeningSnapshot {
@@ -175,6 +180,7 @@ impl OpeningState {
         Ok(events)
     }
 
+    /// End the current placement round.
     pub fn done(&mut self) -> Result<Vec<Event>, CommandError> {
         let next = match self.phase {
             OpeningPhase::Placing3 => {
@@ -193,6 +199,7 @@ impl OpeningState {
         Ok(vec![Event::OpeningPhaseChanged { phase: next }])
     }
 
+    /// Decline the first choice and enter the second placement round.
     pub fn more(&mut self) -> Result<Vec<Event>, CommandError> {
         match self.phase {
             OpeningPhase::FirstChoice => {

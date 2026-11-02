@@ -14,6 +14,7 @@
 use engine::{Board, Move, PlayError};
 use thiserror::Error;
 
+/// Node identifier in a variation tree.
 pub type NodeId = u32;
 
 /// One Node in the varation tree.

@@ -22,12 +22,22 @@ pub enum NotationError {
     /// Not in the form <letter><rownum>
     #[error("Expected algebraic structure like 'h8', got {0}.")]
     NotAlgebraic(String),
-    /// The first letter is not a column letter
+    /// The first letter is not a column letter.
     #[error("Expected column letter a-o got '{letter}' in '{token}'.")]
-    BadColumn { letter: char, token: String },
-    /// The part after the column letter is not a number
+    BadColumn {
+        /// The offending letter.
+        letter: char,
+        /// The original token.
+        token: String,
+    },
+    /// The part after the column letter is not a number.
     #[error("Expected row number 1-15, got '{digits}' in 'token'.")]
-    BadRow { digits: String, token: String },
+    BadRow {
+        /// The non-numeric digits.
+        digits: String,
+        /// The original token.
+        token: String,
+    },
     /// Parsed successfully, but the position is outside the 15x15 boundary
     #[error("Square {0} is off the board.")]
     OffBoard(String),

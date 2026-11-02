@@ -77,33 +77,70 @@ impl PuzzlePack {
     }
 }
 
-/// Everything that can go wrong when parsing a puzzle pack
+/// Everything that can go wrong when parsing a puzzle pack.
 #[derive(Debug, thiserror::Error)]
 pub enum PuzzleError {
+    /// The pack text is not valid JSON.
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// The declared count does not match the number of items.
     #[error("Count mismatch. Declared {declared}, actual {actual}.")]
-    CountMismatch { declared: usize, actual: usize },
+    CountMismatch {
+        /// Declared count from the file.
+        declared: usize,
+        /// Actual number of items parsed.
+        actual: usize,
+    },
 
+    /// The attacker field is not `black` or `white`.
     #[error("Puzzle {item} Invalid Attacker: '{value}'")]
-    InvalidAttacker { item: u32, value: String },
+    InvalidAttacker {
+        /// Puzzle index within the file.
+        item: u32,
+        /// Raw attacker value.
+        value: String,
+    },
 
     /// A coordinate is outside of the 15x15 board.
     #[error("Puzzle {item}: coordinate ({x}, {y}) is off the board")]
-    InvalidCoord { item: u32, x: u8, y: u8 },
+    InvalidCoord {
+        /// Puzzle index within the file.
+        item: u32,
+        /// Column coordinate.
+        x: u8,
+        /// Row coordinate.
+        y: u8,
+    },
 
+    /// The same coordinate appears twice in one color's list.
     #[error("Puzzle {item}: duplicate stone at ({x} {y})")]
-    DuplicateStone { item: u32, x: u8, y: u8 },
+    DuplicateStone {
+        /// Puzzle index within the file.
+        item: u32,
+        /// Column coordinate.
+        x: u8,
+        /// Row coordinate.
+        y: u8,
+    },
 
+    /// Black and white stone lists share a coordinate.
     #[error("Puzzle {item}: black and white stones overlap")]
-    OverlappingColors { item: u32 },
+    OverlappingColors {
+        /// Puzzle index within the file.
+        item: u32,
+    },
 
+    /// Stone counts are inconsistent with the attacker.
     #[error("puzzle {item}: invalid counts (black={black}, white={white}, attacker={attacker:?})")]
     InvalidCounts {
+        /// Puzzle index within the file.
         item: u32,
+        /// Number of black stones.
         black: usize,
+        /// Number of white stones.
         white: usize,
+        /// The attacker.
         attacker: Color,
     },
 
@@ -130,9 +167,9 @@ pub enum PuzzleError {
     /// A requested puzzle index is not in the pack.
     #[error("puzzle index {index} out of range (pack holds {count})")]
     IndexOutOfRange {
-        /// requested zero-based index.
+        /// Requested zero-based index.
         index: usize,
-        /// Number of puzzles in the pack
+        /// Number of puzzles in the pack.
         count: usize,
     },
 }

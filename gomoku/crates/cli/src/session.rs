@@ -17,6 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Initial state for a session.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionInit {
     /// Black seat occupant
@@ -139,6 +140,7 @@ impl SessionInit {
         }
     }
 
+    /// Enable or disable the Swap2 opening ceremony.
     #[must_use]
     pub fn with_swap2(mut self, swap2: bool) -> Self {
         self.swap2 = swap2;
@@ -260,6 +262,7 @@ fn status_from_str(s: &str) -> Result<Status, String> {
     }
 }
 
+/// Headless session state machine.
 pub struct SessionCore {
     history: History,
     black: Occupant,
@@ -329,11 +332,13 @@ impl SessionCore {
         self.puzzle.as_ref()
     }
 
+    /// The board at the cursor.
     #[must_use]
     pub fn board(&self) -> Board {
         self.history.board()
     }
 
+    /// The stored search info at the cursor, if any.
     #[must_use]
     pub fn search_info(&self) -> Option<&SearchInfo> {
         self.search_info.get(&self.history.cursor())
@@ -357,6 +362,7 @@ impl SessionCore {
         &self.default_config
     }
 
+    /// Execute one command and return the events it produced.
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
             Command::Play { mv } => self.execute_play(mv),
@@ -480,11 +486,13 @@ impl SessionCore {
         Ok(events)
     }
 
+    /// Reset the session to its initial opening.
     pub fn execute_new(&mut self) -> Result<Vec<Event>, CommandError> {
         self.reset();
         Ok(vec![Event::Reset])
     }
 
+    /// Set the simulation count for a seat or seats.
     pub fn execute_set_sims(
         &mut self,
         seat: SeatSel,
@@ -509,6 +517,7 @@ impl SessionCore {
         Ok(events)
     }
 
+    /// Release a seat or seats to the AI.
     pub fn execute_release(&mut self, seat: SeatSel) -> Result<Vec<Event>, CommandError> {
         self.validate_seat_arg(seat)?;
         let mut events = Vec::new();
@@ -535,6 +544,7 @@ impl SessionCore {
         Ok(())
     }
 
+    /// Play a move at the cursor, or place a stone during the Swap2 ceremony.
     pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
         // Phase routing: during the ceremony `play` places a stone in
         // the alternation's color; afterwards `play` is a tree move.
@@ -570,6 +580,7 @@ impl SessionCore {
         Ok(events)
     }
 
+    /// Go back `n` plies, or undo Swap2 placements during the ceremony.
     pub fn execute_back(&mut self, n: u32) -> Result<Vec<Event>, CommandError> {
         // `back` is phase-dependent: it removes placements during the
         // ceremony and navigates the variation tree afterwards.
@@ -582,6 +593,7 @@ impl SessionCore {
         }])
     }
 
+    /// Go forward `n` plies along the current line.
     pub fn execute_forward(&mut self, n: u32) -> Result<Vec<Event>, CommandError> {
         match self.history.forward(n) {
             ForwardOutcome::Moved(_) => Ok(vec![Event::CursorMoved {
@@ -595,6 +607,7 @@ impl SessionCore {
         }
     }
 
+    /// Choose child variation `index` at the cursor.
     pub fn execute_var(&mut self, index: usize) -> Result<Vec<Event>, CommandError> {
         let cursor = self.history.cursor();
         let children = self.history.children(cursor);
@@ -613,6 +626,7 @@ impl SessionCore {
         }])
     }
 
+    /// Take a seat or seats for the human player.
     pub fn execute_take(&mut self, seat: SeatSel) -> Result<Vec<Event>, CommandError> {
         let mut events = Vec::new();
         self.apply_to_seats(seat, |this, color| {
