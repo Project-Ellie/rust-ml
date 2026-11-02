@@ -70,6 +70,9 @@ pub fn event_type(ev: &Event) -> &'static str {
         Event::StoneRemoved { .. } => "StoneRemoved",
         Event::OpeningPhaseChanged { .. } => "OpeningPhaseChanged",
         Event::OpeningFinished { .. } => "OpeningFinished",
+        Event::Hint { .. } => "Hint",
+        Event::SolutionRevealed { .. } => "SolutionRevealed",
+        Event::PuzzleLoaded { .. } => "PuzzleLoaded",
     }
 }
 

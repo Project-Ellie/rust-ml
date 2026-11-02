@@ -47,6 +47,20 @@ pub enum Command {
     /// Decline the first Swap2 choicce and place two more stones
     More,
     New,
+    /// Show the first move of the loaded puzzle's claimed line.
+    Hint,
+    /// Show the full claimed line of the loaded puzzle.
+    Reveal,
+    /// Load the next puzzle in the pack as a fresh tree root.
+    ///
+    /// Navigation clamps: at the last puzzle this is an error, not a
+    /// wrap-around.
+    NextPuzzle,
+    /// Load the previous puzzle in the pack as a fresh tree root.
+    ///
+    /// Navigation clamps: at the first puzzle this is an error, not a
+    /// wrap-around.
+    PrevPuzzle,
     Help,
     Quit,
 }
@@ -139,6 +153,25 @@ pub enum Event {
     /// move is not carried: the engine guarantees that White moves
     /// first after the ceremony, because White always has fewer stones.
     OpeningFinished { chosen: Color },
+    /// The first move of the loaded puzzle's claimed line.
+    Hint {
+        /// First move of the claimed line.
+        mv: Move,
+    },
+    /// The full claimed line of the loaded puzzle.
+    SolutionRevealed {
+        /// Claimed line: move and side for each ply.
+        line: Vec<(Move, Color)>,
+    },
+    /// A puzzle was loaded as a fresh variation tree root.
+    PuzzleLoaded {
+        /// Zero-based index within the pack.
+        index: usize,
+        /// Number of puzzles in the pack.
+        count: usize,
+        /// Side to move (the attacker).
+        attacker: Color,
+    },
 }
 
 impl fmt::Display for Event {
@@ -174,6 +207,24 @@ impl fmt::Display for Event {
             Event::StoneRemoved { mv } => write!(f, "Removed stone from {}", fmt_move(*mv)),
             Event::OpeningPhaseChanged { phase } => write!(f, "Now in phase {phase:?}"),
             Event::OpeningFinished { chosen } => write!(f, "Opening finished, chose {chosen:?}"),
+            Event::Hint { mv } => write!(f, "hint: the line starts at {}", fmt_move(*mv)),
+            Event::SolutionRevealed { line } => {
+                let text = line
+                    .iter()
+                    .map(|(mv, side)| format!("{} {side:?}", fmt_move(*mv)))
+                    .collect::<Vec<_>>()
+                    .join(" → ");
+                write!(f, "solution: {text}")
+            }
+            Event::PuzzleLoaded {
+                index,
+                count,
+                attacker,
+            } => {
+                // Display is 1-based; the event fields stay 0-based for
+                // machine consumers.
+                write!(f, "puzzle {} of {count} · {attacker:?} to move", index + 1)
+            }
         }
     }
 }
@@ -219,6 +270,29 @@ pub enum CommandError {
     OpeningInProgress,
     #[error("The Swap2 opening round already has all stones it can hold")]
     OpeningRoundFull,
+    /// A puzzle command was issued but no puzzle pack is loaded.
+    #[error("No puzzle loaded — start with 'gomoku play --puzzle <pack.json>'")]
+    NoPuzzleLoaded,
+    /// The loaded puzzle has no claimed solution line.
+    #[error("Puzzle {} of {count} has no claimed line", index + 1)]
+    NoSolutionLine {
+        /// Zero-based index of the loaded puzzle.
+        index: usize,
+        /// Number of puzzles in the pack.
+        count: usize,
+    },
+    /// `next` at the last puzzle — navigation clamps.
+    #[error("Already at the last puzzle ({count} of {count})")]
+    AtLastPuzzle {
+        /// Number of puzzles in the pack.
+        count: usize,
+    },
+    /// `prev` at the first puzzle — navigation clamps.
+    #[error("Already at the first puzzle (1 of {count})")]
+    AtFirstPuzzle {
+        /// Number of puzzles in the pack.
+        count: usize,
+    },
 }
 
 impl From<HistoryError> for CommandError {
@@ -325,6 +399,26 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
         "help" | "h" | "?" => {
             ensure_no_more(&mut tokens, "help")?;
             Ok(Command::Help)
+        }
+
+        "hint" => {
+            ensure_no_more(&mut tokens, "hint")?;
+            Ok(Command::Hint)
+        }
+
+        "reveal" => {
+            ensure_no_more(&mut tokens, "reveal")?;
+            Ok(Command::Reveal)
+        }
+
+        "next" => {
+            ensure_no_more(&mut tokens, "next")?;
+            Ok(Command::NextPuzzle)
+        }
+
+        "prev" => {
+            ensure_no_more(&mut tokens, "prev")?;
+            Ok(Command::PrevPuzzle)
         }
 
         _ => {
@@ -588,5 +682,15 @@ mod tests {
         assert!(parse("done now").is_err());
         assert!(parse("black now").is_err());
         assert!(parse("more 2").is_err());
+    }
+
+    #[test]
+    fn parse_puzzle_commands() {
+        assert_eq!(parse("hint"), Ok(Command::Hint));
+        assert_eq!(parse("REVeal"), Ok(Command::Reveal));
+        assert_eq!(parse("next"), Ok(Command::NextPuzzle));
+        assert_eq!(parse("prev"), Ok(Command::PrevPuzzle));
+        assert!(parse("hint x").is_err());
+        assert!(parse("next 2").is_err());
     }
 }

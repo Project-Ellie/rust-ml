@@ -9,7 +9,7 @@ use crate::command::{Command, CommandError, Event, SeatSel};
 use crate::history::NodeId as HistoryNodeId;
 use crate::history::{ForwardOutcome, History, PlayOutcome};
 use crate::opening::{OpeningSnapshot, OpeningState};
-use crate::puzzle::{PuzzleError, PuzzlePack};
+use crate::puzzle::{Puzzle, PuzzleError, PuzzlePack};
 use engine::{Board, Color, Move, Status};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -368,11 +368,14 @@ impl SessionCore {
             Command::Step => self.execute_step(),
             Command::Release { seat } => self.execute_release(seat),
             Command::SetSims { seat, n } => self.execute_set_sims(seat, n),
-
             Command::Help | Command::Quit => Ok(vec![]),
             Command::Done => self.execute_done(),
             Command::ChooseColor { color } => self.execute_choose_color(color),
             Command::More => self.execute_more(),
+            Command::Hint => self.execute_hint(),
+            Command::Reveal => self.execute_reveal(),
+            Command::NextPuzzle => self.execute_puzzle_nav(1),
+            Command::PrevPuzzle => self.execute_puzzle_nav(-1),
         }
     }
 
@@ -621,6 +624,73 @@ impl SessionCore {
             })
         });
         Ok(events)
+    }
+
+    fn execute_hint(&self) -> Result<Vec<Event>, CommandError> {
+        let (study, puzzle) = self.puzzle_context()?;
+        let (mv, _) = puzzle
+            .solution
+            .first()
+            .ok_or(CommandError::NoSolutionLine {
+                index: study.index,
+                count: study.pack.items.len(),
+            })?;
+        Ok(vec![Event::Hint { mv: *mv }])
+    }
+
+    fn execute_reveal(&self) -> Result<Vec<Event>, CommandError> {
+        let (study, puzzle) = self.puzzle_context()?;
+        if puzzle.solution.is_empty() {
+            return Err(CommandError::NoSolutionLine {
+                index: study.index,
+                count: study.pack.items.len(),
+            });
+        }
+        Ok(vec![Event::SolutionRevealed {
+            line: puzzle.solution.clone(),
+        }])
+    }
+
+    /// Pack navigation for `next` (`delta` 1) and `prev` (`delta` -1).
+    ///
+    /// Navigation **clamps** at the pack ends rather than wrapping: the
+    /// command fails with `AtFirstPuzzle` / `AtLastPuzzle` and the
+    /// current puzzle stays loaded. The chosen puzzle replaces the
+    /// variation tree root wholesale — every puzzle is a fresh study
+    /// position; seats and AI configuration are untouched.
+    fn execute_puzzle_nav(&mut self, delta: i64) -> Result<Vec<Event>, CommandError> {
+        let (study, _) = self.puzzle_context()?;
+        let count = study.pack.items.len();
+        let next = study.index as i64 + delta;
+        if next < 0 {
+            return Err(CommandError::AtFirstPuzzle { count });
+        }
+        if next >= count as i64 {
+            return Err(CommandError::AtLastPuzzle { count });
+        }
+        let index = next as usize;
+        let board = study.pack.items[index].board.clone();
+        let attacker = study.pack.items[index].attacker;
+
+        if let Some(study) = self.puzzle.as_mut() {
+            study.index = index;
+        }
+        self.history = History::from_opening(&board);
+        self.search_info.clear();
+
+        Ok(vec![Event::PuzzleLoaded {
+            index,
+            count,
+            attacker,
+        }])
+    }
+
+    fn puzzle_context(&self) -> Result<(&PuzzleStudy, &Puzzle), CommandError> {
+        let study = self.puzzle.as_ref().ok_or(CommandError::NoPuzzleLoaded)?;
+        // The index is valid by construction: navigation clamps and the
+        // pack never shrinks.
+        let puzzle = &study.pack.items[study.index];
+        Ok((study, puzzle))
     }
 
     fn apply_to_seats<F>(&mut self, seat: SeatSel, mut f: F)

@@ -1,0 +1,13 @@
+# puzzle_demo.txt — studying a puzzle pack at the table.
+# Run from gomoku/:
+#   cargo run -p cli --bin sessiondemo -- --puzzle crates/cli/tests/fixtures/mini-pack.json --script crates/cli/puzzle_demo.txt
+# Puzzle 1 of 3: Black to move, vertical four on column h. Where does the line start?
+hint
+# A wrong try: i9 is legal but is not the claimed move.
+i9
+back
+# Give up and show the claimed line.
+reveal
+# Move on to the next puzzle in the pack (clamps at the ends).
+next
+hint

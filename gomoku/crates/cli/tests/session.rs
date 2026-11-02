@@ -376,9 +376,107 @@ fn puzzle_position_supports_full_study_flow() {
 #[test]
 fn new_resets_to_the_initially_loaded_puzzle() {
     let mut core = puzzle_session(0);
+    core.execute(Command::NextPuzzle).unwrap();
     play(&mut core, 9, 9);
     let events = core.execute(Command::New).unwrap();
     assert!(events.iter().any(|e| matches! {e, &Event::Reset}));
     assert_eq!(core.puzzle().unwrap().index, 0);
     assert_eq!(core.board(), mini_pack().items[0].board);
+}
+
+#[test]
+fn hint_emits_first_solution_move() {
+    let mut core = puzzle_session(0);
+    let events = core.execute(Command::Hint).unwrap();
+    assert_eq!(events, vec![Event::Hint { mv: mv(7, 7) }]);
+}
+
+#[test]
+fn hint_errors_when_puzzle_has_no_line() {
+    let text = r#"{ "v": 1, "count": 1, "items": [
+        { "i": 0, "a": "black", "d": 1, "b": [], "w": [], "l": [] }
+    ] }"#;
+    let pack = puzzle::PuzzlePack::from_json(text).unwrap();
+    let init = SessionInit::puzzle(std::path::PathBuf::from("pack.json"), pack, 0).unwrap();
+    let mut core = SessionCore::new(init);
+    assert_eq!(
+        core.execute(Command::Hint).unwrap_err(),
+        CommandError::NoSolutionLine { index: 0, count: 1 }
+    );
+}
+
+#[test]
+fn reveal_emits_full_claimed_line() {
+    let mut core = puzzle_session(2);
+    let events = core.execute(Command::Reveal).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::SolutionRevealed {
+            line: vec![
+                (mv(7, 10), Color::Black),
+                (mv(7, 6), Color::White),
+                (mv(7, 11), Color::Black)
+            ]
+        }]
+    );
+}
+
+#[test]
+fn next_and_prev_load_a_fresh_root_and_report_position() {
+    let mut core = puzzle_session(0);
+    play(&mut core, 9, 9);
+    let events = core.execute(Command::NextPuzzle).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::PuzzleLoaded {
+            index: 1,
+            count: 3,
+            attacker: Color::White,
+        }]
+    );
+    assert_eq!(core.snapshot().ply, 0);
+    assert_eq!(core.board(), mini_pack().items[1].board);
+
+    let events = core.execute(Command::PrevPuzzle).unwrap();
+    assert_eq!(
+        events,
+        vec![Event::PuzzleLoaded {
+            index: 0,
+            count: 3,
+            attacker: Color::Black,
+        }]
+    );
+    assert_eq!(core.board(), mini_pack().items[0].board);
+}
+
+#[test]
+fn next_prev_clamp_at_pack_ends() {
+    let mut core = puzzle_session(0);
+    assert_eq!(
+        core.execute(Command::PrevPuzzle).unwrap_err(),
+        CommandError::AtFirstPuzzle { count: 3 }
+    );
+    core.execute(Command::NextPuzzle).unwrap();
+    core.execute(Command::NextPuzzle).unwrap();
+    assert_eq!(
+        core.execute(Command::NextPuzzle).unwrap_err(),
+        CommandError::AtLastPuzzle { count: 3 }
+    );
+    assert_eq!(core.puzzle().unwrap().index, 2);
+}
+
+#[test]
+fn puzzle_commands_error_without_a_pack() {
+    let mut core = SessionCore::new(SessionInit::new_hotseat());
+    for command in [
+        Command::Hint,
+        Command::Reveal,
+        Command::NextPuzzle,
+        Command::PrevPuzzle,
+    ] {
+        assert_eq!(
+            core.execute(command).unwrap_err(),
+            CommandError::NoPuzzleLoaded
+        );
+    }
 }

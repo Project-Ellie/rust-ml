@@ -475,7 +475,7 @@ fn render_side_panel(
     // not started. The ceremony block takes their place.
     match &snapshot.opening {
         Some(opening) => ceremony_lines(&mut lines, opening),
-        None => position_lines(&mut lines, board, snapshot),
+        None => position_lines(&mut lines, core, board, snapshot),
     }
     if show_value_strip {
         lines.push(String::new());
@@ -505,7 +505,7 @@ fn render_side_panel(
 
 /// The game-state block of the side panel: ply, side to move or game
 /// result, path tail, and branch options.
-fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
+fn position_lines(lines: &mut Vec<String>, core: &SessionCore, board: &Board, snapshot: &Snapshot) {
     lines.push(format!("Ply: {}", snapshot.ply));
     // One line covers both states a game can be in: waiting for a side,
     // or finished with a result.
@@ -515,6 +515,15 @@ fn position_lines(lines: &mut Vec<String>, board: &Board, snapshot: &Snapshot) {
         Status::Draw => lines.push("Game over: draw".to_string()),
     }
     lines.push(format!("Path: {}", path_tail_string(board)));
+    if let Some(study) = core.puzzle() {
+        let puzzle = &study.pack.items[study.index];
+        lines.push(format!(
+            "Puzzle: {} of {} · {:?} to move",
+            study.index + 1,
+            study.pack.items.len(),
+            puzzle.attacker
+        ));
+    }
     // One continuation is the main line, not a choice. The panel lists
     // options only when the cursor is at a real branch point.
     if snapshot.branch_options.len() > 1 {
@@ -748,6 +757,24 @@ mod tests {
         // The numbers are the 0-based index the `var` command takes.
         assert!(text.contains("[0] h7"), "panel shows the first branch");
         assert!(text.contains("[1] i8"), "panel shows the second branch");
+    }
+
+    #[test]
+    fn the_panel_shows_puzzle_info_when_loaded() {
+        use crate::puzzle::PuzzlePack;
+        use std::path::PathBuf;
+
+        let pack = PuzzlePack::from_json(include_str!("../../tests/fixtures/mini-pack.json"))
+            .expect("mini fixture parses");
+        let init = SessionInit::puzzle(PathBuf::from("tests/fixtures/mini-pack.json"), pack, 1)
+            .expect("index 1 is in the pack");
+        let core = SessionCore::new(init);
+        let frame = render_study(&StudyView::new(&core, &[]));
+        let text = frame.join("\n");
+        assert!(
+            text.contains("Puzzle: 2 of 3 · White to move"),
+            "panel shows puzzle info: {text}"
+        );
     }
 
     #[test]

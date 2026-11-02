@@ -38,6 +38,9 @@ const HELP: &str = r#"Commands (case-insensitive):
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit
+  hint             show the first move of the puzzle's line
+  reveal           show the puzzle's full claimed line
+  next / prev      load the next/previous puzzle (clamps at the ends)
 "#;
 
 fn parse_seed(args: &[String]) -> Option<u64> {
@@ -46,18 +49,66 @@ fn parse_seed(args: &[String]) -> Option<u64> {
         .and_then(|i| args.get(i + 1).and_then(|s| s.parse::<u64>().ok()))
 }
 
+fn parse_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1).map(String::as_str))
+}
+
+fn parse_index(args: &[String]) -> Result<Option<usize>, String> {
+    let Some(i) = args.iter().position(|a| a == "--index") else {
+        return Ok(None);
+    };
+    let value = args
+        .get(i + 1)
+        .ok_or_else(|| "--index requires a value".to_string())?;
+    value
+        .parse::<usize>()
+        .map(Some)
+        .map_err(|_| format!("invalid --index value '{}'", value))
+}
+
+fn build_init(args: &[String]) -> SessionInit {
+    let seed = parse_seed(args);
+    match parse_flag_value(args, "--puzzle") {
+        Some(path) => {
+            let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                eprintln!("Cannot read puzzle pack '{}': {}", path, e);
+                std::process::exit(1);
+            });
+            let pack = cli::puzzle::PuzzlePack::from_json(&text).unwrap_or_else(|e| {
+                eprintln!("Invalid puzzle pack '{}': {}", path, e);
+                std::process::exit(1);
+            });
+            let index = parse_index(args)
+                .unwrap_or_else(|e| {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                })
+                .unwrap_or(0);
+            let init = SessionInit::puzzle(std::path::PathBuf::from(path), pack, index)
+                .unwrap_or_else(|e| {
+                    eprintln!("Cannot load puzzle: {}", e);
+                    std::process::exit(1);
+                });
+            SessionInit { seed, ..init }
+        }
+        None => SessionInit {
+            seed,
+            ..SessionInit::new_hotseat()
+        },
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let script_path = args
         .iter()
         .position(|a| a == "--script")
         .and_then(|i| args.get(i + 1));
-    let seed = parse_seed(&args);
 
-    let init = SessionInit {
-        seed,
-        ..SessionInit::new_hotseat()
-    };
+    let init = build_init(&args);
+
     let mut core = SessionCore::new(init);
 
     print_state(&core, "Session started. Type 'h' for help.");
@@ -74,6 +125,7 @@ fn main() {
                     eprintln!("Cannot read line {}", e);
                     std::process::exit(1);
                 });
+
                 process_line(&line, &mut core, false);
             }
         }
@@ -97,7 +149,7 @@ fn main() {
 
 fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
     let trimmed = line.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
         return false;
     }
     if trimmed.eq_ignore_ascii_case("info") {
@@ -168,6 +220,15 @@ fn print_state(core: &SessionCore, header: &str) {
     if !header.is_empty() {
         println!("{header}");
     }
+    if let Some(study) = core.puzzle() {
+        let puzzle = &study.pack.items[study.index];
+        println!(
+            "puzzle {} of {}  attacker {:?}",
+            study.index + 1,
+            study.pack.items.len(),
+            puzzle.attacker
+        )
+    }
     let snapshot = core.snapshot();
     println!(
         "ply {}  status {:?}  black {:?}  white {:?}",
@@ -183,4 +244,33 @@ fn print_state(core: &SessionCore, header: &str) {
     }
     println!("{}", render_board(&core.board(), snapshot.last_move));
     println!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn omitted_index_defaults_to_none() {
+        let args = vec!["sessiondemo".into(), "--puzzle".into(), "pack.json".into()];
+        assert_eq!(parse_index(&args), Ok(None));
+    }
+
+    #[test]
+    fn valid_index_is_parsed() {
+        let args = vec!["sessiondemo".into(), "--index".into(), "2".into()];
+        assert_eq!(parse_index(&args), Ok(Some(2)));
+    }
+
+    #[test]
+    fn malformed_index_is_rejected() {
+        let args = vec!["sessiondemo".into(), "--index".into(), "foo".into()];
+        assert!(parse_index(&args).is_err());
+    }
+
+    #[test]
+    fn missing_index_value_is_rejected() {
+        let args = vec!["sessiondemo".into(), "--index".into()];
+        assert!(parse_index(&args).is_err());
+    }
 }

@@ -34,6 +34,9 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   v, value         toggle the value strip
   p, policy        cycle policy overlay (off → visits → prior)
   t, tss           toggle the TSS forced-win overlay
+  hint             show the first move of the puzzle's line
+  reveal           show the puzzle's full claimed line
+  next / prev      load the next/previous puzzle (clamps at the ends)
   new              reset to opening
   h, help, ?       show this help
   q, quit, exit    quit
