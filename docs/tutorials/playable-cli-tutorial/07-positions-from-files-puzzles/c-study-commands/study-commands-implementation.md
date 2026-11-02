@@ -239,11 +239,23 @@ Contract:
 * Exit 1 with a message on unreadable file, invalid JSON, or invalid
   puzzle index.
 
-### 3.4 Skip comments in scripts
+### 3.4 Route `main` through `build_init`
+
+In `main`, replace the inline hotseat init with:
+
+```rust
+let init = build_init(&args);
+```
+
+Without this call the two helpers are dead code and the `--puzzle`
+flag has no effect. The `None` arm of `build_init` preserves the old
+hotseat behavior when `--puzzle` is absent.
+
+### 3.5 Skip comments in scripts
 
 In `process_line`, ignore lines whose trimmed text starts with `#`.
 
-### 3.5 Print puzzle status
+### 3.6 Print puzzle status
 
 In `print_state`, after the status line, if `core.puzzle()` is `Some`,
 print:
@@ -254,7 +266,7 @@ puzzle <i+1> of <count>  attacker <Color>
 
 using 1-based display.
 
-### 3.6 Gate
+### 3.7 Gate
 
 Run the capstone command from `gomoku/`:
 
@@ -312,6 +324,7 @@ cargo fmt --all -- --check
 | `src/bin/sessiondemo.rs` | `HELP` | lists study commands |
 | `src/bin/sessiondemo.rs` | `parse_flag_value` | reads `--puzzle` and `--index` |
 | `src/bin/sessiondemo.rs` | `build_init` | builds puzzle or hotseat init, exits on bad data |
+| `src/bin/sessiondemo.rs` | `main` | routes through `build_init(&args)` |
 | `src/bin/sessiondemo.rs` | `process_line` | skips `#` comments |
 | `src/bin/sessiondemo.rs` | `print_state` | prints puzzle status line |
 | `crates/testkit/src/lib.rs` | `event_type` | classifies new events |

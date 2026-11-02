@@ -229,6 +229,9 @@ workspace.
 * Add `hint`, `reveal`, and `next / prev` to `HELP`.
 * Add `parse_flag_value`.
 * Add `build_init` with `--puzzle` and `--index` support.
+* Route `main` through `build_init` (`let init = build_init(&args);`),
+  replacing the inline hotseat init — without the call, the helpers
+  are dead code.
 * Skip lines that start with `#` in `process_line`.
 * Print the puzzle status line in `print_state` when a pack is loaded.
 

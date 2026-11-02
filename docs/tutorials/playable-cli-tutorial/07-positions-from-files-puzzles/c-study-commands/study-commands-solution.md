@@ -346,6 +346,18 @@ fn build_init(args: &[String]) -> SessionInit {
 }
 ```
 
+`main` routes session construction through `build_init`, so the
+flags take effect and the helpers are not dead code.
+
+`gomoku/crates/cli/src/bin/sessiondemo.rs`, line 90:
+
+```rust
+    let init = build_init(&args);
+```
+
+This replaces the inline hotseat init; `build_init`'s `None` arm keeps
+the old behavior when `--puzzle` is absent.
+
 Script lines that start with `#` are skipped so the demo script can
 carry comments.
 
