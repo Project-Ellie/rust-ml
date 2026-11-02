@@ -44,9 +44,9 @@ so the error path is the same as any other malformed argument.
 
 The puzzle corpora under `data/puzzles/` are git-ignored. A user who
 runs `--puzzle data/puzzles/files/vcf-material-763.json` before
-running `data/puzzles/fetch.sh` will hit "file not found". That case
+running `../../../../../data/puzzles/files/fetch.sh` will hit "file not found". That case
 is a usage/data error, not a crash, so the binary exits 2 and prints a
-message that names the path and points at `data/puzzles/fetch.sh`.
+message that names the path and points at `../../../../../data/puzzles/files/fetch.sh`.
 
 ## Decision 4 — Invalid packs exit 2, not 1
 

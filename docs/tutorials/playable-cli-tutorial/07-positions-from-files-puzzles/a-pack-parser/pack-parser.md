@@ -293,6 +293,6 @@ cargo fmt --all -- --check
 * [Sub-chapter 07c — The study commands](../c-study-commands/study-commands.md) — `hint`, `reveal`, `next`, `prev`.
 * [Sub-chapter 07d — The puzzle flag](../d-puzzle-flag/puzzle-flag.md) — the `--puzzle` startup flag.
 * [Sub-chapter 06c — The prior view](../../06-seeing-the-mind/c-prior-overlay/prior-overlay.md) — the chapter this work follows.
-* [`data/puzzles/README.md`](../../../../../data/puzzles/README.md) — the pack format and the corpora.
+* [`../../../../../data/puzzles/files/README.md`](../../../../../data/puzzles/files/README.md) — the pack format and the corpora.
 * [`gomoku/crates/cli/src/puzzle.rs`](../../../../../gomoku/crates/cli/src/puzzle.rs) — the parser module.
 * [`gomoku/crates/cli/tests/puzzle.rs`](../../../../../gomoku/crates/cli/tests/puzzle.rs) — the parser tests.

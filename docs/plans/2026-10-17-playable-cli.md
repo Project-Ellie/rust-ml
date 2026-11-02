@@ -19,7 +19,7 @@ decisions):** the legacy flows are deleted (no `--plain`, no naive-engine
 play, no `dyn GameBoard`, no legacy puzzle UI); the study table is the only
 UI. Two new lean chapters land after overlays: **07 positions from files —
 puzzles** (`--puzzle <pack.json> [--index N]`, `hint`/`reveal`/`next`/`prev`,
-pack format per `data/puzzles/README.md`) and **08 positions from files —
+pack format per `../../data/puzzles/files/README.md`) and **08 positions from files —
 game records** (`--game <file.psq>`, Piskvork parser, cursor at the end
 position, full study + overlays); acceptance becomes **09**. New reference
 tasks: **T8 puzzles** and **T9 game records**; T0 and T5 are rebuilt

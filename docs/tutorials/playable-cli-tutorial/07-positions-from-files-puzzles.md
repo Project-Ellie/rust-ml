@@ -86,7 +86,7 @@ Next: [Chapter 08 — Positions from files: game records](08-positions-from-file
 
 * [Playable CLI design paper](../../specs/2026-10-17-playable-cli-design.md)
   — the "positions from files" amendment (owner decision, 2026-10-17).
-* [data/puzzles/README.md](../../../data/puzzles/README.md) — the
+* [data/puzzles/README.md](../../../data/puzzles/files/README.md) — the
   corpus format, provenance, and the milestone-4 labelling plan.
 * [Chapter 01 — The variation tree](01-the-variation-tree.md) — the
   tree a puzzle enrolls into.

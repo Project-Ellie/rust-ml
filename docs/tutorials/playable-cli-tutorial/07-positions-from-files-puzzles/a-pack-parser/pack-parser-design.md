@@ -173,5 +173,5 @@ PuzzlePack::get(index) -> &Puzzle or IndexOutOfRange
 * [Sub-chapter 07a — The pack parser](./pack-parser.md) — the tutorial.
 * [Chapter 07 — Positions from files: puzzles](../../07-positions-from-files-puzzles.md) — the full chapter.
 * [Sub-chapter 07b — The puzzle session](../b-puzzle-session/puzzle-session.md) — the next slice.
-* [`data/puzzles/README.md`](../../../../../data/puzzles/README.md) — the pack format.
+* [`../../../../../data/puzzles/files/README.md`](../../../../../data/puzzles/files/README.md) — the pack format.
 * [`gomoku/crates/cli/src/puzzle.rs`](../../../../../gomoku/crates/cli/src/puzzle.rs) — the parser module.

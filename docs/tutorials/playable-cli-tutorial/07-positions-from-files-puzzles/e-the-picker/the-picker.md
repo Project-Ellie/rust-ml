@@ -262,4 +262,4 @@ cargo fmt --all -- --check
 * [Chapter 07 — Positions from files: puzzles](../../07-positions-from-files-puzzles.md) — the chapter overview.
 * [Chapter 12 — Gomoku architecture](../../../../12-gomoku-architecture.md) — the no-async-runtime decision that selects `rfd`'s blocking API.
 * [`rfd` crate documentation](https://docs.rs/rfd) — `FileDialog`, filters, directories, and the Linux backend features.
-* [data/puzzles/README.md](../../../../../data/puzzles/README.md) — the corpus the dialog starts at.
+* [data/puzzles/README.md](../../../../../data/puzzles/files/README.md) — the corpus the dialog starts at.
