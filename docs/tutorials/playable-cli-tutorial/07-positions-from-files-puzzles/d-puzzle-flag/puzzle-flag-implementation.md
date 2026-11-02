@@ -55,8 +55,8 @@ fn build_puzzle_init(search: &SearchArgs, pack_path: &Path, index: usize) -> Ses
 Behavior:
 * Read the file at `pack_path` with `std::fs::read_to_string`.
   * On failure, print `error: cannot read puzzle pack '{}': {e}` with
-    the path display, then print `       puzzle corpora are
-    git-ignored — fetch them with data/puzzles/fetch.sh`, then exit 2.
+    the path display, then print `       puzzle packs live in
+    data/puzzles/`, then exit 2.
 * Parse the text with `PuzzlePack::from_json`.
   * On failure, print `error: invalid puzzle pack '{}': {e}` with the
     path display, then exit 2.
@@ -190,7 +190,7 @@ cargo fmt --all -- --check
 | `src/main.rs` | `PlayArgs::index` | `Option<usize>`, `--index <N>`, `requires = "puzzle"` |
 | `src/main.rs` | `selfplay` rejection | `--puzzle` with `selfplay` exits 2 |
 | `src/main.rs` | `run_play` branch | puzzle present → `build_puzzle_init` → `study::run(init, None)` |
-| `src/main.rs` | `build_puzzle_init` | read/parse/index failures exit 2 with fetch.sh hint |
+| `src/main.rs` | `build_puzzle_init` | read/parse/index failures exit 2 with `data/puzzles/` hint |
 | `src/main.rs` | `build_puzzle_init` | seats compose as for Swap2 opening |
 | `src/main.rs` | `build_puzzle_init` | attaches `PuzzleStudy` with path, index, and pack |
 | `src/tui/render.rs` | `position_lines` signature | accepts `core` |

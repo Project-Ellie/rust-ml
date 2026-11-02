@@ -13,7 +13,7 @@ pack is clean, you get a `PuzzlePack` of replayable `Puzzle` values.
 
 | Term | Definition |
 |------|------------|
-| **Pack** | A JSON file of puzzle positions: `{v, count, items: [{i, a, d, b, w, l}]}`. The corpus format of `data/puzzles/files/`. |
+| **Pack** | A JSON file of puzzle positions: `{v, count, items: [{i, a, d, b, w, l}]}`. The corpus format of `data/puzzles/`. |
 | **Puzzle** | One parsed position plus its claimed line, in the type `Puzzle`. |
 | **`PuzzlePack`** | The public type that holds all `Puzzle` items in file order. |
 | **`PuzzlePack::from_json`** | The entry point that parses a pack text and validates every item. |
@@ -293,6 +293,6 @@ cargo fmt --all -- --check
 * [Sub-chapter 07c — The study commands](../c-study-commands/study-commands.md) — `hint`, `reveal`, `next`, `prev`.
 * [Sub-chapter 07d — The puzzle flag](../d-puzzle-flag/puzzle-flag.md) — the `--puzzle` startup flag.
 * [Sub-chapter 06c — The prior view](../../06-seeing-the-mind/c-prior-overlay/prior-overlay.md) — the chapter this work follows.
-* [`../../../../../data/puzzles/files/README.md`](../../../../../data/puzzles/files/README.md) — the pack format and the corpora.
+* `data/puzzles/` — the puzzle packs.
 * [`gomoku/crates/cli/src/puzzle.rs`](../../../../../gomoku/crates/cli/src/puzzle.rs) — the parser module.
 * [`gomoku/crates/cli/tests/puzzle.rs`](../../../../../gomoku/crates/cli/tests/puzzle.rs) — the parser tests.

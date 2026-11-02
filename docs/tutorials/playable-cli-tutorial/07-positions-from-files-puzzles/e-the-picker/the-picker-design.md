@@ -102,12 +102,11 @@ otherwise.
 
 ## Decision 7 — The dialog starts at the corpus, with a fallback
 
-The picker opens at `data/puzzles/files/` filtered to `.json`. The
-corpora are git-ignored, so a machine that has not run `fetch.sh` has
-no corpus directory; the picker falls back to the working directory
-rather than erroring, because the dialog itself is the discovery
-interface. The exit-2 fetch.sh hint stays where it belongs: on the
-valued path, where a named file is missing.
+The picker opens at `data/puzzles/` filtered to `.json`. When
+the corpus directory does not exist, the picker falls back to the
+working directory rather than erroring, because the dialog itself is
+the discovery interface. The exit-2 `data/puzzles/` hint stays where
+it belongs: on the valued path, where a named file is missing.
 
 ## Decision 8 — One helper, two sources
 

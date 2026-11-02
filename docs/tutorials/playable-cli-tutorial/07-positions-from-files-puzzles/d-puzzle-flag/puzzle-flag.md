@@ -23,7 +23,7 @@ lists the new puzzle commands in the help text.
 | **`build_puzzle_init`** | The function in `main.rs` that reads a pack file, parses it, and builds a `SessionInit`. |
 | **`PuzzleStudy`** | The context carried by `SessionInit` that holds the pack path, the current index, and the parsed pack. |
 | **Exit code 2** | The convention for usage and data errors in this binary, matching clap's own error code. |
-| **`../../../../../data/puzzles/files/fetch.sh`** | The script that downloads the git-ignored puzzle corpora; missing-pack errors point here. |
+| **`data/puzzles/`** | The directory the puzzle packs live in; missing-pack errors point here. |
 
 ## Context
 
@@ -50,7 +50,7 @@ The learner enables this user-facing behavior:
 4. Swap2 is skipped when `--puzzle` is present; the puzzle position is
    the opening.
 5. A missing or invalid pack exits with code 2, names the path, and
-   points at `../../../../../data/puzzles/files/fetch.sh`.
+   points at `data/puzzles/`.
 6. `--index` without `--puzzle` is rejected by clap with exit code 2.
 7. `gomoku selfplay --puzzle pack.json` is rejected with exit code 2.
 8. When a pack is loaded, the side panel shows
@@ -118,8 +118,7 @@ In `run_play`, if `play.puzzle` is `Some`, the function calls
 
 `build_puzzle_init` opens the file with `std::fs::read_to_string`. If
 the file is missing, it prints an error that names the path and points
-at `../../../../../data/puzzles/files/fetch.sh`, then exits 2. The corpora are git-ignored,
-so "not found" most likely means "not fetched yet".
+at `data/puzzles/`, then exits 2.
 
 The text is parsed with `PuzzlePack::from_json`. A parse failure also
 exits 2. An out-of-range index exits 2 as well.
@@ -173,7 +172,7 @@ in `tests/line_mode.rs`.
 * In `run_play`, if `play.puzzle` is `Some`, call
   `build_puzzle_init(...)` and return `study::run(init, None)`.
 * Add `build_puzzle_init(search, pack_path, index)`:
-  * read the file, exit 2 on failure with the fetch.sh hint;
+  * read the file, exit 2 on failure with the `data/puzzles/` hint;
   * parse the pack, exit 2 on failure;
   * fetch the puzzle at `index`, exit 2 on out-of-range;
   * build a normal `play_init(search, false)`;
@@ -238,7 +237,7 @@ cargo fmt --all -- --check
   opening.
 * Swap2 is skipped when `--puzzle` is present.
 * A missing or invalid pack exits 2, names the path, and points at
-  `../../../../../data/puzzles/files/fetch.sh`.
+  `data/puzzles/`.
 * `--index` without `--puzzle` exits 2.
 * `gomoku selfplay --puzzle` exits 2.
 * The side panel shows `Puzzle: <i+1> of <count> · <attacker> to move`
@@ -255,13 +254,13 @@ cargo fmt --all -- --check
 
   Expect puzzle 2's position, the panel line
   `Puzzle: 2 of 3 · White to move`, and `hint: the line starts at i5`.
-* A missing pack shows the fetch.sh hint. From `gomoku/`:
+* A missing pack shows the `data/puzzles/` hint. From `gomoku/`:
 
   ```text
   cargo run -q -p cli --bin gomoku -- play --puzzle /nonexistent.json; echo "exit: $?"
   ```
 
-  Expect the fetch.sh hint and exit code 2.
+  Expect the `data/puzzles/` hint and exit code 2.
 
 ## References
 

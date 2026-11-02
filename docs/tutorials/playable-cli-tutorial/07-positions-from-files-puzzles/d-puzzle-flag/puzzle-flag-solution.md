@@ -62,15 +62,15 @@ use std::path::{Path, PathBuf};
 /// Load a puzzle pack and build the `SessionInit` for studying it.
 ///
 /// Exits with code 2 (usage/data error) when the pack is missing or
-/// invalid; the puzzle corpora are git-ignored, so the message points at
-/// the corpus's `data/puzzles/fetch.sh`.
+/// invalid; the message names the path and points at `data/puzzles/`,
+/// where the packs live.
 fn build_puzzle_init(search: &SearchArgs, pack_path: &Path, index: usize) -> SessionInit {
     let text = std::fs::read_to_string(pack_path).unwrap_or_else(|e| {
         eprintln!(
             "error: cannot read puzzle pack '{}': {e}",
             pack_path.display()
         );
-        eprintln!("       puzzle corpora are git-ignored — fetch them with data/puzzles/fetch.sh");
+        eprintln!("       puzzle packs live in data/puzzles/");
         std::process::exit(2);
     });
     let pack = PuzzlePack::from_json(&text).unwrap_or_else(|e| {

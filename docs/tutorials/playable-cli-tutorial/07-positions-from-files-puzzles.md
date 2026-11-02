@@ -27,7 +27,7 @@ SessionInit::puzzle ─────► SessionCore
    │
    ├── main.rs: gomoku play --puzzle [pack.json] [--index N]
    │     (a bare --puzzle opens the native pack picker — 07e;
-   │      exit 2 + fetch.sh hint on a missing or invalid pack)
+   │      exit 2 on a missing or invalid pack)
    │
    └── sessiondemo --puzzle pack.json --script puzzle_demo.txt
          (the scripted capstone)
@@ -56,7 +56,7 @@ slice commit land when the slice is built.
 | [a — The pack parser](07-positions-from-files-puzzles/a-pack-parser/pack-parser.md) | A pack file becomes validated data — or a typed error that names exactly what is wrong. |
 | [b — The puzzle enrolls](07-positions-from-files-puzzles/b-puzzle-session/puzzle-session.md) | Loading a puzzle seeds the study table: the position is the root, the attacker is to move, and every tool still works. |
 | [c — The study commands](07-positions-from-files-puzzles/c-study-commands/study-commands.md) | `hint`, try, take back, `reveal`, `next` — the study flow through the command language. |
-| [d — The puzzle flag](07-positions-from-files-puzzles/d-puzzle-flag/puzzle-flag.md) | `gomoku play --puzzle pack.json --index N` at the real table, with the panel line and the fetch.sh error path. |
+| [d — The puzzle flag](07-positions-from-files-puzzles/d-puzzle-flag/puzzle-flag.md) | `gomoku play --puzzle pack.json --index N` at the real table, with the panel line and the missing-pack error path. |
 | [e — The picker](07-positions-from-files-puzzles/e-the-picker/the-picker.md) | A bare `--puzzle` opens the native file dialog at the corpus; a valued flag stays scriptable; cancel is a quiet exit. |
 
 ## Background documents
@@ -72,7 +72,7 @@ Next: [Chapter 08 — Positions from files: game records](08-positions-from-file
 
 | Term | Definition |
 |------|------------|
-| **Pack** | A JSON file of puzzle positions: `{v, count, items: [{i, a, d, b, w, l}]}`. The corpus format of `data/puzzles/files/`. |
+| **Pack** | A JSON file of puzzle positions: `{v, count, items: [{i, a, d, b, w, l}]}`. The corpus format of `data/puzzles/`. |
 | **Solution line** | The pack's claimed forced-win line for one puzzle: the `l` field, a list of `[x, y, side]` triples. A claim, not a proof — milestone 4 re-verifies every line with the threat-space search (TSS) prover before use. |
 | **Attacker** | The side with the claimed forced win (the `a` field); always the side to move when the puzzle loads. In VCF (victory by continuous four) puzzles, the side that wins by an unbroken forcing sequence. |
 | **Hint** | The command that shows the first move of the loaded puzzle's claimed line. |
@@ -86,8 +86,8 @@ Next: [Chapter 08 — Positions from files: game records](08-positions-from-file
 
 * [Playable CLI design paper](../../specs/2026-10-17-playable-cli-design.md)
   — the "positions from files" amendment (owner decision, 2026-10-17).
-* [data/puzzles/README.md](../../../data/puzzles/files/README.md) — the
-  corpus format, provenance, and the milestone-4 labelling plan.
+* `data/puzzles/` — the puzzle packs; the pack format is specified in
+  [sub-chapter 07a](07-positions-from-files-puzzles/a-pack-parser/pack-parser.md).
 * [Chapter 01 — The variation tree](01-the-variation-tree.md) — the
   tree a puzzle enrolls into.
 * [Chapter 06 — Seeing the mind](06-seeing-the-mind.md) — the overlays

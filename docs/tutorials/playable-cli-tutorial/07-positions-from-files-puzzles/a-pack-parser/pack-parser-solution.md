@@ -66,8 +66,7 @@ schema when a consumer needs it.
 //!
 //! Puzzles are not a game mode; a puzzle is a position plus the pack's
 //! claimed forced-win line, loaded into the study table for analysis.
-//! The pack format is the corpus format (`data/puzzles/README.md` in the
-//! main repo): JSON `{v, count, items}` with items `{i, a, d, b, w, l}`
+//! The pack format is the corpus format: JSON `{v, count, items}` with items `{i, a, d, b, w, l}`
 //! where `a` is the attacker (side to move), `b`/`w` the stone lists,
 //! and `l` the claimed line as `[x, y, side]` triples.
 //!

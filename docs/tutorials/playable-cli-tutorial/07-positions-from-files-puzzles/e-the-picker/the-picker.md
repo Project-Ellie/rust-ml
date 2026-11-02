@@ -50,7 +50,7 @@ they live, with `CliArgs::try_parse_from` and a stubbed picker.
 The learner enables this user-facing behavior:
 
 1. `gomoku play --puzzle` opens the native file dialog at
-   `data/puzzles/files/`, filtered to `.json`. Picking a pack opens
+   `data/puzzles/`, filtered to `.json`. Picking a pack opens
    the study table on puzzle 1 of that pack.
 2. `--index N` composes with the bare flag: the picked pack opens at
    puzzle N+1.
@@ -60,8 +60,8 @@ The learner enables this user-facing behavior:
 5. `gomoku selfplay --puzzle` is rejected with exit 2, bare or valued.
 6. `sessiondemo --puzzle` still requires a path. A scripted demo has
    no one to answer a dialog.
-7. The corpus directory is git-ignored, so the dialog falls back to
-   the working directory when `data/puzzles/files/` does not exist.
+7. The dialog falls back to the working directory when
+   `data/puzzles/` does not exist.
 
 ## Specification as tests
 
@@ -190,7 +190,7 @@ parser begins.
 * `PlayArgs.puzzle` becomes `Option<Option<PathBuf>>` with
   `num_args = 0..=1`. Doc comment: bare means "open the picker".
 * Add `pick_puzzle_pack() -> Option<PathBuf>`: builds the dialog as in
-  step 5. The corpus-directory fallback (`data/puzzles/files/` if it
+  step 5. The corpus-directory fallback (`data/puzzles/` if it
   exists, else the working directory) is computed here with
   `std::path::Path::is_dir`.
 * Add `resolve_pack_path(flag: &Option<Option<PathBuf>>, pick: impl
@@ -240,8 +240,8 @@ cargo fmt --all -- --check
 * The three project gates pass.
 * Manual verification — the dialog cannot be scripted:
   * `cargo run -q -p cli --bin gomoku -- play --puzzle` opens the
-    dialog at `data/puzzles/files/` (or the working directory if the
-    corpus is not fetched), showing only `.json` files.
+    dialog at `data/puzzles/` (or the working directory if it does
+    not exist), showing only `.json` files.
   * Picking `crates/cli/tests/fixtures/mini-pack.json` opens the study
     table on puzzle 1 with the panel line
     `Puzzle: 1 of 3 · Black to move`.
@@ -262,4 +262,4 @@ cargo fmt --all -- --check
 * [Chapter 07 — Positions from files: puzzles](../../07-positions-from-files-puzzles.md) — the chapter overview.
 * [Chapter 12 — Gomoku architecture](../../../../12-gomoku-architecture.md) — the no-async-runtime decision that selects `rfd`'s blocking API.
 * [`rfd` crate documentation](https://docs.rs/rfd) — `FileDialog`, filters, directories, and the Linux backend features.
-* [data/puzzles/README.md](../../../../../data/puzzles/files/README.md) — the corpus the dialog starts at.
+* `data/puzzles/` — the packs the dialog starts at.

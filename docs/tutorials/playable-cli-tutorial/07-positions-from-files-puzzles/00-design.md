@@ -54,7 +54,7 @@ into right/wrong.
 
 ## Decision 2 — The pack format, and the coordinate trap
 
-The pack format (from `../../../../data/puzzles/files/README.md`):
+The pack format:
 
 ```json
 { "v": 1, "count": 763, "items": [
@@ -124,9 +124,8 @@ and error messages.
 different opening board. Swap2 is skipped — the puzzle position *is*
 the opening — and the `--ai` / `--color` / sims flags compose exactly as
 they do for a Swap2 opening. A missing or invalid pack exits with code
-2 (usage/data error), names the path, and points at
-`../../../../data/puzzles/files/fetch.sh`, because the corpora are git-ignored and "not
-found" most likely means "not fetched yet". The `selfplay` subcommand
+2 (usage/data error), names the path, and points at `data/puzzles/`,
+where the packs live. The `selfplay` subcommand
 rejects `--puzzle`: a game generator has no business starting
 mid-position.
 
@@ -161,5 +160,4 @@ reuse contract — is in
   — the chapter overview.
 * [Playable CLI design paper](../../../specs/2026-10-17-playable-cli-design.md)
   — the "positions from files" amendment.
-* [data/puzzles/README.md](../../../../data/puzzles/files/README.md) —
-  corpus format, provenance, milestone-4 labelling plan.
+* `data/puzzles/` — the puzzle packs.

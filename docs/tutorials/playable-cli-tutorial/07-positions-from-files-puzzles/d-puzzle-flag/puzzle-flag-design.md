@@ -42,11 +42,10 @@ so the error path is the same as any other malformed argument.
 
 ## Decision 3 — Missing data files are first-class errors
 
-The puzzle corpora under `data/puzzles/` are git-ignored. A user who
-runs `--puzzle data/puzzles/files/vcf-material-763.json` before
-running `../../../../../data/puzzles/files/fetch.sh` will hit "file not found". That case
-is a usage/data error, not a crash, so the binary exits 2 and prints a
-message that names the path and points at `../../../../../data/puzzles/files/fetch.sh`.
+The puzzle packs live under `data/puzzles/`. A user who passes a
+missing or unreadable path to `--puzzle` hits a usage/data error, not
+a crash: the binary exits 2 and prints a message that names the path
+and points at `data/puzzles/`.
 
 ## Decision 4 — Invalid packs exit 2, not 1
 
@@ -101,7 +100,7 @@ run_play()
   +-- puzzle flag present --→ build_puzzle_init()
           |
           v
-      read file --fail--> exit 2 + fetch.sh hint
+      read file --fail--> exit 2 + data/puzzles/ hint
           |
           v
       PuzzlePack::from_json --fail--> exit 2
