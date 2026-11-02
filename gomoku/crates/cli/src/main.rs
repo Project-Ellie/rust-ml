@@ -11,9 +11,11 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use cli::actor::{AiConfig, EvaluatorKind, Occupant};
-use cli::session::SessionInit;
+use cli::puzzle::PuzzlePack;
+use cli::session::{PuzzleStudy, SessionInit};
 use cli::tui::study;
 use engine::{Board, Color};
+use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -50,6 +52,14 @@ struct PlayArgs {
     /// Skip the Swap2 opening and start from an empty board.
     #[arg(long)]
     no_swap2: bool,
+
+    /// Study puzzle N of a puzzle pack (skips Swap2).
+    #[arg(long, value_name = "PACK.json")]
+    puzzle: Option<PathBuf>,
+
+    /// Zero-based index of the puzzle to load (default 0).
+    #[arg(long, value_name = "N", requires = "puzzle")]
+    index: Option<usize>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -133,6 +143,9 @@ fn main() {
             if args.play.no_swap2 {
                 usage_error("--no-swap2 is only valid with the 'play' subcommand");
             }
+            if args.play.puzzle.is_some() {
+                usage_error("--puzzle is only valid with the 'play' subcommand");
+            }
             run_selfplay(&search)
         }
     };
@@ -159,6 +172,11 @@ fn run_play(play: &PlayArgs) -> std::io::Result<()> {
     if play.search.color.is_some() && play.search.ai.is_none() {
         usage_error("--color requires --ai");
     }
+    // A puzzle pack seeds the study table directly; Swap2 is skipped.
+    if let Some(pack_path) = &play.puzzle {
+        let init = build_puzzle_init(&play.search, pack_path, play.index.unwrap_or(0));
+        return study::run(init, None);
+    }
     let swap2 = !play.no_swap2;
     let init = play_init(&play.search, swap2);
     // The hint is the first message line of the session. The ceremony
@@ -175,6 +193,44 @@ fn run_selfplay(search: &SearchArgs) -> std::io::Result<()> {
         usage_error("--color is not valid for selfplay");
     }
     study::run(selfplay_init(search), Some("Enter steps the AI."))
+}
+
+/// Load a puzzle pack and build the `SessionInit` for studying it.
+///
+/// Exits with code 2 (usage/data error) when the pack is missing or
+/// invalid; the puzzle corpora are git-ignored, so the message points at
+/// the corpus's `data/puzzles/fetch.sh`.
+fn build_puzzle_init(search: &SearchArgs, pack_path: &Path, index: usize) -> SessionInit {
+    let text = std::fs::read_to_string(pack_path).unwrap_or_else(|e| {
+        eprintln!(
+            "error: cannot read puzzle pack '{}': {e}",
+            pack_path.display()
+        );
+        eprintln!("       puzzle corpora are git-ignored — fetch them with data/puzzles/fetch.sh");
+        std::process::exit(2);
+    });
+    let pack = PuzzlePack::from_json(&text).unwrap_or_else(|e| {
+        eprintln!("error: invalid puzzle pack '{}': {e}", pack_path.display());
+        std::process::exit(2);
+    });
+    let opening = pack
+        .get(index)
+        .unwrap_or_else(|e| {
+            eprintln!("error: {e} in '{}'", pack_path.display());
+            std::process::exit(2);
+        })
+        .board
+        .clone();
+
+    // Seats and AI flags compose exactly as for a Swap2 opening.
+    let mut init = play_init(search, false);
+    init.opening = opening;
+    init.puzzle = Some(PuzzleStudy {
+        pack_path: pack_path.to_path_buf(),
+        index,
+        pack,
+    });
+    init
 }
 
 /// Build the `SessionInit` for `play`.
