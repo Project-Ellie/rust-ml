@@ -270,34 +270,41 @@ started.
 
 Two further tutorial tracks are written and verified, ready to work:
 
-- [baseline-tutorial](tutorials/baseline-tutorial/README.md) (primer +
-  5 chapters, solutions land as worked): the `baseline` crate — a
-  hand-written evaluator (threat maps + gravity kernel → tiered policy
-  logits + saturating value) behind the `mcts::Evaluator` seam, with
-  measured-strength acceptance. Design spec:
-  [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md).
+- [baseline-tutorial](tutorials/baseline-tutorial/README.md)
+  (REDESIGNED 2026-10-26: primer + 8 small sub-chapters, each with
+  four papers — chapter, design, implementation plan, solution — and
+  each ending at the study table with a smarter seat): the `baseline`
+  crate — a hand-written evaluator (vicinity gravity kernel + tiered
+  threat policy + saturating value) behind the `mcts::Evaluator`
+  seam, plus a root-level TSS probe (`prove_forced_win`, budgeted
+  10k/30) wired into the CLI's AI-step path. The seat is playable
+  from sub-chapter 01 (`--ai baseline`); layers land one per
+  sub-chapter. Reference implementation built and gate-verified on
+  branch `baseline-reference` (8 commits; worktree
+  `rust-ml-baseline-ref/` inside the repo root, kept for inspection);
+  the solution papers quote it with real line numbers. Measured
+  acceptance (release, recorded in 08-acceptance): 10/10 vs
+  uniform-random at 400/4k/10k sims, 20/20 vs `TacticsEvaluator` at
+  200 sims (5.9 s/game, 599 evals/s), 100/100 engine-proven VCF
+  puzzles solved. Design spec:
+  [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md)
+  (weights stand; the primer supersedes its chapter order).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
-  (primer + 9 chapters + opt-in solutions, written 2026-10-17/18): the
-  `cli` crate grows into the study table — two seats (human or AI,
-  take/release anytime), a persistent variation tree with silent
-  branching, a headless `SessionCore` (commands/events, REST-ready),
-  policy overlays + value strip, per-seat sims, and positions from
-  files: puzzle packs (`--puzzle`, hint/reveal/next/prev) and Piskvork
-  game records (`--game`, cursor at the end position). **Single-CLI
-  owner decision**: the legacy hotseat/puzzle UI is deleted (no
-  `--plain`, no naive-engine play, no `dyn GameBoard`) — the study
-  table is the only UI. Notation is standard Gomoku algebraic
-  (columns a–o, rows 1–15, center h8) at input and display. Reference
-  built TDD-first in worktree `../rust-ml-ref-playable-cli` (branch
-  `reference/playable-cli`, 12 commits, 136 tests + 1 ignored
-  measurement green, per-commit gates verified; kept for inspection
-  until chapter 09 is worked). Design spec (three dated amendments:
-  algebraic notation, single CLI, positions from files):
-  [2026-10-17-playable-cli-design.md](specs/2026-10-17-playable-cli-design.md);
-  plan: [2026-10-17-playable-cli.md](plans/2026-10-17-playable-cli.md).
-  Note: baseline ch.4's `--versus baseline` plan is superseded — the
-  baseline evaluator will enroll as an `EvaluatorKind` in the study
-  table (spec §13).
+  **COMPLETE (2026-10-26)**: chapters 01–07 and the chapter-09
+  acceptance are worked and on `main` (242 cli tests green, one
+  ignored measurement; crate locked with `#![deny(missing_docs)]`).
+  Sub-chapter 07e (the file picker) and chapter 08 (game records)
+  are **parked** by owner decision — written, specced, deliberately
+  unworked; the committed packs under `data/puzzles/` made the
+  picker unnecessary. Standing facts: the study table is the only UI
+  (no `--plain`, no naive-engine play, no `dyn GameBoard`); notation
+  is standard Gomoku algebraic (columns a–o, rows 1–15, center h8);
+  `--puzzle pack.json --index N` enrolls puzzles with
+  hint/reveal/next/prev. The puzzle corpora moved from git-ignored
+  `data/puzzles/files/` to committed `data/puzzles/` (4,571 puzzles;
+  the kaibao/renju 3,808 are engine-proven conversions, the
+  vcf-material 763 source-claimed pending milestone-4
+  re-verification). Reference history below kept for the record.
   **Progress on main (2026-10-20)**: chapters 01–04 are implemented
   (variation tree, command language, AI seats via mcts, study loop
   with the opening schedule). Chapter 05 was redesigned as a

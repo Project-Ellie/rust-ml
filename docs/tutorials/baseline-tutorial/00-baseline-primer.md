@@ -2,24 +2,28 @@
 
 ## Abstract
 
-This primer is the design authority for the baseline tutorial: a side
-quest between the convolutions tutorial and the net tutorial in which
-you build the project's first intelligent actor — a **hand-written
-policy/value evaluator** that plugs into the existing PUCT search
-through the `mcts::eval::Evaluator` seam and is playable from the
-`gomoku` terminal client. The evaluator reuses the convolutions
-tutorial's threat network verbatim, adds one small new piece — a
-**gravity kernel** that rewards playing near existing stones — and
-combines both sides' threat maps plus the gravity map into two
+This primer is the design authority for the baseline tutorial: the
+side quest between the convolutions tutorial and the net tutorial in
+which you build the project's first intelligent actor — a
+**hand-written policy/value evaluator** that plugs into the existing
+PUCT search through the `mcts::eval::Evaluator` seam and is playable
+from the `gomoku` terminal client from the very first sub-chapter.
+The evaluator reuses the convolutions tutorial's threat network
+(`ThreatNet`, `analyze_both`, `ThreatMaps`), adds one small new piece
+— a **gravity kernel** that rewards playing near existing stones —
+and combines both sides' threat maps plus the gravity map into two
 **readouts**: a 225-vector of policy logits built from a derived tier
-table, and a saturating value heuristic clamped away from ±1. Playing
-strength cannot be verified on paper, so acceptance is by **measured
-hypothesis**: pre-registered bars, a fixed protocol, recorded numbers.
-The player is almost a by-product; the lasting artifacts are the Elo
-anchor, the adapter shape the trained network will reuse, and the
-first meeting of `engine`, `mcts`, and `patterns` in one crate. The
-chapters derive the details; this primer pins the semantics they must
-not drift from.
+table, and a saturating value heuristic clamped away from ±1. A
+root-level **TSS probe** (`engine::prove_forced_win`) lets the player
+see proven forced wins instead of stumbling into them. No training,
+no GPU requirement, no strength claims on faith: every sub-chapter
+ends with a playable game, and playing strength is a **measured
+hypothesis**, recorded as real numbers in the acceptance sub-chapter.
+
+The player is almost a by-product. The lasting value is the **Elo
+anchor** every trained network will later be measured against, the
+adapter shape the net tutorial's evaluator will reuse, and the first
+artifact where `engine`, `mcts`, and `patterns` meet.
 
 ## Glossary
 
@@ -30,6 +34,15 @@ not drift from.
   between the `mcts` crate and any network or heuristic:
   `mcts::eval::Evaluator`. The search asks "what is fθ(s)?" — nothing
   else.
+- **Prior** — the policy half of the evaluator's answer, normalized
+  by `masked_softmax` over the legal moves. Priors guide PUCT
+  selection: they decide *where the simulations go*.
+- **Value** — the scalar half of the answer, in [−1, 1] from the side
+  to move's perspective. Backup carries it up the tree, sign-flipped
+  per ply.
+- **Simulation** — one pass of selection → expansion → evaluation →
+  backup. The per-move budget (this tutorial plays at 4,000) is the
+  number of times the evaluator is called per move.
 - **Mock evaluator / `TacticsEvaluator`** — the deterministic
   evaluator shipped with the `mcts` crate (`mcts::mock`). It shapes
   priors from engine truth (`immediate_wins`, `forced_blocks`) and
@@ -62,9 +75,10 @@ not drift from.
 - **Gravity kernel** — a 5×5 convolution kernel with positive weights
   decaying by distance from the centre and a zero centre cell, slid
   over the occupancy plane. It scores every cell by how much stone
-  mass sits nearby.
-- **Occupancy plane** — a one-channel plane: the 15×15 board
-  zero-padded by the kernel radius to 19×19, no border ring.
+  mass sits nearby. ("Vicinity kernel" is the same idea by another
+  name; the code says gravity.)
+- **Occupancy plane** — a one-channel plane: the 15×15 board, 1 where
+  any stone of either color sits, 0 elsewhere. No border ring.
 - **Gravity map** — the gravity kernel's output, normalized into
   [0, 1]: high near existing stones, zero on an empty board.
 - **Readout** — hand-written glue that turns maps into the evaluator's
@@ -84,6 +98,11 @@ not drift from.
 - **Saturating heuristic** — a value function that rises with
   advantage but is deliberately clamped away from ±1, because ±1 is
   reserved for proven terminal outcomes.
+- **TSS probe** — a once-per-move call to `engine::prove_forced_win`
+  at the root of the search, with a bounded `SearchBudget`. `Some`
+  means a certified forced win: play the proof line's first move.
+  `None` means *not proven within budget* — it says nothing about the
+  true value.
 - **Elo anchor** — a fixed reference opponent with a measured match
   record. Once the `arena` crate exists, the trained network's
   strength is expressed relative to this baseline.
@@ -94,6 +113,10 @@ not drift from.
 - **Measured hypothesis** — a falsifiable numeric claim about behavior
   (not code), pre-registered with its protocol, then measured and
   recorded as a real number — never asserted on faith, never invented.
+- **Strength ladder** — this tutorial's acceptance narrative: the
+  same fixed measurement protocol, rerun after every sub-chapter, so
+  each layer of intelligence shows up as a better number against the
+  same yardsticks.
 - **Flex device** — `burn::tensor::Device::flex()`, the pure-Rust CPU
   backend the `patterns` crate builds on by default; the GPU path is
   an opt-in `gpu` feature.
@@ -105,29 +128,26 @@ not drift from.
 
 The project philosophy is alpha-epsilon: hand-woven tactics give the
 agent a head start that learning later refines (docs/12, §3). Three
-milestones' worth of machinery now exists, and **it has never met in
+milestones' worth of machinery now exist, and **it has never met in
 one artifact**:
 
 - the `engine` computes tactics as bitboard truth — every answer a
-  certainty;
+  certainty, and its TSS prover certifies whole forced-win lines;
 - the `mcts` crate runs full PUCT search behind the `Evaluator` seam,
   but its only non-trivial evaluator is the `TacticsEvaluator` mock,
   whose own source calls it tutorial scaffolding, "not meant to
   generalize";
 - the `patterns` crate reproduces the engine's tactics as a
   hand-written convolutional network and goes beyond it (double-three
-  forks), proven equal to independent oracles on a thousand boards.
+  forks), proven equal to independent oracles on a thousand boards;
+- the `cli` study table seats any `EvaluatorKind` opposite a human —
+  but the only kind that exists is the mock.
 
 Between "threat maps proven correct" and "a trained network inside
 search" there is no *player* — nothing that uses the maps to actually
 choose moves, nothing a human can sit down and beat, and nothing the
-future arena can anchor Elo to. The datagen tutorial's synthetic data
-is shaped by the same crude 90/10 tactics shaping the mock uses; a
-stronger hand-written player produces richer self-play positions than
-the mock ever will.
-
-This tutorial builds that player. Its three payoffs, in order of
-durability:
+future arena can anchor Elo to. This tutorial builds that player. Its
+three payoffs, in order of durability:
 
 1. **The Elo anchor.** Once the `arena` crate exists, the trained
    network's strength is expressed against this fixed, reproducible
@@ -141,7 +161,53 @@ durability:
    three-level threats instead of 90/10 shaping. That re-run is
    future work; this tutorial does not do it.
 
-## 2. The trust ladder
+## 2. The constant and the variable — how MCTS plays along
+
+The tutorial never touches the search. The `mcts` crate is the
+**constant**: a complete PUCT loop with exactly one hole in it. At
+every new leaf it asks *"what is fθ(s)?"* — a policy vector and a
+value — through the `Evaluator` trait. **This whole tutorial builds
+nothing but a better answer to that one question.**
+
+One simulation is: walk down the tree by PUCT (guided by the priors
+and the backed-up values), expand a leaf, **call the evaluator once**,
+back the value up, sign-flipped per ply. Playing at 4,000 simulations
+per move means the evaluator answers 4,000 questions per move. That
+arithmethic drives two design rules you will meet again in §7:
+
+- Whatever the evaluator does per call must be cheap (a handful of
+  convolution forwards on the flex device).
+- Anything expensive — a threat-space proof, say — cannot live inside
+  the per-node path.
+
+The division of labor is: **the evaluator guesses, the search
+verifies.** Priors decide where the simulations go; backed-up terminal
+results and visit counts can still overrule a bad guess. That is why
+the trust ladder (§3) matters — a bad prior wastes sims on nonsense —
+and why even the sub-chapter-03 player, whose value is a flat 0.0,
+already plays with intent: its Q-values are driven purely by wins and
+losses the tree actually finds, and its gravity priors make sure it
+looks where wins can happen.
+
+Each sub-chapter upgrades one half of the answer, and the tree turns
+it into behavior:
+
+| Sub-chapter | What the evaluator gains | What the tree does with it |
+|-------------|--------------------------|----------------------------|
+| 01 the seat | uniform priors, value 0 | legal play; terminal wins found in the tree still dominate |
+| 03 gravity | vicinity priors | 4,000 sims explore a local neighborhood deeply instead of spraying across 200+ cells |
+| 04 wins/blocks | priors spike on wins and forced blocks | the tree looks at the moves that matter *first* |
+| 05 value | graded leaf values | backup informs every branch, not just terminal ones — Q means something midgame |
+| 06 three ladder | priors see forks and threes | the search verifies multi-move traps and defenses before committing |
+| 07 TSS eye | a certified line, once per move | the search is *pre-empted* when the answer is proof, not estimate |
+
+When the net tutorial lands, the search, the seam, the CLI seat, and
+the measurement harness all stay — only the body of `evaluate()`
+changes from hand-written maps to a learned forward pass. This
+tutorial is where you build and validate the *socket* the network
+will plug into, with a function you fully understand inside it.
+
+## 3. The trust ladder
 
 The policy readout's inputs are not equally trustworthy, and the
 design exploits that:
@@ -149,6 +215,7 @@ design exploits that:
 ```text
 certainty ──────────────────────────────────────────► heuristic
 
+TSS proof           engine-proven   (the prover certifies the line)
 own wins            engine-proven   (convolutions differential gate,
 opponent's wins     engine-proven    1000 boards × 2 colors)
 own double threats  engine-proven   (same gate)
@@ -157,14 +224,15 @@ gravity             unproven heuristic — sits at the bottom,
                     where it can do the least harm
 ```
 
-The top tiers are *oracular*: the convolutions tutorial's differential
-gates prove the win maps equal `engine::immediate_wins` and the
-double-threat map equals `engine::double_threats`. The three-level
-tiers are oracle-proven against the naive enumerator. Gravity alone is
-an unproven heuristic — so the tier hierarchy is also a **trust
-ladder**: certainty at the top, increasingly heuristic downward, and
-the least trusted signal structurally unable to outvote any trusted
-one (§4 makes "unable" precise).
+The middle tiers are *oracular*: the convolutions tutorial's
+differential gates prove the win maps equal `engine::immediate_wins`
+and the double-threat map equals `engine::double_threats`. The
+three-level tiers are oracle-proven against the naive enumerator. The
+TSS probe stands above everything: it is not a score but a *proof*.
+Gravity alone is an unproven heuristic — so the tier hierarchy is also
+a **trust ladder**: certainty at the top, increasingly heuristic
+downward, and the least trusted signal structurally unable to outvote
+any trusted one (§5 makes "unable" precise).
 
 Where the oracular tiers inherit the engine's documented v1
 simplifications — the four-three blind spot, opponent-wins-first,
@@ -172,25 +240,24 @@ immediate wins excluded from double threats — the readout inherits
 them too. The primer names them so the chapters never pretend
 otherwise.
 
-## 3. The gravity idea
+## 4. The gravity idea
 
 When no threat is present — the common case in the opening and early
 midgame — the threat maps are all zero and every legal cell looks
 alike. The mock answers this case with a uniform prior, so the search
-spreads its 400 simulations near-randomly across 200+ cells. Gomoku is
-a local game: almost every good early move is near existing stones.
+spreads its simulations near-randomly across 200+ cells. Gomoku is a
+local game: almost every good early move is near existing stones.
 
 The **gravity kernel** encodes exactly that, and nothing more: a 5×5
 kernel, centre cell exactly 0, ring weights decaying by Chebyshev
 distance (2 for the 8 neighbours at distance 1, 1 for the 16 cells at
-distance 2), slid over a dedicated **occupancy plane** — 1 where any
-stone of either color sits, 0 elsewhere, zero-padded with **no border
-ring**. The maximum raw output is 8·2 + 16·1 = 32, and the readout
-normalizes by 32 — a power of two, so the normalized gravity map
-g(r, c) ∈ [0, 1] stays exactly representable in f32 (the exactness
-principle). These starting weights are an `[experiment]` value: any
-monotone decay works; the tutorial pins this table and records it as a
-choice, not a law.
+distance 2), slid over the **occupancy plane** — 1 where any stone of
+either color sits, 0 elsewhere, **no border ring**. The maximum raw
+output is 8·2 + 16·1 = 32, and the readout normalizes by 32 — a power
+of two, so the normalized gravity map g(r, c) ∈ [0, 1] stays exactly
+representable in f32 (the exactness principle). These starting weights
+are an `[experiment]` value: any monotone decay works; the tutorial
+pins this table and records it as a choice, not a law.
 
 Two properties are deliberate and load-bearing:
 
@@ -203,8 +270,8 @@ Two properties are deliberate and load-bearing:
   stones only) would make gravity color-biased; channel 1 (opponent
   stones *or* the border frame) would pull toward the board edges —
   the border ring is all-ones, so a corner cell would score phantom
-  "neighbor mass" from outside the board. Chapter 1 shows the failure
-  as arithmetic on a tiny grid, builds the dedicated plane in glue,
+  "neighbor mass" from outside the board. Sub-chapter 02 shows the
+  failure as arithmetic on a tiny grid, builds the dedicated plane,
   and regression-tests that a corner stone's map is *truncated, never
   boosted*.
 
@@ -214,7 +281,7 @@ on `patterns`. Every future hand-written heuristic is another small
 named branch (the DeepGomoku frozen-features pattern); the proven
 threat network is never touched.
 
-## 4. The tier derivation
+## 5. The tier derivation
 
 The policy readout's weights are **derived, not tuned**. One question
 forces the whole design:
@@ -282,7 +349,14 @@ empty cells, `f32::NEG_INFINITY` at occupied cells (matching the
 mock's masked style). `masked_softmax` is the only softmax; the
 evaluator never normalizes.
 
-## 5. The honest value heuristic
+`patterns::potential` is **not** reused. Its flat 1.0/0.9/0.8/0.3
+scores are a shape demo from the convolutions tutorial — a sparse
+`Vec<(Move, f32)>` with no domination invariant, normalized nowhere.
+The baseline readout is the real integration: logits with theorem
+gaps. The sub-chapters say so explicitly rather than silently
+duplicating.
+
+## 6. The honest value heuristic
 
 The value readout is a **saturating heuristic** from the same maps,
 from the side-to-move's perspective, shaped like the mock's sentinels
@@ -311,13 +385,49 @@ assert the properties, not the constants:
 - **Quiet board ⇒ exactly 0.0** — gravity never enters the value; a
   position with no maps firing is honestly neutral.
 - **Honesty** — this is a heuristic with named failure modes: it
-  cannot see threat *sequences* (the engine's TSS prover owns those);
-  it inherits the engine's v1 simplifications through the oracular
-  maps; it is the mock's scaffolding made one notch less crude. The
-  tutorial says so everywhere, and the trained network's value head is
-  what replaces it.
+  cannot see threat *sequences* on its own (§7's TSS probe owns
+  those); it inherits the engine's v1 simplifications through the
+  oracular maps; it is the mock's scaffolding made one notch less
+  crude. The tutorial says so everywhere, and the trained network's
+  value head is what replaces it.
 
-## 6. The adapter, end to end
+## 7. The TSS eye — a root probe, not a per-node evaluator
+
+The static maps see one move deep. Gomoku tactics are *sequences*: a
+VCF win is ten forcing moves that each look modest in isolation. The
+engine owns sequence truth: `prove_forced_win(board, side, budget)`
+runs threat-space search and returns `Some(Proof)` — a certified,
+`verify_line`-checkable forced win — or `None`, which means only "not
+proven within budget" and says nothing about the true value.
+
+§2's arithmetic decides where the prover may live. The evaluator
+answers ~4,000 questions per move; a prover call explores up to
+`SearchBudget::max_nodes` threat-space nodes each time. Prover calls
+inside the tree would multiply the cost of a move by orders of
+magnitude. So the probe is a **once-per-move short-circuit at the
+root**, wired into the CLI's AI-seat step path (sub-chapter 07),
+before the PUCT search starts:
+
+1. Probe `prove_forced_win(board, side_to_move, budget)` with a
+   bounded budget (`max_nodes: 10_000, max_depth: 30`).
+2. `Some(proof)` ⇒ play `proof.line[0]` directly. The search is
+   pre-empted when the answer is proof, not estimate.
+3. `None` ⇒ proceed with the normal MCTS step. Nothing is concluded —
+   least of all "there is no win".
+
+Two deliberate absences:
+
+- **No defensive probe.** If the *opponent* has a proven forced win,
+  there is nothing to find: the loss is already forced, and spending
+  budget to confirm it changes no decision. The value readout's
+  double-threat tier already paints such positions as lost.
+- **No per-node probe, ever.** The seam speaks `EvalRequest`, which
+  carries no depth information; a per-node prover would be both
+  unaffordable and architecturally smuggled. The root probe lives in
+  the CLI's seat path, outside the evaluator, where "once per move"
+  is a structural fact, not a discipline.
+
+## 8. The adapter, end to end
 
 The evaluator is a thin adapter with no state of its own beyond two
 modules (the threat network and the gravity branch):
@@ -325,16 +435,16 @@ modules (the threat network and the gravity branch):
 ```text
 EvalRequest { planes, legal }            (the mcts seam speaks Planes)
         │
-        ▼  reconstruct (parity + legal-set assert)
+        ▼  reconstruct (parity + legal-set assert)   [sub-chapter 04]
 engine::Board                            (absolute colors, docs/13)
         │
         ▼  patterns::net::analyze_both   (one batched forward pass)
 [ThreatMaps; 2]  ── pick own/opponent by board.to_move()
         │
-        ▼  gravity branch on the occupancy plane
+        ▼  gravity branch on the occupancy plane     [sub-chapter 02]
 gravity map ∈ [0, 1]
         │
-        ▼  policy readout (§4)  +  value readout (§5)
+        ▼  policy readout (§5)  +  value readout (§6)
 EvalResult { policy: [f32; 225], value: f32 }
 ```
 
@@ -359,40 +469,56 @@ Three invariants make it trustworthy:
   search every evaluated position is alternation-legal, so parity
   reconstruction is sound.
 
-## 7. Acceptance by measurement
+The crate topology mirrors the seam: `gomoku/crates/baseline` depends
+on `engine`, `mcts`, `patterns`, and `burn` (flex device). The `cli`
+crate consumes it behind a default-on `baseline` feature — the same
+shape the `net` crate will later follow — and the `--ai` flag
+(`tactics|baseline`) selects the seat's brain. The default
+stays `tactics` until the acceptance sub-chapter flips it.
 
-Correctness is asserted; **strength is measured**. The acceptance
-chapter keeps the two scrupulously separate:
+## 9. The strength ladder — acceptance by measurement
+
+Correctness is asserted; **strength is measured**. And the measurement
+is the tutorial's narrative engine: the **same protocol, rerun after
+every sub-chapter**, against the same yardsticks, so each layer of
+intelligence shows up as a better number. Every sub-chapter from 03
+onward ends with a game at `--sims 4000` and a rerun of the ladder
+row; sub-chapter 08 is the full acceptance ritual:
 
 - **Asserts** (certainties, verified every run): tactical soundness on
-  the mcts acceptance boards (win-in-1 and the forced block, each at
-  50 simulations), a 100-game seeded self-play health flood (every
-  move legal, every game ≤ 225 plies, no panics), the derivation
-  checks (the domination invariant, the pinned value properties), and
-  workspace hygiene (the engine stays a Burn-free island; `mcts` stays
-  Burn-free).
-- **Measured hypotheses** (strength, recorded as real numbers): a
-  200-game seeded match against the `TacticsEvaluator` with a
-  pre-registered win-rate bar (tuned on the first real run, with both
-  numbers recorded); a threat-construction statistic (double-threat
-  creations per game, baseline self-play vs mock self-play — the
-  qualitative claim "gravity plus three-makers produce richer
-  positions" made falsifiable); and throughput numbers (seconds per
-  game, evaluations per second) recorded as context for the self-play
-  planning in docs/12, with no bar attached.
+  the mcts acceptance boards (win-in-1 and the forced block), a
+  seeded self-play health flood (every move legal, every game ≤ 225
+  plies, no panics), the derivation checks (the domination invariant,
+  the pinned value properties), and workspace hygiene (the engine
+  stays a Burn-free island; `mcts` stays Burn-free).
+- **Measured hypotheses** (strength, recorded as real numbers):
+  - a seeded match against the `TacticsEvaluator` with a
+    pre-registered win-rate bar (tuned on the first real run, with
+    both numbers recorded);
+  - the sims gradient: 400 / 4,000 / 10,000 simulations against the
+    same opponent — the chapter-09 CLI acceptance proved uniform-random
+    play is no yardstick, so the ladder measures against the mock;
+  - a **VCF solve rate**: the fraction of the engine-proven puzzle
+    packs (`data/puzzles/kaibao-vcf-676.json`,
+    `data/puzzles/renju-portal-vcf-783-*.json`) the player converts
+    from the puzzle root, pre-registered as a hypothesis. This
+    statistic doubles as the benchmark harness the datagen tutorial's
+    labelled-positions work will need later;
+  - throughput numbers (seconds per game, evaluations per second)
+    recorded as context for the self-play planning in docs/12, with
+    no bar attached.
 
 The habit is the point: write the bar down *before* running the
 protocol, then record the real number *whatever it is*.
 
-## 8. What this tutorial defers
+## 10. What this tutorial defers
 
 - Training, autodiff, and any change to the datagen pipeline — the net
   tutorial; the datagen re-run is future work.
 - Elo rigor and the `arena` crate — the match records a raw score as
   the anchor's seed datum, nothing more.
-- Threat-space search coupling and threat sequencing beyond the static
-  maps — the engine's TSS prover owns that (TSS-inside-MCTS is a
-  registered upgrade in docs/12).
+- Threat-space search *inside* the tree — §7 explains why the probe
+  is root-only; deeper coupling is a registered upgrade in docs/12.
 - Concurrency — single-threaded, matching the `mcts` crate's design;
   no tokio anywhere (docs/12 §5, locked).
 - GPU as a requirement — `Device::flex()` is the default and the
@@ -403,12 +529,12 @@ protocol, then record the real number *whatever it is*.
 - Changes to `engine`, `mcts`, or `patterns` public APIs — they are
   consumed as-is.
 
-## 9. Common bugs (the ones the chapters' tests are built to catch)
+## 11. Common bugs (the ones the chapters' tests are built to catch)
 
 - **Border pull**: reusing the two-channel pattern planes for gravity.
   The blocked channel's all-ones border ring makes edge and corner
   cells score phantom neighbor mass. The occupancy plane has no
-  border; chapter 1's corner test is the regression net.
+  border; sub-chapter 02's corner test is the regression net.
 - **Color-biased gravity**: scoring proximity to *own* stones only.
   Proximity is color-blind; the occupancy plane holds either color.
 - **Per-direction stacking within a tier**: letting a cell that makes
@@ -431,25 +557,35 @@ protocol, then record the real number *whatever it is*.
 - **RNG in the evaluator**: variety belongs to the search side
   (temperature in `mcts::policy`). An evaluator that rolls dice makes
   matches irreproducible and the acceptance numbers meaningless.
+- **Reading `None` from the TSS probe as "no win"**: `None` means the
+  budget ran out. Treating it as proof of *no* forced win is the dual
+  bug of trusting a heuristic, and the tutorial hammers it every time
+  the probe appears.
+- **Probing per node**: the prover is a search, not a scoring
+  function. Inside the per-node path it is unaffordable — §7 is the
+  only sanctioned wiring.
 
 ## Summary
 
-The baseline player is three proven parts and one honest heuristic,
-assembled behind a seam that already exists. The threat maps bring
+The baseline player is three proven parts and two honest heuristics,
+assembled behind a seam that already exists, playable from the first
+sub-chapter and smarter after each one. The threat maps bring
 engine-proven tactics and oracle-proven three-detection; gravity
 brings a sane quiet-board default that knows its place at the bottom
 of the trust ladder; the tier table is a theorem, not a tuning; the
-value is a clearly labelled saturating heuristic. Wrapped in the
-existing PUCT search, the result is the project's first beatable
-opponent, its first Elo anchor, and the adapter shape everything after
-will reuse. The chapters derive the details; this primer has pinned
-what they must not drift from.
+value is a clearly labelled saturating heuristic; the TSS probe sees
+what no static map can. Wrapped in the existing PUCT search at 4,000
+simulations, the result is the project's first beatable opponent, its
+first Elo anchor, and the adapter shape everything after will reuse.
+The sub-chapters derive the details; this primer has pinned what they
+must not drift from.
 
 ## References
 
 - [`../../specs/2026-10-13-baseline-player-design.md`](../../specs/2026-10-13-baseline-player-design.md)
-  — the design spec (gravity §3, tiers §4, value §5, crate topology
-  §6, adapter §7, CLI §8, acceptance §10).
+  — the original design spec (gravity §3, tiers §4, value §5, crate
+  topology §6, adapter §7, CLI §8, acceptance §10). This primer
+  supersedes its chapter order; the weights and protocols stand.
 - [`../convolutions-tutorial/00-convolutions-primer.md`](../convolutions-tutorial/00-convolutions-primer.md)
   — the threat ladder, the exactness principle, and the oracle
   ladder.
@@ -462,6 +598,8 @@ what they must not drift from.
 - `gomoku/crates/mcts/src/eval.rs` — the `Evaluator` seam and
   `masked_softmax`; `mock.rs` — the opponent the baseline replaces and
   meets; `expand.rs` — the terminal check that keeps ±1 reserved.
+- `gomoku/crates/engine/src/tss.rs` — `prove_forced_win`,
+  `SearchBudget`, and the documented meaning of `None`.
 - [`../../12-gomoku-architecture.md`](../../12-gomoku-architecture.md) —
   alpha-epsilon (§3), no-tokio (§5), the `Evaluator` rationale (§6).
 - [`../../13-engine-design.md`](../../13-engine-design.md) — tactics
