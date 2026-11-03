@@ -113,4 +113,4 @@ From `gomoku/`: `cargo test -p baseline`, `cargo test -p cli`,
 `cargo clippy --all-targets -- -D warnings`,
 `cargo fmt --all -- --check`, then the measurement:
 `cargo test -p baseline --release --test acceptance -- --ignored --nocapture`.
-Commit: `test(baseline): the measured ladder — baseline sub-chapter 08`.
+Commit: `test(baseline): the measured ladder — baseline sub-chapter 09`.

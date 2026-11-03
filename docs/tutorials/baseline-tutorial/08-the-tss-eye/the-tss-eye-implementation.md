@@ -1,4 +1,4 @@
-# Sub-chapter 07 — The TSS eye: implementation plan
+# Sub-chapter 08 — The TSS eye: implementation plan
 
 This document turns the walkthrough in `the-tss-eye.md` into a
 construction order. It names the files, structs, constants, functions,

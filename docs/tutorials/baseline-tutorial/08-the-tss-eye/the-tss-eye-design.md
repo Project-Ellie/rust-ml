@@ -1,4 +1,4 @@
-# Sub-chapter 07 — The TSS eye: design paper
+# Sub-chapter 08 — The TSS eye: design paper
 
 ## Abstract
 
@@ -157,7 +157,7 @@ Invariants:
 
 ## References
 
-* [Sub-chapter 07 — The TSS eye](./the-tss-eye.md) — the tutorial.
+* [Sub-chapter 08 — The TSS eye](./the-tss-eye.md) — the tutorial.
 * [Baseline primer](../00-baseline-primer.md) — §7 pins the root-only
   probe and the meaning of `None`.
 * [Sub-chapter 06 — The three ladder](../06-the-three-ladder/the-three-ladder.md)

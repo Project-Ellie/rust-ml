@@ -57,8 +57,9 @@ with the four-paper layout of the playable-CLI sub-chapters:
 | 04 | [Wins and blocks](04-wins-and-blocks/wins-and-blocks.md) | Planes→`Board` reconstruction; tiers T1/T2 from both `wins` maps. | …take its own five and never allow yours. |
 | 05 | [The honest value](05-the-honest-value/the-honest-value.md) | The saturating value readout, clamped away from ±1. | …know when it is winning — backup informs every branch. |
 | 06 | [The three ladder](06-the-three-ladder/the-three-ladder.md) | Tiers T3–T4c: double threats, double-threes, three-makers, defensive threes. | …build forks and defend threats two moves early. |
-| 07 | [The TSS eye](07-the-tss-eye/the-tss-eye.md) | The root probe: `prove_forced_win` once per move, budgeted, pre-empting search. | …*see* proven forced wins instead of stumbling into them. |
-| 08 | [Acceptance: the measured ladder](08-acceptance/acceptance.md) | Tactical asserts, self-play flood, the match vs `TacticsEvaluator`, the sims gradient, the VCF solve rate; the default flips. | …answer for its strength in recorded numbers. |
+| 07 | [The quiet whisper](07-the-quiet-whisper/the-quiet-whisper.md) | `[experiment]` A super-naive quiet-position value term (gravity differential, capped ±0.05) with a measured A/B. | …hear a whisper where the threat ladder is silent — and check whether it helps. |
+| 08 | [The TSS eye](08-the-tss-eye/the-tss-eye.md) | The root probe: `prove_forced_win` once per move, budgeted, pre-empting search. | …*see* proven forced wins instead of stumbling into them. |
+| 09 | [Acceptance: the measured ladder](09-acceptance/acceptance.md) | Tactical asserts, self-play flood, the match vs `TacticsEvaluator`, the sims gradient, the VCF solve rate; the default flips. | …answer for its strength in recorded numbers. |
 
 The order is the motivation: the smallest experiencable increment
 first, the socket before the smarts, and every layer of the trust
@@ -67,7 +68,9 @@ ladder in its own sub-chapter. Nothing is longer than an evening.
 ## Status
 
 Redesigned 2026-10-26 (playable from sub-chapter 01, TSS probe
-included, eight small sub-chapters with four papers each); the
+included, nine small sub-chapters with four papers each; sub-chapter
+07 (the quiet whisper, an `[experiment]` gamble with a measured A/B)
+was inserted 2026-10-26); the
 original flat chapter set written 2026-10-13 is superseded (git
 history keeps it). The primer is the design authority;
 per-sub-chapter solutions quote the verified reference build.

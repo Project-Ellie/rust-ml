@@ -1,11 +1,11 @@
 > **Opt-in solution — read only after you have tried the chapter, or if you have been stuck for more than twenty minutes.**
 >
-> This file quotes the reference implementation of sub-chapter 08:
+> This file quotes the reference implementation of sub-chapter 09:
 > `gomoku/crates/baseline/tests/acceptance.rs` and the one-line flip in
 > `gomoku/crates/cli/src/main.rs`. Verified against the reference build,
 > branch `baseline-reference`, commit `adac9a0`.
 
-# Sub-chapter 08 — opt-in solution
+# Sub-chapter 09 — opt-in solution
 
 ## The deliberate duplication
 

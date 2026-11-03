@@ -271,22 +271,25 @@ started.
 Two further tutorial tracks are written and verified, ready to work:
 
 - [baseline-tutorial](tutorials/baseline-tutorial/README.md)
-  (REDESIGNED 2026-10-26: primer + 8 small sub-chapters, each with
+  (REDESIGNED 2026-10-26: primer + 9 small sub-chapters, each with
   four papers — chapter, design, implementation plan, solution — and
   each ending at the study table with a smarter seat): the `baseline`
   crate — a hand-written evaluator (vicinity gravity kernel + tiered
-  threat policy + saturating value) behind the `mcts::Evaluator`
+  threat policy + saturating value + an `[experiment]` quiet-position
+  whisper) behind the `mcts::Evaluator`
   seam, plus a root-level TSS probe (`prove_forced_win`, budgeted
   10k/30) wired into the CLI's AI-step path. The seat is playable
   from sub-chapter 01 (`--ai baseline`); layers land one per
   sub-chapter. Reference implementation built and gate-verified on
-  branch `baseline-reference` (8 commits; worktree
+  branch `baseline-reference` (9 commits; worktree
   `rust-ml-baseline-ref/` inside the repo root, kept for inspection);
   the solution papers quote it with real line numbers. Measured
-  acceptance (release, recorded in 08-acceptance): 10/10 vs
+  acceptance (release, recorded in 09-acceptance): 10/10 vs
   uniform-random at 400/4k/10k sims, 20/20 vs `TacticsEvaluator` at
   200 sims (5.9 s/game, 599 evals/s), 100/100 engine-proven VCF
-  puzzles solved. Design spec:
+  puzzles solved. Sub-chapter 07's A/B (the quiet whisper,
+  `[experiment]`): 20/20 both arms, whisper arm 32% faster to the win
+  (23.5 vs 34.5 avg plies) — kept. Design spec:
   [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md)
   (weights stand; the primer supersedes its chapter order).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)

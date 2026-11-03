@@ -8,7 +8,7 @@ threat maps that drive the policy. Its most important feature is not
 what it sees; it is what it refuses to claim. It never returns `±1.0`,
 because those values belong to terminal outcomes handled by the search.
 It also refuses to see threat sequences, naming that limitation as the
-honesty clause that sub-chapter 07's TSS probe will fill.
+honesty clause that sub-chapter 08's TSS probe will fill.
 
 ## Glossary
 
@@ -93,7 +93,7 @@ The value readout cannot see a forced sequence. It sees only whether a
 single move creates a win, a double threat, or a block. A VCF win that
 takes ten forcing moves looks quiet to this heuristic until the final
 ply. The tutorial names this limitation everywhere rather than hiding
-it. Sub-chapter 07 adds a root-level TSS probe for sequences, and the
+it. Sub-chapter 08 adds a root-level TSS probe for sequences, and the
 net tutorial will eventually replace the whole heuristic with a learned
 value head.
 
@@ -174,5 +174,5 @@ flowchart TD
   — the policy readout design this value readout extends.
 * [`../06-the-three-ladder/the-three-ladder-design.md`](../06-the-three-ladder/the-three-ladder-design.md)
   — the double-three rungs added next.
-* [`../07-the-tss-eye/the-tss-eye-design.md`](../07-the-tss-eye/the-tss-eye-design.md)
+* [`../08-the-tss-eye/the-tss-eye-design.md`](../08-the-tss-eye/the-tss-eye-design.md)
   — the root probe that owns sequences.

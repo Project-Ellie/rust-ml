@@ -1,4 +1,4 @@
-# Sub-chapter 07 — The TSS eye
+# Sub-chapter 08 — The TSS eye
 
 ## Abstract
 
@@ -216,7 +216,7 @@ longer. That difference is the TSS eye opening and closing.
 * `cargo fmt --all -- --check` makes no changes.
 * `baseline/src/probe.rs` is fully documented and has no warnings under
   `#![deny(missing_docs)]`.
-* The commit is `feat(baseline): the TSS eye — baseline sub-chapter 07`.
+* The commit is `feat(baseline): the TSS eye — baseline sub-chapter 08`.
 
 ## References
 

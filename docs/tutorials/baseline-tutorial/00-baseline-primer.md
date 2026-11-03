@@ -199,7 +199,8 @@ it into behavior:
 | 04 wins/blocks | priors spike on wins and forced blocks | the tree looks at the moves that matter *first* |
 | 05 value | graded leaf values | backup informs every branch, not just terminal ones — Q means something midgame |
 | 06 three ladder | priors see forks and threes | the search verifies multi-move traps and defenses before committing |
-| 07 TSS eye | a certified line, once per move | the search is *pre-empted* when the answer is proof, not estimate |
+| 07 quiet whisper | a faint quiet-position value `[experiment]` | backup carries a whisper through quiet branches — the A/B decides whether it helps |
+| 08 TSS eye | a certified line, once per move | the search is *pre-empted* when the answer is proof, not estimate |
 
 When the net tutorial lands, the search, the seam, the CLI seat, and
 the measurement harness all stay — only the body of `evaluate()`
@@ -405,7 +406,7 @@ answers ~4,000 questions per move; a prover call explores up to
 `SearchBudget::max_nodes` threat-space nodes each time. Prover calls
 inside the tree would multiply the cost of a move by orders of
 magnitude. So the probe is a **once-per-move short-circuit at the
-root**, wired into the CLI's AI-seat step path (sub-chapter 07),
+root**, wired into the CLI's AI-seat step path (sub-chapter 08),
 before the PUCT search starts:
 
 1. Probe `prove_forced_win(board, side_to_move, budget)` with a
@@ -483,7 +484,7 @@ is the tutorial's narrative engine: the **same protocol, rerun after
 every sub-chapter**, against the same yardsticks, so each layer of
 intelligence shows up as a better number. Every sub-chapter from 03
 onward ends with a game at `--sims 4000` and a rerun of the ladder
-row; sub-chapter 08 is the full acceptance ritual:
+row; sub-chapter 09 is the full acceptance ritual:
 
 - **Asserts** (certainties, verified every run): tactical soundness on
   the mcts acceptance boards (win-in-1 and the forced block), a

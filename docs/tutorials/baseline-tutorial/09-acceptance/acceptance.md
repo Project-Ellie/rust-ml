@@ -1,4 +1,4 @@
-# Sub-chapter 08 — Acceptance: the measured ladder
+# Sub-chapter 09 — Acceptance: the measured ladder
 
 ## Abstract
 
@@ -28,12 +28,23 @@ default brain.
 
 ## Context
 
-Sub-chapters 01–07 built the whole player: the seat, the vicinity
+Sub-chapters 01–08 built the whole player: the seat, the vicinity
 kernel, gravity priors, wins and blocks, the honest value, the three
-ladder, and the TSS eye. Every layer was unit-tested as it landed.
-What is still missing is the answer to the only question a player
-ultimately answers to: **does it win, against whom, by how much, and
-how do you know?**
+ladder, the quiet whisper, and the TSS eye. Every layer was
+unit-tested as it landed. What is still missing is the answer to the
+only question a player ultimately answers to: **does it win, against
+whom, by how much, and how do you know?**
+
+One honesty note on the recorded numbers below: the ladder was
+measured for the six-layer player, *before* sub-chapter 07's quiet
+whisper landed. That is the right order — the whisper was an
+`[experiment]` and had to earn its place with its own A/B first. It
+did: 20/20 against the `TacticsEvaluator` in both arms, but the
+whisper arm finished its wins in 23.5 plies on average against 34.5
+without it. Since the whisper is on by default, **your run of this
+sub-chapter includes it** — expect equal or better numbers, and if a
+number moves, you are watching one experiment's verdict arrive in
+another experiment's protocol. Record what you get.
 
 The CLI tutorial's chapter 09 already taught the trap: a 100% win rate
 against uniform-random play is not a strength claim, it is the minimum
@@ -271,7 +282,7 @@ net tutorial has to beat.
 * `cargo clippy --all-targets -- -D warnings` and
   `cargo fmt --all -- --check` are green.
 * Commit message:
-  `test(baseline): the measured ladder — baseline sub-chapter 08`.
+  `test(baseline): the measured ladder — baseline sub-chapter 09`.
 * `docs/WARM-UP.md` and the tutorial README status lines are updated
   when the owner signs off.
 
