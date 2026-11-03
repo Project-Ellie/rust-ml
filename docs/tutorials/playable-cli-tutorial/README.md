@@ -60,15 +60,20 @@ tutorials:
 | 05 | [The real table](05-the-real-table.md) | `gomoku play --ai tactics` on the rendered board: **the study table gets its wood.** |
 | 06 | [Seeing the mind](06-seeing-the-mind.md) | `p` cycles visits/prior heatmaps, `v` the value strip: **now you can see what the AI thinks.** |
 | 07 | [Positions from files: puzzles](07-positions-from-files-puzzles.md) | `--puzzle pack.json` enrolls a puzzle into the table: **hint, try, take back, reveal, next.** |
-| 08 | [Positions from files: game records](08-positions-from-files-game-records.md) | `--game file.psq` replays a recorded game as the main line: **walk back, branch off, let the AI show what it thinks.** |
+| 08 | [Positions from files: game records](08-positions-from-files-game-records.md) | **PARKED** (2026-10-26, written but deliberately unworked; ready if wanted). `--game file.psq` replays a recorded game as the main line. |
 | 09 | [Acceptance](09-acceptance.md) | Golden transcripts, a scripted game, a measured sims table: **proof, not vibes.** |
 
 ## Status
 
-Written 2026-10-17 against the approved spec (as amended: algebraic
+**COMPLETE (2026-10-26).** Chapters 01–07 and the chapter-09
+acceptance are worked and on `main`; sub-chapter 07e (the picker) and
+chapter 08 (game records) are **parked** by owner decision — written,
+specced, deliberately unworked. The puzzle corpora are committed under
+`data/puzzles/` (4,571 puzzles, 3,808 of them engine-proven). Written
+2026-10-17 against the approved spec (as amended: algebraic
 notation, single CLI, positions from files); chapters 07–08 (positions
 from files) added 2026-10-18. What you will have built by the end of
-chapter 09: a `cli` crate with 136 tests green (one ignored
+chapter 09: a `cli` crate with 242 tests green (one ignored
 measurement), workspace green, gates clean. Chapters 05–07 have since
 been restructured into sub-chapters (05: six, 06: four, 07: five), each
 sub-chapter with its own tutorial, design paper, implementation notes,

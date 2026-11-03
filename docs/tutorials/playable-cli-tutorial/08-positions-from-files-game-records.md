@@ -1,5 +1,11 @@
 # Chapter 08 — Positions from files: game records
 
+> **PARKED (2026-10-26, owner decision).** This chapter is written but
+> deliberately unworked: the CLI tutorial closed after chapter 09's
+> acceptance, and the training-critical path runs through the baseline
+> tutorial instead. The chapter stays in the tree, ready to work if a
+> game-record study mode becomes interesting again.
+
 ## Abstract
 
 This chapter enrolls the second external position source into the study

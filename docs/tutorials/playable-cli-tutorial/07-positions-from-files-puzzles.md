@@ -57,7 +57,7 @@ slice commit land when the slice is built.
 | [b — The puzzle enrolls](07-positions-from-files-puzzles/b-puzzle-session/puzzle-session.md) | Loading a puzzle seeds the study table: the position is the root, the attacker is to move, and every tool still works. |
 | [c — The study commands](07-positions-from-files-puzzles/c-study-commands/study-commands.md) | `hint`, try, take back, `reveal`, `next` — the study flow through the command language. |
 | [d — The puzzle flag](07-positions-from-files-puzzles/d-puzzle-flag/puzzle-flag.md) | `gomoku play --puzzle pack.json --index N` at the real table, with the panel line and the missing-pack error path. |
-| [e — The picker](07-positions-from-files-puzzles/e-the-picker/the-picker.md) | A bare `--puzzle` opens the native file dialog at the corpus; a valued flag stays scriptable; cancel is a quiet exit. |
+| [e — The picker](07-positions-from-files-puzzles/e-the-picker/the-picker.md) | **PARKED** (2026-10-26, owner decision: the committed packs under `data/puzzles/` made the dialog unnecessary; the spec stays ready to build). A bare `--puzzle` opens the native file dialog at the corpus; a valued flag stays scriptable; cancel is a quiet exit. |
 
 ## Background documents
 
