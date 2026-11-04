@@ -282,7 +282,7 @@ Two further tutorial tracks are written and verified, ready to work:
   from sub-chapter 01 (`--ai baseline`); layers land one per
   sub-chapter. Reference implementation built and gate-verified on
   branch `baseline-reference` (9 commits; worktree
-  `rust-ml-baseline-ref/` inside the repo root, kept for inspection);
+  `rust-ml-baseline-ref/` beside the repo root, kept for inspection);
   the solution papers quote it with real line numbers. Measured
   acceptance (release, recorded in 09-acceptance): 10/10 vs
   uniform-random at 400/4k/10k sims, 20/20 vs `TacticsEvaluator` at
