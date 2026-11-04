@@ -11,6 +11,9 @@ mcts = { path = "../mcts" }
 patterns = { path = "../patterns" }
 burn = { workspace = true, features = ["flex"]}
 
+[dev-dependencies]
+engine = { path = "../engine", features = ["testutil"]}
+
 [[bin]]
 name = "gravitydemo"
 path = "src/bin/gravitydemo.rs"

@@ -769,7 +769,9 @@ impl SessionCore {
             // Currently, there are two.
             EvaluatorKind::Tactics => Box::new(mcts::TacticsEvaluator::new()),
             #[cfg(feature = "baseline")]
-            EvaluatorKind::Baseline => Box::new(baseline::BaselineEvaluator::new()),
+            EvaluatorKind::Baseline => {
+                Box::new(baseline::BaselineEvaluator::new(baseline::Device::flex()))
+            }
             #[cfg(not(feature = "baseline"))]
             EvaluatorKind::Baseline => unreachable!("Baseline feature is disabled."),
         }
