@@ -110,6 +110,16 @@ struct SearchArgs {
 #[value(rename_all = "lower")]
 enum AiKind {
     Tactics,
+    Baseline,
+}
+
+impl From<AiKind> for EvaluatorKind {
+    fn from(arg: AiKind) -> Self {
+        match arg {
+            AiKind::Tactics => Self::Tactics,
+            AiKind::Baseline => Self::Baseline,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -243,7 +253,7 @@ fn build_puzzle_init(search: &SearchArgs, pack_path: &Path, index: usize) -> Ses
 fn play_init(search: &SearchArgs, swap2: bool) -> SessionInit {
     let base = ai_config_from(search);
     let (black, white) = match search.ai {
-        Some(AiKind::Tactics) => {
+        Some(AiKind::Tactics) | Some(AiKind::Baseline) => {
             let human = search.color.map(player_color).unwrap_or(Color::Black);
             let ai = Occupant::Ai(seat_config(&base, human.other(), search));
             match human {
@@ -294,7 +304,7 @@ fn selfplay_init(search: &SearchArgs) -> SessionInit {
 /// destroy that distinction.
 fn ai_config_from(search: &SearchArgs) -> AiConfig {
     AiConfig {
-        evaluator: EvaluatorKind::Tactics,
+        evaluator: search.ai.map(Into::into).unwrap_or(EvaluatorKind::Tactics),
         simulations: search.sims,
         c_puct: search.c_puct,
         temperature: search.temperature.unwrap_or(0.0),

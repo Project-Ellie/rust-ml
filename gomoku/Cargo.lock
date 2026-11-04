@@ -312,6 +312,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "baseline"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "mcts",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -864,6 +872,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "baseline",
  "clap",
  "crossterm",
  "engine",

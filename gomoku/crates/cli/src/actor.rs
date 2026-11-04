@@ -164,4 +164,6 @@ impl Default for AiConfig {
 pub enum EvaluatorKind {
     /// The hand-woven tactics evaluator (Burn-free baseline).
     Tactics,
+    /// The hand-written baseline evaluator.
+    Baseline,
 }

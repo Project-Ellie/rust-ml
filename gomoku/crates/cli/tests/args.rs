@@ -39,3 +39,25 @@ fn index_requires_puzzle_flag() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn play_ai_baseline_parses() {
+    let output = run_gomoku(&["play", "--ai", "baseline", "--no-swap2"]);
+    assert!(
+        output.status.success(),
+        "baseline AI kind should parse, but got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn play_ai_rejects_invalid_value() {
+    let output = run_gomoku(&["play", "--ai", "invalid", "--no-swap2"]);
+    assert!(!output.status.success(), "expected failure");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Exit code should be 2, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

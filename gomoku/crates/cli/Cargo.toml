@@ -18,8 +18,9 @@ name = "historydemo"
 path = "src/bin/historydemo.rs"
 
 [features]
-default = ["naive-engine"]
+default = ["naive-engine", "baseline"]
 naive-engine = ["engine/testutil"]
+baseline = ["dep:baseline"]
 
 [dependencies]
 engine = { path = "../engine" }
@@ -30,6 +31,7 @@ rand = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { workspace = true }
 crossterm.workspace = true
+baseline = { path = "../baseline", optional = true }
 
 
 [dev-dependencies]

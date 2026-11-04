@@ -766,8 +766,12 @@ impl SessionCore {
 
     fn make_evaluator(kind: &EvaluatorKind) -> Box<dyn mcts::Evaluator> {
         match kind {
-            // Currently, there's only one. Will have two more, soon.
+            // Currently, there are two.
             EvaluatorKind::Tactics => Box::new(mcts::TacticsEvaluator::new()),
+            #[cfg(feature = "baseline")]
+            EvaluatorKind::Baseline => Box::new(baseline::BaselineEvaluator::new()),
+            #[cfg(not(feature = "baseline"))]
+            EvaluatorKind::Baseline => unreachable!("Baseline feature is disabled."),
         }
     }
 

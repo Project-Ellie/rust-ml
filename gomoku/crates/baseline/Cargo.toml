@@ -1,0 +1,10 @@
+[package]
+name = "baseline"
+description = "Hand-written policy/value evaluator for the Gomoku baseline player."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+engine = { path = "../engine" }
+mcts = { path = "../mcts" }
