@@ -6,6 +6,8 @@
 
 #![deny(missing_docs)]
 
+pub mod gravity;
+
 use mcts::{EvalRequest, EvalResult, Evaluator};
 
 /// The baseline evaluator.

@@ -315,8 +315,10 @@ dependencies = [
 name = "baseline"
 version = "0.1.0"
 dependencies = [
+ "burn",
  "engine",
  "mcts",
+ "patterns",
 ]
 
 [[package]]

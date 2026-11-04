@@ -8,3 +8,9 @@ license.workspace = true
 [dependencies]
 engine = { path = "../engine" }
 mcts = { path = "../mcts" }
+patterns = { path = "../patterns" }
+burn = { workspace = true, features = ["flex"]}
+
+[[bin]]
+name = "gravitydemo"
+path = "src/bin/gravitydemo.rs"
