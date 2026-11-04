@@ -62,6 +62,7 @@ tutorials:
 | 07 | [Positions from files: puzzles](07-positions-from-files-puzzles.md) | `--puzzle pack.json` enrolls a puzzle into the table: **hint, try, take back, reveal, next.** |
 | 08 | [Positions from files: game records](08-positions-from-files-game-records.md) | **PARKED** (2026-10-26, written but deliberately unworked; ready if wanted). `--game file.psq` replays a recorded game as the main line. |
 | 09 | [Acceptance](09-acceptance.md) | Golden transcripts, a scripted game, a measured sims table: **proof, not vibes.** |
+| 10 | [The shared table server](10-the-shared-table-server.md) | Ten TDD slices for a hosted, Redis-backed table with verified owners, invited guests, and hosted AI. |
 
 ## Status
 
@@ -74,7 +75,12 @@ specced, deliberately unworked. The puzzle corpora are committed under
 notation, single CLI, positions from files); chapters 07–08 (positions
 from files) added 2026-10-18. What you will have built by the end of
 chapter 09: a `cli` crate with 242 tests green (one ignored
-measurement), workspace green, gates clean. Chapters 05–07 have since
+measurement), workspace green, gates clean. Chapter 10's **tutorial design is complete** (2026-11-03): its ten
+learner-facing TDD slices and approved system design are documented,
+while implementation and solution artifacts remain intentionally out of
+scope. The authority is
+[`10-the-shared-table-server/00-design.md`](10-the-shared-table-server/00-design.md).
+Chapters 05–07 have since
 been restructured into sub-chapters (05: six, 06: four, 07: five), each
 sub-chapter with its own tutorial, design paper, implementation notes,
 and opt-in solution verified against a slice commit on its
