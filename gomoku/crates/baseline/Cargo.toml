@@ -9,10 +9,12 @@ license.workspace = true
 engine = { path = "../engine" }
 mcts = { path = "../mcts" }
 patterns = { path = "../patterns" }
-burn = { workspace = true, features = ["flex"]}
+burn = { workspace = true, features = ["flex"] }
 
 [dev-dependencies]
-engine = { path = "../engine", features = ["testutil"]}
+engine = { path = "../engine", features = ["testutil"] }
+rand = "0.10.3"
+
 
 [[bin]]
 name = "gravitydemo"

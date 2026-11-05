@@ -28,10 +28,14 @@ pub struct BaselineEvaluator {
     device: Device,
     kernel: GravityKernel,
     net: ThreatNet,
+    quiet: bool,
 }
 
 impl BaselineEvaluator {
     /// Create a new [`BaselineEvaluator`] on `device`.
+    ///
+    /// The [experiment] quiet-position value whisper is enabled by
+    /// default; use [`Self::without_quiet_value`] to disable it.
     #[must_use]
     pub fn new(device: Device) -> Self {
         let kernel = GravityKernel::new(&device);
@@ -40,7 +44,17 @@ impl BaselineEvaluator {
             device,
             kernel,
             net,
+            quiet: true,
         }
+    }
+
+    /// Disable the [experiment] quiet-position value whisper.
+    ///
+    /// Chainable; intended for A/B measurement of the whisper term.
+    #[must_use]
+    pub fn without_quiet_value(mut self) -> Self {
+        self.quiet = false;
+        self
     }
 }
 
@@ -54,10 +68,16 @@ impl Evaluator for BaselineEvaluator {
         };
         let gravity = self.kernel.compute(&req.planes);
         let policy = readout::policy_logits(&gravity, own, opp, &req.legal);
-        EvalResult {
-            policy,
-            value: readout::value(own, opp),
-        }
+        let value = readout::value(own, opp);
+        // [experiment] quiet whisper: only when the threat ladder is
+        // silent. `value == 0.0` also covers symmetric threat
+        // cancellation — that counts as "quiet" for this experiment.
+        let value = if value == 0.0 && self.quiet {
+            readout::quiet_value(&gravity, &req.planes)
+        } else {
+            value
+        };
+        EvalResult { policy, value }
     }
 }
 
@@ -281,5 +301,53 @@ mod tests {
         let mv = blocks.iter().next().unwrap();
         let expected = readout::T2_FORCED_BLOCK + gravity[mv.row() as usize][mv.col() as usize];
         assert_eq!(res.policy[mv.index()], expected);
+    }
+
+    #[test]
+    fn quiet_whisper_t1_win_still_returns_nine_five() {
+        // Four Black stones in a row: Black to move has an immediate
+        // win; the whisper must not override the threat ladder.
+        let mut board = Board::new();
+        let script = [
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 4),
+            (7, 6),
+            (0, 6),
+        ];
+        for &(r, c) in &script {
+            board.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        let req = request_from_board(&board);
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+        assert_eq!(res.value, 0.95f32);
+    }
+
+    #[test]
+    fn quiet_whisper_without_quiet_is_zero_on_quiet_cluster() {
+        // Black cluster vs scattered White corners: a quiet position
+        // where the whisper would otherwise be non-zero.
+        let mut board = Board::new();
+        let script = [
+            (7, 7),
+            (0, 0),
+            (7, 8),
+            (0, 14),
+            (8, 7),
+            (14, 0),
+            (8, 8),
+            (14, 14),
+        ];
+        for &(r, c) in &script {
+            board.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        let req = request_from_board(&board);
+        let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        let res = ev.evaluate(req);
+        assert_eq!(res.value, 0.0f32);
     }
 }

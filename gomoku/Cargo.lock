@@ -319,6 +319,7 @@ dependencies = [
  "engine",
  "mcts",
  "patterns",
+ "rand 0.10.3",
 ]
 
 [[package]]

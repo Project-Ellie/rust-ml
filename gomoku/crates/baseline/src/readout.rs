@@ -20,6 +20,13 @@ const V_OPP_DOUBLE_THREE: f32 = -0.20;
 /// Absolute value ceiling; ±1 is reserved for proven terminals.
 const V_CLAMP: f32 = 0.99;
 
+/// [experiment] cap for the quiet-position value whisper.
+///
+/// One order of magnitude below the smallest threat-ladder rung
+/// (`±0.20` for a double-three fork): even a maximally wrong whisper
+/// cannot pretend to be a fork.
+const QUIET_CAP: f32 = 0.05;
+
 /// Logit weight for an immediate win for the side to move.
 pub const T1_WIN: f32 = 64.0;
 /// Logit weight for a forced block (opponent immediate win).
@@ -86,6 +93,35 @@ fn count_positive(map: &[[f32; 15]; 15]) -> usize {
         .sum()
 }
 
+/// [experiment] Super-naive quiet-position value term.
+///
+/// Computes `clamp((Σ g·me − Σ g·you) / max(Σ g, 1.0), −0.05, +0.05)`
+/// over the unmasked 225-cell gravity map. Positive when the side to
+/// move sits in high-gravity cells (clustered, near the fight);
+/// negative when the opponent does. The denominator protects the empty
+/// board from division by zero. The term is intentionally naive:
+/// clustering near existing stones is not the same as winning.
+#[must_use]
+pub fn quiet_value(gravity: &[[f32; 15]; 15], planes: &engine::Planes) -> f32 {
+    let mut weighted_me = 0.0f32;
+    let mut weighted_you = 0.0f32;
+    let mut gravity_sum = 0.0f32;
+    for (r, row) in gravity.iter().enumerate() {
+        for (c, &g) in row.iter().enumerate() {
+            let dst = (r + 1) * engine::EXT + (c + 1);
+            gravity_sum += g;
+            if planes.me[dst] == 1 {
+                weighted_me += g;
+            } else if planes.you[dst] == 1 {
+                weighted_you += g;
+            }
+        }
+    }
+    let denom = gravity_sum.max(1.0);
+    let raw = (weighted_me - weighted_you) / denom;
+    raw.clamp(-QUIET_CAP, QUIET_CAP)
+}
+
 /// Build a 225-vector of policy logits from threat maps and gravity.
 ///
 /// Tiers are applied by binary membership; occupied or illegal cells
@@ -132,8 +168,11 @@ mod tests {
     use crate::gravity::gravity_map;
     use crate::{BaselineEvaluator, Device};
     use engine::reference::board_from_ascii;
-    use engine::{Board, Move};
+    use engine::{Board, Color, Move};
     use mcts::{EvalRequest, Evaluator};
+    use rand::RngExt;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     fn empty_maps() -> ThreatMaps {
         ThreatMaps {
@@ -534,6 +573,68 @@ mod tests {
                     + T4B_THREE
                     + T4C_DEFENSIVE
                     + T5_MAX
+        );
+    }
+
+    #[test]
+    fn quiet_value_empty_board_is_zero() {
+        let board = Board::new();
+        let planes = engine::encode(&board);
+        let gravity = gravity_map(&planes);
+        assert_eq!(quiet_value(&gravity, &planes), 0.0f32);
+    }
+
+    #[test]
+    fn quiet_value_is_always_capped() {
+        // The whisper is clamped to ±QUIET_CAP regardless of position.
+        let mut rng = StdRng::seed_from_u64(20_260_901);
+        for _ in 0..200 {
+            let mut board = Board::new();
+            let stones = rng.random_range(8..=24);
+            for _ in 0..stones {
+                let legal: Vec<Move> = board.empty_moves().collect();
+                if legal.is_empty() {
+                    break;
+                }
+                let mv = legal[rng.random_range(0..legal.len())];
+                let _ = board.play(mv);
+            }
+            let planes = engine::encode(&board);
+            let gravity = gravity_map(&planes);
+            let v = quiet_value(&gravity, &planes);
+            assert!(
+                v.abs() <= QUIET_CAP,
+                "quiet value {v} exceeded cap {QUIET_CAP}"
+            );
+        }
+    }
+
+    #[test]
+    fn quiet_value_clustered_own_stones_is_positive() {
+        // Black cluster in the centre, White stones scattered in
+        // corners. Moves alternate, so Black plays on odd plies and
+        // White on even. No side has an immediate threat: quiet.
+        let mut board = Board::new();
+        let script = [
+            (7, 7),
+            (0, 0),
+            (7, 8),
+            (0, 14),
+            (8, 7),
+            (14, 0),
+            (8, 8),
+            (14, 14),
+        ];
+        for &(r, c) in &script {
+            board.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        assert_eq!(board.to_move(), Color::Black);
+        let planes = engine::encode(&board);
+        let gravity = gravity_map(&planes);
+        let v = quiet_value(&gravity, &planes);
+        assert!(
+            v > 0.0f32,
+            "clustered own stones should yield positive quiet value, got {v}"
         );
     }
 }
