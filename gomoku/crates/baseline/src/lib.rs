@@ -55,7 +55,7 @@ impl Evaluator for BaselineEvaluator {
         let policy = readout::policy_logits(&gravity, own, opp, &req.legal);
         EvalResult {
             policy,
-            value: 0.0f32,
+            value: readout::value(own, opp),
         }
     }
 }
