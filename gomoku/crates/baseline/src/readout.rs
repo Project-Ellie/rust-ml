@@ -13,6 +13,10 @@ const V_OPP_WIN: f32 = -0.75;
 const V_OWN_DOUBLE_THREAT: f32 = 0.85;
 /// Value contribution for an opponent double threat.
 const V_OPP_DOUBLE_THREAT: f32 = -0.85;
+/// Value contribution for an own double-three fork
+const V_OWN_DOUBLE_THREE: f32 = 0.20;
+/// Value contribution for an opponent double-three fork
+const V_OPP_DOUBLE_THREE: f32 = -0.20;
 /// Absolute value ceiling; ±1 is reserved for proven terminals.
 const V_CLAMP: f32 = 0.99;
 
@@ -62,6 +66,12 @@ pub fn value(own: &ThreatMaps, opp: &ThreatMaps) -> f32 {
     if has_positive(&opp.double_threats) {
         v += V_OPP_DOUBLE_THREAT;
     }
+    if has_positive(&own.double_threes) {
+        v += V_OWN_DOUBLE_THREE;
+    }
+    if has_positive(&opp.double_threes) {
+        v += V_OPP_DOUBLE_THREE;
+    }
 
     v.clamp(-V_CLAMP, V_CLAMP)
 }
@@ -98,6 +108,19 @@ pub fn policy_logits(
         if opp.wins[r][c] > 0.0 {
             logit += T2_FORCED_BLOCK;
         }
+        if own.double_threats[r][c] > 0.0 {
+            logit += T3_DOUBLE_THREAT;
+        }
+        if own.double_threes[r][c] > 0.0 {
+            logit += T4A_DOUBLE_THREE;
+        }
+        if own.threes_per_dir.iter().any(|dir| dir[r][c] > 0.0) {
+            logit += T4B_THREE;
+        }
+        if opp.double_threes[r][c] > 0.0 || opp.threes_per_dir.iter().any(|dir| dir[r][c] > 0.0) {
+            logit += T4C_DEFENSIVE;
+        }
+
         logits[mv.index()] = logit;
     }
     logits
@@ -106,7 +129,11 @@ pub fn policy_logits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gravity::gravity_map;
+    use crate::{BaselineEvaluator, Device};
+    use engine::reference::board_from_ascii;
     use engine::{Board, Move};
+    use mcts::{EvalRequest, Evaluator};
 
     fn empty_maps() -> ThreatMaps {
         ThreatMaps {
@@ -302,5 +329,211 @@ mod tests {
         let from_white = value(&white_maps, &black_maps);
         assert_eq!(from_black, V_OWN_DOUBLE_THREAT);
         assert_eq!(from_white, -V_OWN_DOUBLE_THREAT);
+    }
+
+    #[test]
+    fn t3_double_threat_outranks_gravity_stack() {
+        // Classic fork: Black plays (7,7) and creates two closed fours
+        // whose winning cells are different, i.e. an own double threat.
+        let board = board_from_ascii(
+            "
+        . . . . . . . . . . . . . . O
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . O . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . O X X X . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . O . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        O . . . . . . . . . . . . . O",
+        );
+        let req = EvalRequest {
+            planes: engine::encode(&board),
+            legal: board.empty_moves().collect(),
+        };
+        let gravity = gravity_map(&req.planes);
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+
+        let fork = Move::new(7, 7).unwrap();
+        let expected = T3_DOUBLE_THREAT + gravity[7][7];
+        assert_eq!(res.policy[fork.index()], expected);
+
+        let max_other = board
+            .empty_moves()
+            .filter(|&mv| mv != fork)
+            .map(|mv| res.policy[mv.index()])
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert!(res.policy[fork.index()] > max_other + 1.0f32);
+    }
+
+    #[test]
+    fn t4_binary_membership_no_double_count() {
+        // Verified double-three fork from patterns/oracle: Black stones
+        // at (5,8),(6,8),(7,6),(7,7); playing (7,8) creates an open
+        // three horizontally and vertically.
+        let board = board_from_ascii(
+            "
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . X . . . . . .
+        . . . . . . . . X . . . . . .
+        . . . . . . X X . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . O . . . . . . . . . . .
+        . . . O . . . . . . . . . . .
+        . . . . O O . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .",
+        );
+
+        let req = EvalRequest {
+            planes: engine::encode(&board),
+            legal: board.empty_moves().collect(),
+        };
+        let gravity = gravity_map(&req.planes);
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+
+        let fork = Move::new(7, 8).unwrap();
+        let expected = T4A_DOUBLE_THREE + T4B_THREE + gravity[7][8];
+        assert_eq!(res.policy[fork.index()], expected);
+    }
+
+    #[test]
+    fn t4c_defensive_tier_sees_opponent_threes() {
+        // White stones at (7,5) and (7,7): (7,6) completes an open
+        // three for White. From Black's perspective it is a defensive
+        // three-maker (T4c).
+        let board = board_from_ascii(
+            "
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . O . O . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        X X . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .",
+        );
+        let req = EvalRequest {
+            planes: engine::encode(&board),
+            legal: board.empty_moves().collect(),
+        };
+        let gravity = gravity_map(&req.planes);
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+
+        let block = Move::new(7, 6).unwrap();
+        let expected = T4C_DEFENSIVE + gravity[7][6];
+        assert_eq!(res.policy[block.index()], expected);
+    }
+
+    #[test]
+    fn fork_board_argmax_is_the_fork() {
+        // The chapter-09 CLI acceptance fork board: Black to move and
+        // (7,7) is the forcing double-threat maker.
+        let board = board_from_ascii(
+            "
+        . . . . . . . . . . . . . . O
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . O . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . . . . . X . . . . . . .
+        . . . O X X X . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . O . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        O . . . . . . . . . . . . . O",
+        );
+
+        let req = EvalRequest {
+            planes: engine::encode(&board),
+            legal: board.empty_moves().collect(),
+        };
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+
+        let argmax = board
+            .empty_moves()
+            .max_by(|a, b| {
+                res.policy[a.index()]
+                    .partial_cmp(&res.policy[b.index()])
+                    .unwrap()
+            })
+            .unwrap();
+        assert_eq!(argmax, Move::new(7, 7).unwrap());
+    }
+    #[test]
+    fn value_double_three_rungs() {
+        // The Black fork from t4_binary_membership_no_double_count,
+        // with quiet White filler so only Black owns a double-three.
+        let board = board_from_ascii(
+            "
+        O . . . . . . . . . . . . . .
+        O . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . O
+        . . . . . . . . . . . . . . O
+        . . . . . . . . . . . . . . .
+        . . . . . . . . X . . . . . .
+        . . . . . . . . X . . . . . .
+        . . . . . . X X . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . . .",
+        );
+
+        let req = EvalRequest {
+            planes: engine::encode(&board),
+            legal: board.empty_moves().collect(),
+        };
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+        assert_eq!(res.value, V_OWN_DOUBLE_THREE)
+    }
+
+    #[test]
+    #[allow(clippy::assertions_on_constants)]
+    fn full_table_domination_invariant() {
+        assert!(
+            T2_FORCED_BLOCK
+                > T3_DOUBLE_THREAT + T4A_DOUBLE_THREE + T4B_THREE + T4C_DEFENSIVE + T5_MAX
+        );
+        assert!(
+            T1_WIN
+                > T2_FORCED_BLOCK
+                    + T3_DOUBLE_THREAT
+                    + T4A_DOUBLE_THREE
+                    + T4B_THREE
+                    + T4C_DEFENSIVE
+                    + T5_MAX
+        );
     }
 }

@@ -20,8 +20,10 @@ use patterns::net::ThreatNet;
 
 /// The baseline evaluator.
 ///
-/// v2 combines the gravity kernel with immediate wins and forced
-/// blocks from the threat network. The value stays flat at `0.0`.
+/// v4 combines the gravity kernel with the full policy tier table
+/// (wins, forced blocks, double threats, double threes, threes,
+/// defensive threes) and the chapter-06 value ladder including
+/// double-three rungs.
 pub struct BaselineEvaluator {
     device: Device,
     kernel: GravityKernel,
@@ -44,7 +46,6 @@ impl BaselineEvaluator {
 
 impl Evaluator for BaselineEvaluator {
     fn evaluate(&mut self, req: EvalRequest) -> EvalResult {
-        let _ = &self.device;
         let board = adapter::reconstruct_board(&req.planes, &req.legal);
         let maps = patterns::net::analyze_both(&self.net, &board, &self.device);
         let (own, opp) = match board.to_move() {
@@ -70,6 +71,17 @@ mod tests {
             planes: engine::encode(board),
             legal: board.empty_moves().collect(),
         }
+    }
+
+    fn best_move(board: &Board, res: EvalResult) -> Move {
+        board
+            .empty_moves()
+            .max_by(|a, b| {
+                res.policy[a.index()]
+                    .partial_cmp(&res.policy[b.index()])
+                    .unwrap()
+            })
+            .unwrap()
     }
 
     #[test]
@@ -198,14 +210,9 @@ mod tests {
         let res = ev.evaluate(req);
 
         let wins = engine::immediate_wins(&board, board.to_move());
-        let argmax = board
-            .empty_moves()
-            .max_by(|a, b| {
-                res.policy[a.index()]
-                    .partial_cmp(&res.policy[b.index()])
-                    .unwrap()
-            })
-            .unwrap();
+
+        let argmax = best_move(&board, res);
+
         assert!(
             wins.contains(argmax),
             "argmax {argmax:?} must be a winning move"
@@ -238,14 +245,7 @@ mod tests {
         let mut ev = BaselineEvaluator::new(Device::flex());
         let res = ev.evaluate(req.clone());
 
-        let argmax = board
-            .empty_moves()
-            .max_by(|a, b| {
-                res.policy[a.index()]
-                    .partial_cmp(&res.policy[b.index()])
-                    .unwrap()
-            })
-            .unwrap();
+        let argmax = best_move(&board, res);
         let blocks = engine::forced_blocks(&board);
         assert!(blocks.contains(argmax), "argmax {argmax:?} must be a block");
     }
