@@ -64,8 +64,11 @@ struct PlayArgs {
 
 #[derive(Args, Debug, Clone)]
 struct SearchArgs {
-    /// AI occupant kind (currently only tactics). The AI takes the
-    /// seat opposite the human; see --color.
+    /// AI occupant kind: `tactics` (the hand-woven mock) or
+    /// `baseline` (the hand-written evaluator). Without `--ai`, a
+    /// build with the `baseline` feature seats the baseline by
+    /// default in AI sessions; a build without it seats the mock.
+    /// The AI takes the seat opposite the human; see --color.
     #[arg(long, value_name = "AI")]
     ai: Option<AiKind>,
 
@@ -294,6 +297,16 @@ fn selfplay_init(search: &SearchArgs) -> SessionInit {
     }
 }
 
+/// The default brain when `--ai` is absent: the baseline when the
+/// `baseline` feature is compiled in, the tactics mock otherwise. An
+/// explicit `--ai tactics` is always honored, in either build.
+#[cfg(feature = "baseline")]
+const DEFAULT_EVALUATOR: EvaluatorKind = EvaluatorKind::Baseline;
+/// The default brain when `--ai` is absent (build without the
+/// `baseline` feature).
+#[cfg(not(feature = "baseline"))]
+const DEFAULT_EVALUATOR: EvaluatorKind = EvaluatorKind::Tactics;
+
 /// The base AI configuration from the search flags.
 ///
 /// `--temperature` and `--noise` are `Option`s on purpose: an explicit
@@ -304,7 +317,7 @@ fn selfplay_init(search: &SearchArgs) -> SessionInit {
 /// destroy that distinction.
 fn ai_config_from(search: &SearchArgs) -> AiConfig {
     AiConfig {
-        evaluator: search.ai.map(Into::into).unwrap_or(EvaluatorKind::Tactics),
+        evaluator: search.ai.map(Into::into).unwrap_or(DEFAULT_EVALUATOR),
         simulations: search.sims,
         c_puct: search.c_puct,
         temperature: search.temperature.unwrap_or(0.0),
@@ -334,5 +347,65 @@ fn player_color(color: PlayerColor) -> Color {
     match color {
         PlayerColor::Black => Color::Black,
         PlayerColor::White => Color::White,
+    }
+}
+
+#[cfg(test)]
+mod default_brain_tests {
+    use super::*;
+
+    /// Search flags as clap delivers them when no flag is passed.
+    fn bare_search_args() -> SearchArgs {
+        SearchArgs {
+            ai: None,
+            color: None,
+            sims: 400,
+            c_puct: 1.5,
+            temperature: None,
+            noise: None,
+            black_sims: None,
+            white_sims: None,
+            seed: None,
+        }
+    }
+
+    /// The flip (baseline sub-chapter 09): a build that compiles the
+    /// `baseline` feature seats the baseline when `--ai` is absent.
+    #[cfg(feature = "baseline")]
+    #[test]
+    fn ai_config_defaults_to_baseline_when_feature_compiled() {
+        assert_eq!(
+            ai_config_from(&bare_search_args()).evaluator,
+            EvaluatorKind::Baseline
+        );
+    }
+
+    /// Without the `baseline` feature the default stays the mock:
+    /// the baseline evaluator is not compiled, so defaulting to it
+    /// would panic at seat construction.
+    #[cfg(not(feature = "baseline"))]
+    #[test]
+    fn ai_config_defaults_to_tactics_without_feature() {
+        assert_eq!(
+            ai_config_from(&bare_search_args()).evaluator,
+            EvaluatorKind::Tactics
+        );
+    }
+
+    /// An explicit `--ai tactics` is honored in either build.
+    #[test]
+    fn explicit_tactics_flag_is_always_honored() {
+        let mut search = bare_search_args();
+        search.ai = Some(AiKind::Tactics);
+        assert_eq!(ai_config_from(&search).evaluator, EvaluatorKind::Tactics);
+    }
+
+    /// An explicit `--ai baseline` is honored when compiled in.
+    #[cfg(feature = "baseline")]
+    #[test]
+    fn explicit_baseline_flag_is_honored() {
+        let mut search = bare_search_args();
+        search.ai = Some(AiKind::Baseline);
+        assert_eq!(ai_config_from(&search).evaluator, EvaluatorKind::Baseline);
     }
 }

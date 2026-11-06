@@ -13,11 +13,23 @@ cd gomoku
 cargo build -p cli
 ```
 
-The `naive-engine` feature is on by default; it pulls in the engine's
-`testutil` reference board. Disable it for a lean build:
+The `naive-engine` and `baseline` features are on by default; the
+first pulls in the engine's `testutil` reference board, the second
+the hand-written baseline evaluator. With the `baseline` feature
+compiled in, the baseline is the default brain of AI sessions
+(`--ai tactics` seats the mock instead). Disable the defaults for a
+lean build:
 
 ```bash
 cargo build -p cli --no-default-features
+```
+
+For real games against the full player, build release and play —
+the baseline answers `release`/`selfplay` seats by default:
+
+```bash
+cargo build --release -p cli --features baseline
+./target/release/gomoku play          # Swap2, then the study table
 ```
 
 ## Play at the study table
@@ -27,6 +39,7 @@ cargo run -p cli --bin gomoku                      # Swap2 opening, then the stu
 cargo run -p cli --bin gomoku -- play              # same, spelled out
 cargo run -p cli --bin gomoku -- play --no-swap2   # start from an empty board
 cargo run -p cli --bin gomoku -- play --ai tactics # the AI takes White
+cargo run -p cli --bin gomoku -- play --ai baseline # the full player takes White
 cargo run -p cli --bin gomoku -- play --ai tactics --color white  # the AI takes Black
 ```
 

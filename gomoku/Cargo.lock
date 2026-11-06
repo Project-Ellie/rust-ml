@@ -319,7 +319,10 @@ dependencies = [
  "engine",
  "mcts",
  "patterns",
+ "player",
  "rand 0.10.3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

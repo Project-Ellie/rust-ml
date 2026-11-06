@@ -14,7 +14,9 @@ burn = { workspace = true, features = ["flex"] }
 [dev-dependencies]
 engine = { path = "../engine", features = ["testutil"] }
 rand = "0.10.3"
-
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+player = { path = "../player" }
 
 [[bin]]
 name = "gravitydemo"
