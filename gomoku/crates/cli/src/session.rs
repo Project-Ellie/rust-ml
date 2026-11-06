@@ -267,6 +267,9 @@ pub struct SessionCore {
     history: History,
     black: Occupant,
     white: Occupant,
+    // Evaluators are runtime state, not clonable/serializable seat config.
+    black_player: Option<player::AiPlayer>,
+    white_player: Option<player::AiPlayer>,
     default_config: AiConfig,
     black_sims: Option<u32>,
     white_sims: Option<u32>,
@@ -294,6 +297,8 @@ impl SessionCore {
             history: History::from_opening(&init.opening),
             black: init.black.clone(),
             white: init.white.clone(),
+            black_player: Self::make_player(&init.black),
+            white_player: Self::make_player(&init.white),
             default_config: init.default_config.clone(),
             black_sims: init.black_sims,
             white_sims: init.white_sims,
@@ -435,28 +440,36 @@ impl SessionCore {
             effective_config.noise_epsilon = 0.25;
         }
 
-        let mut evaluator = Self::make_evaluator(&effective_config.evaluator);
-        let search_cfg = mcts::SearchConfig {
+        let options = player::PlayerOptions {
             simulations: effective_config.simulations,
             c_puct: effective_config.c_puct,
+            temperature: effective_config.temperature,
+            noise_epsilon: effective_config.noise_epsilon,
+            noise_alpha: 0.3,
+            own: match effective_config.evaluator {
+                EvaluatorKind::Baseline => player::OwnTssConfig::baseline(),
+                EvaluatorKind::Tactics => player::OwnTssConfig::disabled(),
+            },
+            guard: match effective_config.evaluator {
+                EvaluatorKind::Baseline => player::GuardConfig::baseline(),
+                EvaluatorKind::Tactics => player::GuardConfig::disabled(),
+            },
         };
-
-        let mut outcome = mcts::search(&board, &mut *evaluator, &search_cfg);
-
-        if effective_config.noise_epsilon > 0.0 {
-            mcts::add_dirichlet_noise(
-                &mut outcome.tree,
-                outcome.root,
-                effective_config.noise_epsilon,
-                0.3,
-                &mut self.rng,
-            );
+        let player = match side {
+            Color::Black => &mut self.black_player,
+            Color::White => &mut self.white_player,
         }
-
-        let info = SearchInfo::from_search(&outcome, &board, &effective_config);
-        let visits = mcts::visit_distribution(&outcome.tree, outcome.root);
-        let mv = mcts::select_move(&visits, effective_config.temperature, &mut self.rng)
-            .expect("AI must select a move from a non-empty distribution");
+        .as_mut()
+        .expect("AI seat must own a persistent player");
+        let decision = player
+            .decide(&board, &options, &mut self.rng)
+            .map_err(|player::DecisionError::GameOver| CommandError::GameOver)?;
+        let mv = decision.mv;
+        let Some(stats) = decision.search else {
+            // A certified own forced win bypasses search and its statistics.
+            return self.execute_play(mv);
+        };
+        let info = SearchInfo::from_stats(stats, &effective_config);
 
         let old_cursor = self.history.cursor();
         let play_outcome = self.history.play(mv)?;
@@ -738,16 +751,23 @@ impl SessionCore {
     }
 
     fn set_occupant(&mut self, color: Color, occupant: Occupant) {
+        let player = Self::make_player(&occupant);
         match color {
-            Color::Black => self.black = occupant,
-            Color::White => self.white = occupant,
+            Color::Black => {
+                self.black = occupant;
+                self.black_player = player;
+            }
+            Color::White => {
+                self.white = occupant;
+                self.white_player = player;
+            }
         }
     }
 
     fn reset(&mut self) {
         self.history = History::from_opening(&self.init.opening);
-        self.black = self.init.black.clone();
-        self.white = self.init.white.clone();
+        self.set_occupant(Color::Black, self.init.black.clone());
+        self.set_occupant(Color::White, self.init.white.clone());
         self.default_config = self.init.default_config.clone();
         self.black_sims = self.init.black_sims;
         self.white_sims = self.init.white_sims;
@@ -762,6 +782,15 @@ impl SessionCore {
         };
         self.puzzle = self.init.puzzle.clone();
         // Keep the same RNG; reset does not reseed.
+    }
+
+    fn make_player(occupant: &Occupant) -> Option<player::AiPlayer> {
+        match occupant {
+            Occupant::Ai(config) => Some(player::AiPlayer::new(Self::make_evaluator(
+                &config.evaluator,
+            ))),
+            Occupant::Human => None,
+        }
     }
 
     fn make_evaluator(kind: &EvaluatorKind) -> Box<dyn mcts::Evaluator> {
@@ -811,6 +840,8 @@ impl SessionCore {
 mod tests {
     use super::*;
     use engine::PlayError;
+    use std::cell::Cell;
+    use std::rc::Rc;
     use testkit::mv;
 
     // NOTE: `play`/`play_some` stay local. They take `&mut SessionCore`,
@@ -827,6 +858,270 @@ mod tests {
         let (coords, _) = moves.as_chunks::<2>();
         for [r, c] in coords.iter() {
             play(core, *r, *c);
+        }
+    }
+
+    struct CountingEvaluator {
+        calls: Rc<Cell<u32>>,
+        drops: Rc<Cell<u32>>,
+        inner: mcts::TacticsEvaluator,
+    }
+
+    impl mcts::Evaluator for CountingEvaluator {
+        fn evaluate(&mut self, request: mcts::EvalRequest) -> mcts::EvalResult {
+            self.calls.set(self.calls.get() + 1);
+            mcts::Evaluator::evaluate(&mut self.inner, request)
+        }
+    }
+
+    impl Drop for CountingEvaluator {
+        fn drop(&mut self) {
+            self.drops.set(self.drops.get() + 1);
+        }
+    }
+
+    #[test]
+    fn persistent_player_reuses_evaluator_across_steps_and_set_sims() {
+        let config = AiConfig {
+            simulations: 1,
+            ..AiConfig::default()
+        };
+        let mut core = SessionCore::new(SessionInit::versus_ai(Color::White, config));
+        let calls = Rc::new(Cell::new(0));
+        let drops = Rc::new(Cell::new(0));
+        core.black_player = Some(player::AiPlayer::new(Box::new(CountingEvaluator {
+            calls: calls.clone(),
+            drops: drops.clone(),
+            inner: mcts::TacticsEvaluator::new(),
+        })));
+
+        core.execute(Command::Step).unwrap();
+        assert_eq!(calls.get(), 2, "root plus one simulation");
+        core.execute(Command::Back { n: 1 }).unwrap();
+        core.execute(Command::SetSims {
+            seat: SeatSel::Black,
+            n: 3,
+        })
+        .unwrap();
+        assert_eq!(drops.get(), 0, "SetSims must retain the evaluator");
+        core.execute(Command::Step).unwrap();
+        assert_eq!(calls.get(), 6, "same evaluator: root plus three more sims");
+        let info = core.search_info().unwrap();
+        assert_eq!(info.config.simulations, 3);
+        assert_eq!(info.visits.iter().map(|(_, n)| n).sum::<u32>(), 3);
+
+        core.execute(Command::Take {
+            seat: SeatSel::Black,
+        })
+        .unwrap();
+        assert_eq!(drops.get(), 1, "taking a seat drops its evaluator");
+        assert!(core.black_player.is_none());
+    }
+
+    #[test]
+    fn persistent_players_follow_init_release_take_and_reset() {
+        let config = AiConfig {
+            simulations: 1,
+            ..AiConfig::default()
+        };
+        let init = SessionInit::versus_ai(Color::White, config);
+        let mut core = SessionCore::new(init.clone());
+        assert!(core.black_player.is_some());
+        assert!(core.white_player.is_none());
+
+        let calls = Rc::new(Cell::new(0));
+        let drops = Rc::new(Cell::new(0));
+        core.black_player = Some(player::AiPlayer::new(Box::new(CountingEvaluator {
+            calls: calls.clone(),
+            drops: drops.clone(),
+            inner: mcts::TacticsEvaluator::new(),
+        })));
+        core.execute(Command::Release {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+        assert_eq!(drops.get(), 0, "releasing White must retain Black's player");
+        assert!(core.white_player.is_some());
+        core.white_player = Some(player::AiPlayer::new(Box::new(CountingEvaluator {
+            calls,
+            drops: drops.clone(),
+            inner: mcts::TacticsEvaluator::new(),
+        })));
+        core.execute(Command::SetSims {
+            seat: SeatSel::Both,
+            n: 3,
+        })
+        .unwrap();
+        assert_eq!(drops.get(), 0);
+
+        assert_eq!(core.execute(Command::New).unwrap(), vec![Event::Reset]);
+        assert_eq!(drops.get(), 2, "reset discards both old evaluators");
+        assert!(core.black_player.is_some());
+        assert!(core.white_player.is_none());
+        assert_eq!(core.black(), &init.black);
+        assert_eq!(core.white(), &init.white);
+        core.execute(Command::Step).unwrap();
+        assert_eq!(core.search_info().unwrap().config.simulations, 1);
+
+        core.execute(Command::Take {
+            seat: SeatSel::Both,
+        })
+        .unwrap();
+        assert!(core.black_player.is_none());
+        assert!(core.white_player.is_none());
+        core.execute(Command::Release {
+            seat: SeatSel::Both,
+        })
+        .unwrap();
+        assert!(core.black_player.is_some());
+        assert!(core.white_player.is_some());
+        core.execute(Command::Step).unwrap();
+        assert_eq!(core.search_info().unwrap().config.simulations, 1);
+    }
+
+    struct NeverEvaluate;
+
+    impl mcts::Evaluator for NeverEvaluate {
+        fn evaluate(&mut self, _: mcts::EvalRequest) -> mcts::EvalResult {
+            panic!("a certified own win must bypass evaluation");
+        }
+    }
+
+    // Play the slice-A win-in-3 VCF script into a replayed session position:
+    // Black to move forces a win starting with (7, 7).
+    fn play_vcf_script(core: &mut SessionCore) {
+        play_some(
+            core,
+            &[7, 4, 7, 3, 7, 5, 0, 0, 7, 6, 0, 2, 6, 6, 0, 4, 8, 8, 0, 6],
+        );
+    }
+
+    #[test]
+    fn persistent_player_proof_plays_without_search_info_or_rng_draws() {
+        use rand::RngExt;
+
+        let config = AiConfig {
+            evaluator: EvaluatorKind::Baseline,
+            temperature: 1.0,
+            noise_epsilon: 0.25,
+            explicit_selection: true,
+            ..AiConfig::default()
+        };
+        let mut core = SessionCore::new(SessionInit {
+            seed: Some(42),
+            ..SessionInit::new_hotseat()
+        });
+        play_vcf_script(&mut core);
+        core.black = Occupant::Ai(config);
+        core.black_player = Some(player::AiPlayer::new(Box::new(NeverEvaluate)));
+        let mut untouched_rng = StdRng::seed_from_u64(42);
+
+        assert_eq!(
+            core.execute(Command::Step).unwrap(),
+            vec![Event::Moved {
+                mv: mv(7, 7),
+                by: OccupantKind::Ai
+            }]
+        );
+        // The proof path stores no record at the fresh cursor; historical
+        // records elsewhere in the tree are unaffected either way.
+        assert!(core.search_info().is_none());
+        assert_eq!(core.rng.random::<u64>(), untouched_rng.random::<u64>());
+    }
+
+    #[test]
+    fn baseline_enables_own_tss_probe_but_tactics_searches() {
+        // Same injected evaluator under both kinds on the VCF fixture: the
+        // Baseline policy certifies before search; the Tactics policy really
+        // searches and stores the record.
+        for (kind, expect_proof) in [
+            (EvaluatorKind::Baseline, true),
+            (EvaluatorKind::Tactics, false),
+        ] {
+            let config = AiConfig {
+                evaluator: kind,
+                simulations: 5,
+                explicit_selection: true,
+                ..AiConfig::default()
+            };
+            let mut core = SessionCore::new(SessionInit {
+                seed: Some(42),
+                ..SessionInit::new_hotseat()
+            });
+            play_vcf_script(&mut core);
+            let calls = Rc::new(Cell::new(0));
+            core.black = Occupant::Ai(config);
+            core.black_player = Some(player::AiPlayer::new(Box::new(CountingEvaluator {
+                calls: calls.clone(),
+                drops: Rc::new(Cell::new(0)),
+                inner: mcts::TacticsEvaluator::new(),
+            })));
+
+            let events = core.execute(Command::Step).unwrap();
+
+            if expect_proof {
+                assert_eq!(calls.get(), 0, "baseline own probe precedes search");
+                assert!(events.contains(&Event::Moved {
+                    mv: mv(7, 7),
+                    by: OccupantKind::Ai
+                }));
+                assert!(core.search_info().is_none());
+            } else {
+                assert!(calls.get() > 0, "tactics policy really searches");
+                let info = core.search_info().expect("searched step stores info");
+                assert_eq!(info.config.simulations, 5);
+                assert_eq!(info.visits.iter().map(|(_, n)| n).sum::<u32>(), 5);
+            }
+        }
+    }
+
+    #[test]
+    fn baseline_enables_defensive_guard_but_tactics_preserves_proposal() {
+        struct PreferBlock;
+        impl mcts::Evaluator for PreferBlock {
+            fn evaluate(&mut self, _: mcts::EvalRequest) -> mcts::EvalResult {
+                let mut policy = [0.0; 225];
+                policy[mv(7, 7).index()] = 10.0;
+                mcts::EvalResult { policy, value: 0.0 }
+            }
+        }
+        let board = Board::from_position(
+            &[mv(7, 2), mv(2, 0), mv(2, 2), mv(2, 4)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        for (kind, expected) in [
+            (EvaluatorKind::Baseline, mv(7, 7)),
+            (EvaluatorKind::Tactics, mv(0, 0)),
+        ] {
+            // Initialize a cheap tactics seat, then inject a fixed evaluator.
+            // This tests the CLI policy mapping without running Burn in debug.
+            let config = AiConfig {
+                evaluator: EvaluatorKind::Tactics,
+                simulations: 0,
+                explicit_selection: true,
+                ..AiConfig::default()
+            };
+            let mut core = SessionCore::new(SessionInit {
+                opening: board.clone(),
+                seed: Some(42),
+                ..SessionInit::versus_ai(Color::White, config.clone())
+            });
+            core.black = Occupant::Ai(AiConfig {
+                evaluator: kind,
+                ..config
+            });
+            core.black_player = Some(player::AiPlayer::new(Box::new(PreferBlock)));
+            let events = core.execute(Command::Step).unwrap();
+            assert!(events.contains(&Event::Moved {
+                mv: expected,
+                by: OccupantKind::Ai
+            }));
+            assert_eq!(core.board().stone_at(expected), Some(Color::Black));
+            let info = core.search_info().expect("guard keeps real search info");
+            assert!(info.visits.iter().all(|(_, n)| *n == 0));
+            assert_eq!(info.prior[0].0, mv(7, 7));
         }
     }
 

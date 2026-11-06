@@ -301,9 +301,14 @@ Two further tutorial tracks are written and verified, ready to work:
   scratch references (`../rust-ml-tss-root-doc-ref`,
   `../rust-ml-ai-player-ref`) are kept on disk as legacy history
   only. The solution papers are inspiration only; the
-  learner's own implementation on `main` is the reference. The
-  learner is still at chapter 07 — `main` has no `player` crate yet.
-  Measured
+  learner's own implementation on `main` is the reference.
+  Sub-chapter 08's `player` crate is **ported to `main`**
+  (2026-11-06, owner opt-out: copied verbatim from the verified
+  `../rust-ml-unified08-ref` worktree, no redesign): same gates
+  green on `main` — `cargo test --release --locked --all-targets`
+  563 passed / 0 failed / 5 ignored, `clippy --all-targets` and
+  fmt clean, with `engine`/`mcts`/`baseline` byte-untouched. The
+  chapter-09 acceptance on `main` is still pending. Measured
   acceptance (release, recorded in 09-acceptance) is **old provenance
   from the `baseline-reference` CLI-probe integration**, kept for
   historical comparison only: 10/10 vs uniform-random at 400/4k/10k sims, 20/20

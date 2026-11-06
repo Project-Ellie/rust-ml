@@ -36,6 +36,18 @@ pub struct SearchInfo {
 }
 
 impl SearchInfo {
+    /// Attach the effective seat configuration to a player's search statistics.
+    #[must_use]
+    pub fn from_stats(stats: player::SearchStats, config: &AiConfig) -> Self {
+        Self {
+            side_to_move: stats.side_to_move,
+            visits: stats.visits,
+            prior: stats.prior,
+            value: stats.value,
+            config: config.clone(),
+        }
+    }
+
     /// Build a `SearchInfo` from an MCTS search outcome.
     ///
     /// `board` is the position that was searched; it is retained in the

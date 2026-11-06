@@ -25,6 +25,7 @@ baseline = ["dep:baseline"]
 [dependencies]
 engine = { path = "../engine" }
 mcts = { path = "../mcts" }
+player = { path = "../player" }
 thiserror.workspace = true
 clap = { workspace = true, features = ["derive" ]}
 rand = "0.10.3"

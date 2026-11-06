@@ -3,7 +3,7 @@
 //! These exercises are the Task-3 capstone: releasing a seat to the AI,
 //! stepping it, and inspecting the stored search record.
 
-use cli::actor::{AiConfig, Occupant, OccupantKind};
+use cli::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind};
 use cli::command::{Command, CommandError, Event, SeatSel};
 use cli::session::{SessionCore, SessionInit};
 use engine::{Board, Color, Status};
@@ -144,6 +144,69 @@ fn same_seed_same_events_and_search_info() {
 }
 
 #[test]
+fn persistent_players_match_seeded_legacy_search_through_opening_schedule() {
+    use cli::actor::SearchInfo;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    let config = AiConfig {
+        simulations: 3,
+        ..ai_config_tactics()
+    };
+    let mut core = SessionCore::new(SessionInit::ai_vs_ai(config.clone(), 42));
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut board = Board::new();
+    for ply in 0..11 {
+        let mut effective = config.clone();
+        if ply < 10 {
+            effective.temperature = 1.0;
+            effective.noise_epsilon = 0.25;
+        }
+        // Reproduce the pre-player CLI path, including a fresh evaluator.
+        let mut evaluator = mcts::TacticsEvaluator::new();
+        let mut outcome = mcts::search(
+            &board,
+            &mut evaluator,
+            &mcts::SearchConfig {
+                simulations: effective.simulations,
+                c_puct: effective.c_puct,
+            },
+        );
+        if effective.noise_epsilon > 0.0 {
+            mcts::add_dirichlet_noise(
+                &mut outcome.tree,
+                outcome.root,
+                effective.noise_epsilon,
+                0.3,
+                &mut rng,
+            );
+        }
+        let expected_info = SearchInfo::from_search(&outcome, &board, &effective);
+        let expected_move = mcts::select_move(
+            &mcts::visit_distribution(&outcome.tree, outcome.root),
+            effective.temperature,
+            &mut rng,
+        )
+        .unwrap();
+
+        assert_eq!(
+            core.execute(Command::Step).unwrap(),
+            vec![Event::Moved {
+                mv: expected_move,
+                by: OccupantKind::Ai
+            }],
+            "same seeded move at ply {ply}"
+        );
+        assert_eq!(
+            core.search_info(),
+            Some(&expected_info),
+            "stats at ply {ply}"
+        );
+        board.play(expected_move).unwrap();
+        assert_eq!(core.board(), board);
+    }
+}
+
+#[test]
 fn different_sims_per_seat_yield_different_total_visits() {
     let mut core = SessionCore::new(SessionInit {
         black: Occupant::Human,
@@ -221,6 +284,104 @@ fn step_after_game_over_is_error() {
     assert_eq!(core.board().status(), Status::Won(Color::Black));
     let err = core.execute(Command::Step).unwrap_err();
     assert_eq!(err, CommandError::GameOver);
+}
+
+#[test]
+fn baseline_ai_plays_proven_vcf_without_search_info() {
+    let mut board = Board::new();
+    let script = [
+        (7, 4),
+        (7, 3),
+        (7, 5),
+        (0, 0),
+        (7, 6),
+        (0, 2),
+        (6, 6),
+        (0, 4),
+        (8, 8),
+        (0, 6),
+    ];
+    for &(r, c) in &script {
+        board.play(mv(r, c)).unwrap();
+    }
+    assert_eq!(board.to_move(), Color::Black);
+
+    let mut core = SessionCore::new(SessionInit {
+        black: Occupant::Ai(AiConfig {
+            evaluator: EvaluatorKind::Baseline,
+            simulations: 50,
+            c_puct: 1.5,
+            temperature: 0.0,
+            noise_epsilon: 0.0,
+            explicit_selection: true,
+        }),
+        white: Occupant::Human,
+        default_config: AiConfig::default(),
+        black_sims: None,
+        white_sims: None,
+        seed: Some(1),
+        opening: board,
+        swap2: false,
+        puzzle: None,
+    });
+
+    let events = core.execute(Command::Step).unwrap();
+    let moved = events
+        .iter()
+        .find_map(|e| match e {
+            Event::Moved { mv, .. } => Some(*mv),
+            _ => None,
+        })
+        .expect("AI should move.");
+    assert_eq!(
+        moved,
+        mv(7, 7),
+        "proven VCF must play the forcing first move"
+    );
+    assert!(
+        core.search_info().is_none(),
+        "proven win must not store search info at the fresh cursor"
+    );
+}
+
+#[test]
+fn baseline_ai_falls_back_to_search_info_on_quiet_position() {
+    let mut core = SessionCore::new(SessionInit {
+        black: Occupant::Ai(AiConfig {
+            evaluator: EvaluatorKind::Baseline,
+            simulations: 50,
+            c_puct: 1.5,
+            temperature: 0.0,
+            noise_epsilon: 0.0,
+            explicit_selection: true,
+        }),
+        white: Occupant::Human,
+        default_config: AiConfig::default(),
+        black_sims: None,
+        white_sims: None,
+        seed: Some(1),
+        opening: Board::new(),
+        swap2: false,
+        puzzle: None,
+    });
+
+    let events = core.execute(Command::Step).unwrap();
+    assert!(
+        events.iter().any(|e| matches! {
+            e, Event::Moved { by: OccupantKind::Ai, ..}
+        }),
+        "Step with an AI seat must emit Move{{by: Ai}}, got {events:?}"
+    );
+
+    let info = core
+        .search_info()
+        .expect("searched position must store info");
+    assert_eq!(info.config.simulations, 50);
+    assert_eq!(
+        info.visits.iter().map(|(_, n)| n).sum::<u32>(),
+        50,
+        "total root visits must match simulations"
+    );
 }
 
 #[test]
