@@ -31,6 +31,43 @@ impl Evaluator for NeverEvaluate {
     }
 }
 
+/// Non-uniform evaluator giving one favorite move the highest prior.
+struct BiasedEvaluator {
+    favorite: Move,
+}
+
+impl Evaluator for BiasedEvaluator {
+    fn evaluate(&mut self, _: EvalRequest) -> EvalResult {
+        let mut policy = [0.0f32; 225];
+        policy[self.favorite.index()] = 4.0;
+        EvalResult { policy, value: 0.0 }
+    }
+}
+
+#[test]
+fn zero_temperature_tied_visits_follow_the_highest_root_prior() {
+    // One Black stone at h8; White to move. Zero simulations leave every
+    // root edge at 0 visits, so the tie must break by root prior, not by
+    // lowest move index (a1). The favorite is deliberately neither the
+    // lowest-index legal move nor a tactical win.
+    let mut board = Board::new();
+    board.play(Move::new(7, 7).unwrap()).unwrap();
+    let favorite = Move::new(5, 5).unwrap();
+    let mut player = AiPlayer::new(Box::new(BiasedEvaluator { favorite }));
+    let options = PlayerOptions {
+        simulations: 0,
+        temperature: 0.0,
+        ..PlayerOptions::default()
+    };
+    let mut rng = StdRng::seed_from_u64(23);
+    let mut untouched_rng = StdRng::seed_from_u64(23);
+
+    let decision = player.decide(&board, &options, &mut rng).unwrap();
+
+    assert_eq!(decision.mv, favorite);
+    assert_eq!(rng.random::<u64>(), untouched_rng.random::<u64>());
+}
+
 #[test]
 fn terminal_board_returns_game_over_without_evaluation_or_rng() {
     let mut board = winning_position();

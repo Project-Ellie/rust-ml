@@ -1077,11 +1077,15 @@ mod tests {
 
     #[test]
     fn baseline_enables_defensive_guard_but_tactics_preserves_proposal() {
-        struct PreferBlock;
-        impl mcts::Evaluator for PreferBlock {
+        // Two-peak bias: a1 takes the highest prior (the zero-temperature
+        // proposal), the blocking move h8 the second-highest (the guard's
+        // first ranked alternative after the proposal).
+        struct PreferPair;
+        impl mcts::Evaluator for PreferPair {
             fn evaluate(&mut self, _: mcts::EvalRequest) -> mcts::EvalResult {
                 let mut policy = [0.0; 225];
-                policy[mv(7, 7).index()] = 10.0;
+                policy[mv(7, 7).index()] = 5.0;
+                policy[mv(0, 0).index()] = 10.0;
                 mcts::EvalResult { policy, value: 0.0 }
             }
         }
@@ -1112,7 +1116,7 @@ mod tests {
                 evaluator: kind,
                 ..config
             });
-            core.black_player = Some(player::AiPlayer::new(Box::new(PreferBlock)));
+            core.black_player = Some(player::AiPlayer::new(Box::new(PreferPair)));
             let events = core.execute(Command::Step).unwrap();
             assert!(events.contains(&Event::Moved {
                 mv: expected,
@@ -1121,7 +1125,7 @@ mod tests {
             assert_eq!(core.board().stone_at(expected), Some(Color::Black));
             let info = core.search_info().expect("guard keeps real search info");
             assert!(info.visits.iter().all(|(_, n)| *n == 0));
-            assert_eq!(info.prior[0].0, mv(7, 7));
+            assert_eq!(info.prior[0].0, mv(0, 0));
         }
     }
 

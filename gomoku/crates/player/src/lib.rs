@@ -191,8 +191,8 @@ impl AiPlayer {
     ///
     /// A certified own forced win returns immediately without consuming RNG,
     /// calling the evaluator, or constructing search statistics. Otherwise
-    /// the order is search, optional root noise, visit extraction, then
-    /// temperature selection. Noise is deliberately applied after search to
+    /// the order is search, optional root noise, then temperature selection
+    /// over the root edges (zero temperature breaks visit ties by prior). Noise is deliberately applied after search to
     /// preserve the existing CLI behavior. An enabled guard then checks the
     /// selected proposal and ranked alternatives on cloned boards; it may
     /// substitute the returned move, but the search statistics always describe
@@ -243,9 +243,9 @@ impl AiPlayer {
                 rng,
             );
         }
-        let visits = mcts::visit_distribution(&tree, root);
-        let proposal = mcts::select_move(&visits, options.temperature, rng)
-            .expect("AI must select a move from a non-empty distribution");
+        let proposal =
+            mcts::select_move_with_priors(tree.node(root).edges(), options.temperature, rng)
+                .expect("AI must select a move from a non-empty distribution");
         let (mv, guard) = guard::choose(
             board,
             proposal,

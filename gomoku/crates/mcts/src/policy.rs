@@ -5,7 +5,7 @@
 //! τ=1) or play argmax (competitive / after move 12, τ→0). Dirichlet
 //! noise is applied to the root priors during self-play only.
 //!
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Edge, NodeId, Tree};
 use engine::Move;
 use rand::{Rng, RngExt};
 use rand_distr::Gamma;
@@ -80,6 +80,43 @@ pub fn select_move(dist: &[(Move, u32)], temperature: f32, rng: &mut impl Rng) -
     Some(dist[dist.len() - 1].0)
 }
 
+/// Pick one move from root edges using temperature, breaking
+/// zero-temperature ties by prior.
+///
+/// * `temperature < 1e-8`: play the most-visited edge. Ties are broken
+///   by higher root prior, then by lowest [`Move::index`]. A higher
+///   prior never beats a higher visit count. This branch consumes no
+///   RNG.
+/// * `temperature > 0`: delegates to [`select_move`] on the
+///   `(Move, visits)` pairs; priors are ignored and sampling behavior
+///   (including the all-zero-counts uniform fallback and RNG
+///   consumption) is identical to [`select_move`].
+///
+/// Returns `None` for empty edges.
+#[must_use]
+pub fn select_move_with_priors(
+    edges: &[Edge],
+    temperature: f32,
+    rng: &mut impl Rng,
+) -> Option<Move> {
+    if temperature < 1e-8 {
+        return edges
+            .iter()
+            .max_by(|a, b| {
+                a.n.cmp(&b.n)
+                    .then_with(|| {
+                        a.prior
+                            .partial_cmp(&b.prior)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .then_with(|| b.mv.index().cmp(&a.mv.index()))
+            })
+            .map(|edge| edge.mv);
+    }
+    let dist: Vec<(Move, u32)> = edges.iter().map(|edge| (edge.mv, edge.n)).collect();
+    select_move(&dist, temperature, rng)
+}
+
 /// Add Dirichlet noise to the priors of the root edges only.
 ///
 /// `P'(a) = (1 - ε) * P(a) + ε * η_a`, where `η ~ Dirichlet(α)` over
@@ -140,9 +177,13 @@ mod tests {
     use rand::rngs::StdRng;
 
     fn edge(mv: (u8, u8), n: u32) -> Edge {
+        edge_with(mv, 0.1, n)
+    }
+
+    fn edge_with(mv: (u8, u8), prior: f32, n: u32) -> Edge {
         Edge {
             mv: Move::new(mv.0, mv.1).unwrap(),
-            prior: 0.1,
+            prior,
             n,
             w: 0.0,
             child: None,
@@ -190,6 +231,98 @@ mod tests {
         let dist: &[(Move, u32)] = &[];
         let mut rng = StdRng::seed_from_u64(1);
         assert_eq!(select_move(dist, 0.0, &mut rng), None);
+    }
+
+    #[test]
+    fn argmax_more_visits_beat_a_higher_prior() {
+        let edges = vec![edge_with((7, 7), 0.9, 1), edge_with((3, 3), 0.01, 5)];
+        let mut rng = StdRng::seed_from_u64(1);
+        let mv = select_move_with_priors(&edges, 0.0, &mut rng).unwrap();
+        assert_eq!(mv, Move::new(3, 3).unwrap());
+    }
+
+    #[test]
+    fn argmax_tied_visits_pick_the_higher_prior() {
+        let edges = vec![
+            edge_with((0, 0), 0.01, 5),
+            edge_with((7, 7), 0.9, 5),
+            edge_with((3, 3), 0.05, 5),
+        ];
+        let mut rng = StdRng::seed_from_u64(1);
+        let mv = select_move_with_priors(&edges, 0.0, &mut rng).unwrap();
+        assert_eq!(mv, Move::new(7, 7).unwrap());
+    }
+
+    #[test]
+    fn argmax_tied_visits_and_priors_pick_the_lowest_index_in_any_order() {
+        let forward = vec![
+            edge_with((7, 7), 0.5, 5),
+            edge_with((0, 0), 0.5, 5),
+            edge_with((3, 3), 0.5, 1),
+        ];
+        let reversed: Vec<_> = forward.iter().rev().cloned().collect();
+        for edges in [forward, reversed] {
+            let mut rng = StdRng::seed_from_u64(1);
+            let mv = select_move_with_priors(&edges, 0.0, &mut rng).unwrap();
+            assert_eq!(mv, Move::new(0, 0).unwrap());
+        }
+    }
+
+    #[test]
+    fn zero_temperature_consumes_no_rng() {
+        let edges = vec![edge_with((0, 0), 0.4, 0), edge_with((7, 7), 0.6, 0)];
+        let mut rng = StdRng::seed_from_u64(5);
+        let mut untouched = StdRng::seed_from_u64(5);
+        let mv = select_move_with_priors(&edges, 0.0, &mut rng).unwrap();
+        assert_eq!(mv, Move::new(7, 7).unwrap());
+        assert_eq!(rng.random::<u64>(), untouched.random::<u64>());
+    }
+
+    #[test]
+    fn positive_temperature_matches_counts_only_selection() {
+        let edges = vec![
+            edge_with((0, 0), 0.9, 1),
+            edge_with((7, 7), 0.05, 9),
+            edge_with((3, 3), 0.05, 4),
+        ];
+        let dist: Vec<(Move, u32)> = edges.iter().map(|e| (e.mv, e.n)).collect();
+        for temperature in [1.0, 0.7] {
+            let mut edge_rng = StdRng::seed_from_u64(42);
+            let mut legacy_rng = StdRng::seed_from_u64(42);
+            for _ in 0..20 {
+                let via_edges =
+                    select_move_with_priors(&edges, temperature, &mut edge_rng).unwrap();
+                let via_counts = select_move(&dist, temperature, &mut legacy_rng).unwrap();
+                assert_eq!(via_edges, via_counts);
+            }
+            assert_eq!(edge_rng.random::<u64>(), legacy_rng.random::<u64>());
+        }
+    }
+
+    #[test]
+    fn positive_temperature_all_zero_counts_falls_back_like_legacy() {
+        let edges = vec![
+            edge_with((0, 0), 0.9, 0),
+            edge_with((7, 7), 0.05, 0),
+            edge_with((3, 3), 0.05, 0),
+        ];
+        let dist: Vec<(Move, u32)> = edges.iter().map(|e| (e.mv, e.n)).collect();
+        let mut edge_rng = StdRng::seed_from_u64(9);
+        let mut legacy_rng = StdRng::seed_from_u64(9);
+        for _ in 0..20 {
+            let via_edges = select_move_with_priors(&edges, 1.0, &mut edge_rng).unwrap();
+            let via_counts = select_move(&dist, 1.0, &mut legacy_rng).unwrap();
+            assert_eq!(via_edges, via_counts);
+        }
+        assert_eq!(edge_rng.random::<u64>(), legacy_rng.random::<u64>());
+    }
+
+    #[test]
+    fn empty_edges_return_none() {
+        let edges: &[Edge] = &[];
+        let mut rng = StdRng::seed_from_u64(1);
+        assert_eq!(select_move_with_priors(edges, 0.0, &mut rng), None);
+        assert_eq!(select_move_with_priors(edges, 1.0, &mut rng), None);
     }
 
     #[test]

@@ -39,7 +39,7 @@ pub use backup::backup;
 pub use eval::{EvalRequest, EvalResult, Evaluator, UniformEvaluator, masked_softmax};
 pub use expand::expand;
 pub use mock::TacticsEvaluator;
-pub use policy::{add_dirichlet_noise, select_move, visit_distribution};
+pub use policy::{add_dirichlet_noise, select_move, select_move_with_priors, visit_distribution};
 pub use search::{SearchConfig, SearchOutcome, search};
 pub use select::{Selection, puct_score, select};
 pub use tree::{Edge, Node, NodeId, NodeState, Tree};

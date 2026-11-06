@@ -33,6 +33,22 @@ impl Evaluator for Prefer {
     }
 }
 
+/// Two-peak bias: `top` takes the highest prior (the zero-temperature
+/// proposal), `next` the second-highest (the guard's first ranked
+/// alternative after the proposal).
+struct PreferPair {
+    top: Move,
+    next: Move,
+}
+impl Evaluator for PreferPair {
+    fn evaluate(&mut self, _: EvalRequest) -> EvalResult {
+        let mut policy = [0.0; 225];
+        policy[self.next.index()] = 5.0;
+        policy[self.top.index()] = 10.0;
+        EvalResult { policy, value: 0.0 }
+    }
+}
+
 // Guard fixtures may contain own immediate wins; the own probe stays
 // disabled (via `PlayerOptions::default`) so these tests isolate the guard.
 fn options(guard: GuardConfig) -> PlayerOptions {
@@ -63,8 +79,14 @@ fn real_proof_refutes_proposal_and_guard_finds_unvisited_block_without_mutating_
     let board = single_threat();
     let original = board.clone();
     let block = mv(7, 7);
-    let mut disabled = AiPlayer::new(Box::new(Prefer(block)));
-    let mut enabled = AiPlayer::new(Box::new(Prefer(block)));
+    let mut disabled = AiPlayer::new(Box::new(PreferPair {
+        top: mv(0, 0),
+        next: block,
+    }));
+    let mut enabled = AiPlayer::new(Box::new(PreferPair {
+        top: mv(0, 0),
+        next: block,
+    }));
     let initial = disabled
         .decide(
             &board,
@@ -111,13 +133,16 @@ fn two_opponent_winning_threats_require_our_immediate_winning_alternative() {
     let mut after_bad = board.clone();
     after_bad.play(mv(0, 0)).unwrap();
     assert_eq!(engine::immediate_wins(&after_bad, Color::White).len(), 2);
-    let decision = AiPlayer::new(Box::new(Prefer(winning)))
-        .decide(
-            &board,
-            &options(GuardConfig::baseline()),
-            &mut StdRng::seed_from_u64(1),
-        )
-        .unwrap();
+    let decision = AiPlayer::new(Box::new(PreferPair {
+        top: mv(0, 0),
+        next: winning,
+    }))
+    .decide(
+        &board,
+        &options(GuardConfig::baseline()),
+        &mut StdRng::seed_from_u64(1),
+    )
+    .unwrap();
     assert_eq!(decision.guard.proposal, mv(0, 0));
     assert_eq!(decision.guard.refuted, vec![mv(0, 0)]);
     assert_eq!(decision.mv, winning);
@@ -152,7 +177,7 @@ fn blocking_one_of_two_distinct_opponent_lines_is_refuted_in_favor_of_own_immedi
         ],
     );
     let original = board.clone();
-    let proposal = mv(0, 0); // a1: lowest-index legal move at zero visits.
+    let proposal = mv(0, 0); // a1: the evaluator's top prior; visits are all zero.
     let remaining_win = mv(0, 10); // k1: the distinct vertical line.
     let winning = mv(9, 5); // f10: Black completes b10-f10.
     let guard = GuardConfig {
@@ -185,17 +210,23 @@ fn blocking_one_of_two_distinct_opponent_lines_is_refuted_in_favor_of_own_immedi
 
     let mut plain_rng = StdRng::seed_from_u64(1);
     let mut guarded_rng = StdRng::seed_from_u64(1);
-    let plain = AiPlayer::new(Box::new(Prefer(winning)))
-        .decide(&board, &options(GuardConfig::disabled()), &mut plain_rng)
-        .unwrap();
-    let guarded = AiPlayer::new(Box::new(Prefer(winning)))
-        .decide(&board, &options(guard), &mut guarded_rng)
-        .unwrap();
+    let plain = AiPlayer::new(Box::new(PreferPair {
+        top: proposal,
+        next: winning,
+    }))
+    .decide(&board, &options(GuardConfig::disabled()), &mut plain_rng)
+    .unwrap();
+    let guarded = AiPlayer::new(Box::new(PreferPair {
+        top: proposal,
+        next: winning,
+    }))
+    .decide(&board, &options(guard), &mut guarded_rng)
+    .unwrap();
     assert_eq!(plain.mv, proposal);
     assert_eq!(plain.guard.outcome, GuardOutcome::Disabled);
     let stats = plain.search.as_ref().unwrap();
     assert!(stats.visits.iter().all(|&(_, visits)| visits == 0));
-    assert_eq!(stats.prior[0].0, winning);
+    assert_eq!(stats.prior[0].0, proposal);
     assert_eq!(guarded.guard.proposal, proposal);
     assert_eq!(guarded.guard.refuted, vec![proposal]);
     assert_eq!(guarded.guard.checked, 2);
@@ -220,13 +251,16 @@ fn white_player_guard_probes_actual_black_opponent() {
     .unwrap();
     let block = mv(7, 7);
     let original = board.clone();
-    let decision = AiPlayer::new(Box::new(Prefer(block)))
-        .decide(
-            &board,
-            &options(GuardConfig::baseline()),
-            &mut StdRng::seed_from_u64(1),
-        )
-        .unwrap();
+    let decision = AiPlayer::new(Box::new(PreferPair {
+        top: mv(0, 0),
+        next: block,
+    }))
+    .decide(
+        &board,
+        &options(GuardConfig::baseline()),
+        &mut StdRng::seed_from_u64(1),
+    )
+    .unwrap();
     assert_eq!(decision.guard.refuted, vec![mv(0, 0)]);
     assert_eq!(decision.mv, block);
     assert_eq!(decision.guard.outcome, GuardOutcome::Unrefuted);
@@ -243,7 +277,7 @@ fn zero_depth_probe_is_unknown_even_with_opponent_immediate_win() {
         },
         ..GuardConfig::baseline()
     };
-    let decision = AiPlayer::new(Box::new(Prefer(mv(7, 7))))
+    let decision = AiPlayer::new(Box::new(Prefer(mv(0, 0))))
         .decide(&board, &options(config), &mut StdRng::seed_from_u64(1))
         .unwrap();
     assert_eq!(decision.mv, mv(0, 0));
@@ -279,9 +313,12 @@ fn cap_falls_back_to_unchecked_block_not_refuted_original() {
         max_candidates: 1,
         ..GuardConfig::baseline()
     };
-    let decision = AiPlayer::new(Box::new(Prefer(block)))
-        .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
-        .unwrap();
+    let decision = AiPlayer::new(Box::new(PreferPair {
+        top: mv(0, 0),
+        next: block,
+    }))
+    .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
+    .unwrap();
     assert_eq!(decision.mv, block);
     assert_eq!(decision.guard.outcome, GuardOutcome::BudgetExhausted);
     assert_eq!(decision.guard.checked, 1);
@@ -295,7 +332,7 @@ fn zero_candidate_cap_keeps_original_unchecked() {
         max_candidates: 0,
         ..GuardConfig::baseline()
     };
-    let decision = AiPlayer::new(Box::new(Prefer(mv(7, 7))))
+    let decision = AiPlayer::new(Box::new(Prefer(mv(0, 0))))
         .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
         .unwrap();
     assert_eq!(decision.mv, mv(0, 0));
