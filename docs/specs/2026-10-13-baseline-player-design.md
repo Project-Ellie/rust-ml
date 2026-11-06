@@ -1,6 +1,12 @@
 # Baseline player tutorial design — a hand-written evaluator inside MCTS
 
-**Status:** Approved 2026-10-13.
+**Status:** Approved 2026-10-13. Amended 2026-11-06: the planned
+evaluator-owned root hook (`RootEval` / `evaluate_root` /
+`SearchResult`) is retired before landing; the merged baseline
+sub-chapter 08 moves the bounded TSS proof to player-level
+orchestration in a new `player` crate (verified reference:
+`../rust-ml-unified08-ref`, uncommitted). §2, §6, §7, §8, §10, §13
+carry the amendment inline.
 
 ## Abstract
 
@@ -198,9 +204,11 @@ reached") operationalizes this; §12 lists the drift risk.
 - **No Elo rigor, no `arena` crate.** The match runner records a raw
   match score as the anchor's seed datum; real rating is the future
   arena's job.
-- **No threat-space search coupling, no threat sequencing** beyond the
-  static maps (the engine's TSS prover owns that; TSS-inside-MCTS is a
-  registered upgrade in docs/12).
+- **No threat-space search coupling beyond a player-level root
+  probe.** The `player` crate's `AiPlayer::decide` runs a bounded TSS
+  proof once per move, before calling the search, but TSS *inside*
+  the MCTS tree remains a registered
+  upgrade in docs/12.
 - **No concurrency.** Single-threaded, matching the `mcts` crate's
   design; no tokio anywhere (docs/12 §5, locked).
 - **No GPU requirement.** `Device::flex()` is the default and the
@@ -442,11 +450,19 @@ The dependency rules from docs/12 §6 are untouched and checkable:
   architecture doc's seven planned crates (engine, net, mcts,
   selfplay, train, arena, cli) are unaffected — like `patterns`,
   `baseline` is a tutorial crate, not a new subsystem.
+- **Amended 2026-11-06:** the merged sub-chapter 08 adds
+  `gomoku/crates/player` (deps: `engine`, `mcts`, `rand` — no Burn),
+  owning per-seat decision orchestration (`AiPlayer`); `cli` gains a
+  `player` edge. `engine`, `mcts`, `patterns`, and `baseline` are
+  untouched by it.
 
 ## 7. The Evaluator adapter
 
-The seam, quoted exactly from `gomoku/crates/mcts/src/eval.rs` (verify
-against the source when reached, §13):
+The seam, as it stands on `main` (amended 2026-11-06: the root-hook
+redesign once quoted here from `../rust-ml-tss-root-doc-ref` is
+retired before landing — the `Evaluator` trait keeps exactly one
+method, and the bounded TSS proof moves to the `player` crate, whose
+verified reference is `../rust-ml-unified08-ref`):
 
 ```rust
 /// Evaluation request, contains the board as Planes and a vector of legal moves
@@ -476,6 +492,13 @@ pub trait Evaluator {
 }
 ```
 
+The single-method seam is final. Certified forced wins are not an
+evaluator answer: the `player` crate's `AiPlayer::decide` runs
+`engine::prove_forced_win` once per decision, before the search, and
+admits the proof itself (guards below) — so no wrapper around
+`Evaluator` can strip root certification, and ordinary evaluator
+implementations are unaffected.
+
 The adapter:
 
 ```rust
@@ -488,7 +511,10 @@ pub struct BaselineEvaluator {
 
 - `BaselineEvaluator::new()` builds everything on `Device::flex()`
   (the default, matching `patterns`); `with_device(device)` supports
-  the opt-in `gpu` feature.
+  the opt-in `gpu` feature. The TSS budget is not an evaluator field:
+  it lives in `player::OwnTssConfig`, whose `baseline()` preset
+  (10,000 nodes / 30 plies) carries the old `ROOT_TSS_BUDGET`
+  provenance.
 - `evaluate` reconstructs the `Board` from `req.planes` (the engine's
   17×17 side-to-move-relative `me`/`you` encoding) via stone-count
   parity, asserting the supplied legal set equals the reconstructed
@@ -499,6 +525,15 @@ pub struct BaselineEvaluator {
   `patterns` duplicating datagen's playout generator rather than
   adding a dependency. During normal search every evaluated position
   is alternation-legal, so parity reconstruction is sound.
+- The player's own probe (not the evaluator) reconstructs nothing:
+  `AiPlayer::decide` holds the real `Board`, calls
+  `engine::prove_forced_win(board, board.to_move(), budget)` once per
+  decision, and plays `proof.line[0]` only after the guards
+  `proof.winner == side`, `!proof.line.is_empty()`,
+  `board.is_legal(proof.line[0])`, and `engine::verify_line(&board,
+  &proof)` all pass. On `None` or any failed guard the player falls
+  through silently to the ordinary search — the same static estimate
+  the leaf path would return.
 - Colors are absolute (locked, docs/13): `analyze_both(&net, &board,
   &device) -> [ThreatMaps; 2]` returns `[black, white]`; the adapter
   picks own/opponent by `board.to_move()`.
@@ -511,10 +546,15 @@ pub struct BaselineEvaluator {
   `board.status()` first and returns exact values, so the heuristic's
   saturation never collides with proven outcomes.
 
-The search-side APIs the tutorial consumes, quoted from
-`gomoku/crates/mcts/src/`:
+The search-side APIs the tutorial consumes, as they stand on `main`
+(`gomoku/crates/mcts/src/`, unchanged by the player-level design):
 
 ```rust
+pub struct SearchOutcome {
+    pub tree: Tree,
+    pub root: NodeId,
+}
+
 pub fn search(
     root_board: &Board,
     evaluator: &mut dyn Evaluator,
@@ -546,12 +586,16 @@ gomoku --versus baseline [--color black|white] [--sims N]
   takes over its assigned color once a normal position exists;
   `--no-swap2` starts from an empty board as today. One opening code
   path, no special cases.
-- On each baseline turn, the CLI calls a small `baseline::play` helper
-  (`choose_move(&engine::Board, sims) -> Move`): `search` with
-  `SearchConfig { simulations: sims, ..Default::default() }`, then
-  `visit_distribution` + `select_move` at temperature 0 (argmax,
-  deterministic). The CLI depends on `baseline` only — it never
-  touches `mcts` directly.
+- On each baseline turn, the CLI's AI-step path borrows the seat's
+  persistent `player::AiPlayer` and calls `decide`. A certified own
+  proof (the decision carries no search statistics) is executed
+  immediately, bypassing noise, temperature, and visit sampling, and
+  stores no search record. A searched decision is recorded via
+  `SearchInfo::from_stats` — the new constructor beside the existing
+  `SearchInfo::from_search`, which is unchanged. The CLI does not call
+  any `baseline::probe`
+  module, and there is no evaluator root hook: the proof lives in the
+  `player` crate.
 - The integration seam already exists: `cli::board::GameBoard` exposes
   `engine_board() -> Option<&engine::Board>` for engine-specific
   features (the TSS overlay is the precedent). Versus mode requires
@@ -692,17 +736,25 @@ Two kinds of checks, kept scrupulously separate.
   simulations), the baseline wins **≥ X %** — X pre-registered in the
   acceptance chapter and tuned on the first real run, exactly as the
   net-tutorial spec handles its acceptance bar. The measured result is
-  recorded next to the bar, whatever it is.
+  recorded next to the bar, whatever it is. The old `baseline-reference`
+  measurement (20/20 at 200 sims) is historical provenance from the
+  CLI-probe integration, not a measurement of any later proof path
+  (the retired root-hook design, nor the current player-level probe);
+  re-measurement is future work.
 - **H2 (threat construction).** Baseline self-play games contain
   measurably more double-threat creations per game than
   mock-vs-mock games (a statistic, recorded — the qualitative claim
   "gravity + three-makers produce richer positions" made falsifiable).
-- **H3 (throughput).** Seconds per game and evaluations per second at
-  400 simulations in release: recorded as context for the self-play
-  planning in docs/12, with no bar attached. (The convolutions
-  tutorial measured the three 1000-board × 2-color
-  differential proofs at 8.9 s total in release, ~620 s in debug — set
-  the expectation: matches and CLI play are release-mode activities.)
+- **H3 (throughput).** Seconds per game and the configured-budget rate
+  (`requested_sims / search_wall_time`) at 400 simulations in release:
+  recorded as context for the self-play planning in docs/12, with no
+  bar attached. This rate is not leaf-evaluation throughput and not a
+  lower bound: a root TSS proof may credit the full configured budget
+  while running zero simulations, and root TSS work is included in the
+  wall time. (The convolutions tutorial measured the three 1000-board ×
+  2-color differential proofs at 8.9 s total in release, ~620 s in
+  debug — set the expectation: matches and CLI play are release-mode
+  activities.)
 
 The match score from H1 is the Elo anchor's seed datum: when the
 `arena` crate lands, "beats the baseline in ≥ X % of 200" becomes the
@@ -778,10 +830,17 @@ Before the implementation plan is written, run this checklist (from
    `docs/tutorials/convolutions-tutorial/04-the-four-level/01-solution.md`.
 2. The convolutions gates are still green:
    `cargo test -p patterns --release -- --ignored`.
-3. The `Evaluator` trait, `EvalRequest`, `EvalResult`,
-   `masked_softmax`, `search`, `visit_distribution`, and `select_move`
-   signatures are unchanged from the quotes in §7 (check against
-   `crates/mcts/src/`).
+3. The merged sub-chapter 08 design is player-level: `mcts::Evaluator`
+   remains the one-method trait and `search` returns `SearchOutcome`;
+   `EvalRequest`, `EvalResult`, `masked_softmax`,
+   `visit_distribution`, and `select_move` match the quotes in §7
+   (check against `crates/mcts/src/` on `main`). The bounded TSS proof
+   lives in `gomoku/crates/player` (`AiPlayer::decide`,
+   `OwnTssConfig`, `GuardConfig`), verified in the uncommitted
+   reference worktree `../rust-ml-unified08-ref` (detached at base
+   HEAD). The retired hook-era scratch reference
+   `../rust-ml-tss-root-doc-ref` is legacy history, not a source of
+   truth.
 4. The mock is still `mcts::mock::TacticsEvaluator` with the
    documented shaping and sentinel values (§7, `crates/mcts/src/mock.rs`).
 5. CLI seams intact: `GameBoard::engine_board`, `ui::run_ui`,

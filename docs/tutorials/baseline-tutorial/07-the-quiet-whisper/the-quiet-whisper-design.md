@@ -186,7 +186,7 @@ flowchart TD
   value heuristic and §7 the root-only TSS probe.
 * [`../06-the-three-ladder/the-three-ladder-design.md`](../06-the-three-ladder/the-three-ladder-design.md)
 — the value ladder rungs that bound the whisper.
-* [`../08-the-tss-eye/the-tss-eye-design.md`](../08-the-tss-eye/the-tss-eye-design.md)
-— the root probe that owns sequences.
+* [`../08-the-ai-player/the-ai-player-design.md`](../08-the-ai-player/the-ai-player-design.md)
+— the player-level root probe that owns sequences.
 * [`../09-acceptance/acceptance.md`](../09-acceptance/acceptance.md) —
 where the A/B numbers are quoted.

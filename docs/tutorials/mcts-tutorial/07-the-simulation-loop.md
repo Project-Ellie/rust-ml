@@ -157,6 +157,15 @@ pub struct SearchOutcome {
 }
 ```
 
+> **Forward note:** the baseline tutorial later adds certified forced
+> wins *above* this seam, in a `player` crate: the player's `decide`
+> probes `engine::prove_forced_win` once per move before calling
+> `search`, and plays a certified win directly without inspecting a
+> tree. `search` itself keeps returning `SearchOutcome` exactly as
+> shown here, and the milestone-2 exercises are unaffected. The design
+> is recorded in
+> `docs/tutorials/baseline-tutorial/00-baseline-primer.md` §7.
+
 Why the tree? Because the caller needs more than one number. The
 root's outgoing edges hold:
 

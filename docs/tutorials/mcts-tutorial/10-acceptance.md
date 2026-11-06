@@ -97,7 +97,9 @@ author of milestone 3 reading it cold:
   `EvalResult`, `TacticsEvaluator`, `UniformEvaluator`,
   `visit_distribution`, `select_move`, `add_dirichlet_noise`, and the
   tree primitives (`Tree`, `Node`, `NodeId`, `Edge`, `NodeState`) for
-  anyone who wants to inspect the tree.
+  anyone who wants to inspect the tree. The baseline tutorial later
+  adds certified forced wins in a `player` crate *above* this seam;
+  the search return type and the `Evaluator` trait stay as shown.
 * Do not re-export internal helpers like `puct_score`, `expand`, or
   `backup` unless you are willing to support them as public API.
 * Run a dead-code sweep: anything `pub` that nothing imports, or any
@@ -162,6 +164,9 @@ fn best_move(board: &Board, simulations: u32, rng: &mut StdRng) -> Move {
     select_move(&dist, 0.0, rng).expect("root has edges")
 }
 ```
+
+(The baseline tutorial's `player` crate later plays certified forced
+wins without a search; it does not change this return type.)
 
 The tactical suite:
 

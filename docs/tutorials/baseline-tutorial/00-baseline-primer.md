@@ -13,12 +13,16 @@ The evaluator reuses the convolutions tutorial's threat network
 — a **gravity kernel** that rewards playing near existing stones —
 and combines both sides' threat maps plus the gravity map into two
 **readouts**: a 225-vector of policy logits built from a derived tier
-table, and a saturating value heuristic clamped away from ±1. A
-root-level **TSS probe** (`engine::prove_forced_win`) lets the player
-see proven forced wins instead of stumbling into them. No training,
-no GPU requirement, no strength claims on faith: every sub-chapter
-ends with a playable game, and playing strength is a **measured
-hypothesis**, recorded as real numbers in the acceptance sub-chapter.
+table, and a saturating value heuristic clamped away from ±1. An **AI player** (the `player` crate's persistent per-seat
+`AiPlayer`) runs a bounded `engine::prove_forced_win` call once per
+move — before the PUCT search spends any simulations — and plays a
+certified forced win directly; after the search proposes a move, a
+bounded **opponent-proof guard** refuses candidates the opponent can
+certifiably refute. No training, no GPU requirement, no strength
+claims on
+faith: every sub-chapter ends with a playable game, and playing
+strength is a **measured hypothesis**, recorded as real numbers in
+the acceptance sub-chapter.
 
 The player is almost a by-product. The lasting value is the **Elo
 anchor** every trained network will later be measured against, the
@@ -98,11 +102,26 @@ artifact where `engine`, `mcts`, and `patterns` meet.
 - **Saturating heuristic** — a value function that rises with
   advantage but is deliberately clamped away from ±1, because ±1 is
   reserved for proven terminal outcomes.
-- **TSS probe** — a once-per-move call to `engine::prove_forced_win`
-  at the root of the search, with a bounded `SearchBudget`. `Some`
-  means a certified forced win: play the proof line's first move.
-  `None` means *not proven within budget* — it says nothing about the
-  true value.
+- **Root TSS probe** — the player-level own-proof step: the `player`
+  crate's `AiPlayer::decide` calls `engine::prove_forced_win` once per
+  move, for the side to move, before running the PUCT search, and
+  plays the first move of the proof line only after the guards
+  *winner is the side to move*, *line non-empty*, *first move legal*,
+  and `engine::verify_line` all pass. `None` from the prover means
+  *not proven within budget* — it says nothing about the true value,
+  and the player silently falls through to the ordinary search.
+- **Opponent-proof guard** — the player's post-search defensive step:
+  the top candidate moves are probed with `engine::prove_forced_win`
+  from the opponent's side, and a candidate the opponent can
+  certifiably refute is skipped. Unrefuted means *unknown*, never
+  *safe*.
+- **TSS eye** — the tutorial's name for the root probe's effect: the
+  player *sees* proven forced wins that no static map can see. (The
+  retired hook-era design put this probe inside an optional
+  `mcts::Evaluator::evaluate_root` method; that design was superseded
+  before landing — the probe lives in the `player` crate, the
+  `Evaluator` seam stays one-method, and `mcts::search` keeps
+  returning `SearchOutcome`.)
 - **Elo anchor** — a fixed reference opponent with a measured match
   record. Once the `arena` crate exists, the trained network's
   strength is expressed relative to this baseline.
@@ -200,7 +219,7 @@ it into behavior:
 | 05 value | graded leaf values | backup informs every branch, not just terminal ones — Q means something midgame |
 | 06 three ladder | priors see forks and threes | the search verifies multi-move traps and defenses before committing |
 | 07 quiet whisper | a faint quiet-position value `[experiment]` | backup carries a whisper through quiet branches — the A/B decides whether it helps |
-| 08 TSS eye | a certified line, once per move | the search is *pre-empted* when the answer is proof, not estimate |
+| 08 the AI player | a persistent per-seat player with a root TSS probe and an opponent-proof guard | certified wins are played before the search spends simulations; certified-refutable candidates are refused |
 
 When the net tutorial lands, the search, the seam, the CLI seat, and
 the measurement harness all stay — only the body of `evaluate()`
@@ -216,7 +235,9 @@ design exploits that:
 ```text
 certainty ──────────────────────────────────────────► heuristic
 
-TSS proof           engine-proven   (the prover certifies the line)
+Root TSS proof      engine-proven   (the player's root probe
+                                    certifies the line via
+                                    `prove_forced_win` + `verify_line`)
 own wins            engine-proven   (convolutions differential gate,
 opponent's wins     engine-proven    1000 boards × 2 colors)
 own double threats  engine-proven   (same gate)
@@ -386,47 +407,98 @@ assert the properties, not the constants:
 - **Quiet board ⇒ exactly 0.0** — gravity never enters the value; a
   position with no maps firing is honestly neutral.
 - **Honesty** — this is a heuristic with named failure modes: it
-  cannot see threat *sequences* on its own (§7's TSS probe owns
-  those); it inherits the engine's v1 simplifications through the
+  cannot see threat *sequences* on its own (§7's player-level root
+  probe owns those); it inherits the engine's v1 simplifications through the
   oracular maps; it is the mock's scaffolding made one notch less
   crude. The tutorial says so everywhere, and the trained network's
   value head is what replaces it.
 
-## 7. The TSS eye — a root probe, not a per-node evaluator
+## 7. The AI player — a root-level TSS probe above the search, not a per-node evaluator
 
 The static maps see one move deep. Gomoku tactics are *sequences*: a
 VCF win is ten forcing moves that each look modest in isolation. The
 engine owns sequence truth: `prove_forced_win(board, side, budget)`
-runs threat-space search and returns `Some(Proof)` — a certified,
-`verify_line`-checkable forced win — or `None`, which means only "not
-proven within budget" and says nothing about the true value.
+runs a bounded threat-space search and returns `Some(Proof)` — a
+certified, `verify_line`-checkable forced win — or `None`, which means
+only "not proven within budget" and says nothing about the true value.
 
 §2's arithmetic decides where the prover may live. The evaluator
-answers ~4,000 questions per move; a prover call explores up to
-`SearchBudget::max_nodes` threat-space nodes each time. Prover calls
-inside the tree would multiply the cost of a move by orders of
-magnitude. So the probe is a **once-per-move short-circuit at the
-root**, wired into the CLI's AI-seat step path (sub-chapter 08),
-before the PUCT search starts:
+answers ~4,000 questions per move only if every question is the fast
+static estimate. A prover call inside the leaf `evaluate` path would
+run once per new leaf, multiplying the per-move cost by the simulation
+count. But the prover does not belong in the *evaluator* at all:
+certifying a move is a decision-level concern, not an estimation-level
+one. Sub-chapter 08 therefore extracts move-decision orchestration
+from the CLI into a new `player` crate: a persistent per-seat
+`AiPlayer` owns the `Box<dyn Evaluator>` and runs the whole decision
+pipeline — terminal check, own TSS probe, one ordinary `mcts::search`,
+temperature selection, opponent-proof guard, honest statistics. The
+cost of the TSS budget is paid once per move, not once per leaf, and
+the `mcts` seam is untouched: `Evaluator` stays a one-method trait and
+`search` keeps returning `SearchOutcome`. (An intermediate design put
+the probe behind an optional `evaluate_root` method on the `Evaluator`
+trait; it was retired before landing — the player is the certifier,
+and the seam does not grow.)
 
-1. Probe `prove_forced_win(board, side_to_move, budget)` with a
-   bounded budget (`max_nodes: 10_000, max_depth: 30`).
-2. `Some(proof)` ⇒ play `proof.line[0]` directly. The search is
-   pre-empted when the answer is proof, not estimate.
-3. `None` ⇒ proceed with the normal MCTS step. Nothing is concluded —
-   least of all "there is no win".
+The own-side probe, in `gomoku/crates/player`:
 
-Two deliberate absences:
+- `decide` calls `engine::prove_forced_win(&board, board.to_move(),
+  budget)` once per decision, before the search.
+- The proof is admitted only after the guards `proof.winner == side to
+  move`, the line is non-empty, the first move is legal, and
+  `engine::verify_line(&board, &proof)` all pass. On admission the
+  player plays the first move of the line directly — no search, no
+  noise, no fabricated statistics. On `None` or any failed guard it
+  falls through silently to the ordinary search: unknown is not
+  safe-to-skip-searching, it is simply unknown.
+- The budget lives in `player::OwnTssConfig`: `baseline()` is enabled
+  with 10,000 nodes / 30 plies; `disabled()` (the `PlayerOptions`
+  default) turns the probe off. The CLI's policy map enables the
+  baseline configuration for the baseline seat and disables it for the
+  tactics seat.
 
-- **No defensive probe.** If the *opponent* has a proven forced win,
-  there is nothing to find: the loss is already forced, and spending
-  budget to confirm it changes no decision. The value readout's
-  double-threat tier already paints such positions as lost.
-- **No per-node probe, ever.** The seam speaks `EvalRequest`, which
-  carries no depth information; a per-node prover would be both
-  unaffordable and architecturally smuggled. The root probe lives in
-  the CLI's seat path, outside the evaluator, where "once per move"
-  is a structural fact, not a discipline.
+The opponent-direction half of the sub-chapter is the **guard**: after
+the search proposes a move, the player probes the top candidate moves
+with `prove_forced_win` from the opponent's side and skips any
+candidate the opponent can certifiably refute
+(`player::GuardConfig::baseline()` = 5 candidates, 1,000 nodes / 10
+plies — `[experiment]` starting values). The guard is a certified
+refutation filter, not a safe-defense guarantee: unrefuted means
+unknown, and "every candidate refuted" is not a proof that the
+position is lost.
+
+Key properties of this wiring:
+
+- **Root-only.** The probe runs exactly once per decision, at the
+  root. The leaf path stays the fast static estimate.
+- **Budget policy.** The prover is kept out of `evaluate()` because of
+  cost, not because a search near the evaluator is architecturally
+  forbidden. The simulation budget is 400–10,000; the own-probe budget
+  is 10,000 nodes / 30 plies; the guard budget is 1,000 nodes / 10
+  plies per candidate. Running the prover per leaf would multiply the
+  per-move cost by the simulation count. The player keeps the TSS cost
+  as a fixed per-move overhead.
+- **Verified proof.** A certified move is played only after the guards
+  check that the proof winner is the side to move, the line is
+  non-empty, the first move is legal, and `verify_line` replays the
+  line against every defender block.
+- **`None` is not "no win".** If `prove_forced_win` returns `None`,
+  the player searches normally. `None` means only "not proven within
+  budget"; it must never be treated as proof of the absence of a
+  forced win.
+- **Two probes, two directions, one player.** The own probe certifies
+  wins for the side to move; the guard certifies refutations by the
+  opponent. Both run bounded, both verify through `verify_line`, and
+  neither treats "no proof" as evidence.
+- **No per-node probe.** The leaf evaluator path (`evaluate`) never
+  runs TSS; the probe lives in the player, beside the search. Putting
+  the prover in `evaluate` would smuggle a search into every PUCT
+  leaf.
+- **No search record for certified moves.** A decision taken from a
+  verified proof carries no visit distribution and no `SearchInfo` —
+  the CLI plays the move directly and stores nothing. Fabricating
+  statistics for a move no search produced would be dishonest
+  telemetry.
 
 ## 8. The adapter, end to end
 
@@ -505,9 +577,9 @@ row; sub-chapter 09 is the full acceptance ritual:
     from the puzzle root, pre-registered as a hypothesis. This
     statistic doubles as the benchmark harness the datagen tutorial's
     labelled-positions work will need later;
-  - throughput numbers (seconds per game, evaluations per second)
-    recorded as context for the self-play planning in docs/12, with
-    no bar attached.
+  - throughput numbers (seconds per game, configured-budget rate
+    `requested_sims / search_wall_time`) recorded as context for the
+    self-play planning in docs/12, with no bar attached.
 
 The habit is the point: write the bar down *before* running the
 protocol, then record the real number *whatever it is*.
@@ -519,7 +591,8 @@ protocol, then record the real number *whatever it is*.
 - Elo rigor and the `arena` crate — the match records a raw score as
   the anchor's seed datum, nothing more.
 - Threat-space search *inside* the tree — §7 explains why the probe
-  is root-only; deeper coupling is a registered upgrade in docs/12.
+  runs once per decision, above the search; deeper coupling is a
+  registered upgrade in docs/12.
 - Concurrency — single-threaded, matching the `mcts` crate's design;
   no tokio anywhere (docs/12 §5, locked).
 - GPU as a requirement — `Device::flex()` is the default and the
@@ -558,13 +631,21 @@ protocol, then record the real number *whatever it is*.
 - **RNG in the evaluator**: variety belongs to the search side
   (temperature in `mcts::policy`). An evaluator that rolls dice makes
   matches irreproducible and the acceptance numbers meaningless.
-- **Reading `None` from the TSS probe as "no win"**: `None` means the
-  budget ran out. Treating it as proof of *no* forced win is the dual
-  bug of trusting a heuristic, and the tutorial hammers it every time
-  the probe appears.
-- **Probing per node**: the prover is a search, not a scoring
-  function. Inside the per-node path it is unaffordable — §7 is the
-  only sanctioned wiring.
+- **Reading a silent probe as "no win"**: when the own TSS probe
+  finds nothing, the player simply searches. `None` from the prover
+  means "not proven within budget"; treating it as proof of *no*
+  forced win is the dual bug of trusting a heuristic, and the tutorial
+  hammers it every time the probe appears.
+- **Rebuilding the evaluator every move**: the `player` crate's
+  `AiPlayer` owns one persistent evaluator per seat; constructing a
+  fresh evaluator per step throws away evaluator state (and, for the
+  Burn-backed baseline, pays the model setup cost per move). The CLI
+  session holds the player beside the seat and never rebuilds it on
+  configuration tweaks.
+- **Running TSS inside `evaluate()`**: the player owns the root probe;
+  the leaf `evaluate` path must stay the fast static estimate.
+  Putting the prover in `evaluate` would smuggle a search into every
+  PUCT leaf and is out of scope for the same root-only reason.
 
 ## Summary
 
@@ -574,8 +655,9 @@ sub-chapter and smarter after each one. The threat maps bring
 engine-proven tactics and oracle-proven three-detection; gravity
 brings a sane quiet-board default that knows its place at the bottom
 of the trust ladder; the tier table is a theorem, not a tuning; the
-value is a clearly labelled saturating heuristic; the TSS probe sees
-what no static map can. Wrapped in the existing PUCT search at 4,000
+value is a clearly labelled saturating heuristic; the player's root
+TSS probe sees what no static map can, and the opponent-proof guard
+refuses what the opponent can certify. Wrapped in the existing PUCT search at 4,000
 simulations, the result is the project's first beatable opponent, its
 first Elo anchor, and the adapter shape everything after will reuse.
 The sub-chapters derive the details; this primer has pinned what they
@@ -597,10 +679,22 @@ must not drift from.
   — the normative final form of `patterns::net`: `ThreatNet`,
   `ThreatMaps`, `analyze`, `analyze_both`.
 - `gomoku/crates/mcts/src/eval.rs` — the `Evaluator` seam and
-  `masked_softmax`; `mock.rs` — the opponent the baseline replaces and
-  meets; `expand.rs` — the terminal check that keeps ±1 reserved.
+  `masked_softmax`. `mock.rs` — the
+  opponent the baseline replaces and meets; `expand.rs` — the
+  terminal check that keeps ±1 reserved.
 - `gomoku/crates/engine/src/tss.rs` — `prove_forced_win`,
   `SearchBudget`, and the documented meaning of `None`.
+- The player-level proof path is verified in the uncommitted
+  reference worktree `../rust-ml-unified08-ref` (detached at base
+  HEAD): `gomoku/crates/player/` (`AiPlayer::decide`, `OwnTssConfig`,
+  the opponent-proof guard) plus the CLI session integration. Full QA
+  there: `cargo test --release --locked --all-targets` 563 passed /
+  0 failed / 5 ignored, clippy and fmt green, with `mcts`, `baseline`,
+  and `engine` byte-untouched. The retired hook-era scratch reference
+  `../rust-ml-tss-root-doc-ref` is legacy history, not a source of
+  truth. The main source uses the one-method `Evaluator` /
+  `SearchOutcome` shape described here; the learner builds the
+  `player` crate in sub-chapter 08.
 - [`../../12-gomoku-architecture.md`](../../12-gomoku-architecture.md) —
   alpha-epsilon (§3), no-tokio (§5), the `Evaluator` rationale (§6).
 - [`../../13-engine-design.md`](../../13-engine-design.md) — tactics

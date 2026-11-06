@@ -260,8 +260,9 @@ not try to. That honesty is the point.
   — the previous sub-chapter: policy tiers T1/T2 and the adapter.
 * [`../06-the-three-ladder/the-three-ladder.md`](../06-the-three-ladder/the-three-ladder.md)
   — the next sub-chapter: double-three rungs added to the value.
-* [`../08-the-tss-eye/the-tss-eye.md`](../08-the-tss-eye/the-tss-eye.md)
-  — the root probe that sees threat sequences this heuristic cannot.
+* [`../08-the-ai-player/the-ai-player.md`](../08-the-ai-player/the-ai-player.md)
+  — the player's own TSS probe that sees threat sequences this
+  heuristic cannot.
 * [`../../playable-cli-tutorial/06-seeing-the-mind/a-value-strip/value-strip.md`](../../playable-cli-tutorial/06-seeing-the-mind/a-value-strip/value-strip.md)
   — the value strip overlay you watch during the capstone.
 * `gomoku/crates/mcts/src/eval.rs` — the `Evaluator` seam and the

@@ -273,25 +273,55 @@ Two further tutorial tracks are written and verified, ready to work:
 - [baseline-tutorial](tutorials/baseline-tutorial/README.md)
   (REDESIGNED 2026-10-26: primer + 9 small sub-chapters, each with
   four papers — chapter, design, implementation plan, solution — and
-  each ending at the study table with a smarter seat): the `baseline`
-  crate — a hand-written evaluator (vicinity gravity kernel + tiered
-  threat policy + saturating value + an `[experiment]` quiet-position
-  whisper) behind the `mcts::Evaluator`
-  seam, plus a root-level TSS probe (`prove_forced_win`, budgeted
-  10k/30) wired into the CLI's AI-step path. The seat is playable
+  each ending at the study table with a smarter seat; REDESIGNED
+  AGAIN 2026-11-06: sub-chapters 08 "the TSS eye" and 08b "the AI
+  player" merged into ONE sub-chapter 08 "the AI player" at the
+  player-orchestration level, and the planned evaluator-owned root
+  hook was retired before ever landing — `mcts::Evaluator` stays a
+  one-method trait and `mcts::search` keeps returning
+  `SearchOutcome`): the `baseline` crate — a hand-written
+  evaluator (vicinity gravity kernel + tiered threat policy +
+  saturating value + an `[experiment]` quiet-position whisper) behind
+  the `mcts::Evaluator` seam — plus the sub-chapter 08 `player`
+  crate, whose per-seat `AiPlayer::decide` runs its own bounded TSS
+  proof (`prove_forced_win`, 10k nodes / 30 plies) before the PUCT
+  simulations begin and then guards the chosen move against certified
+  opponent refutations. The seat is playable
   from sub-chapter 01 (`--ai baseline`); layers land one per
-  sub-chapter. Reference implementation built and gate-verified on
-  branch `baseline-reference` (9 commits; worktree
+  sub-chapter. The original reference implementation was built and
+  gate-verified on branch `baseline-reference` (9 commits; worktree
   `rust-ml-baseline-ref/` beside the repo root, kept for inspection);
-  the solution papers quote it with real line numbers. Measured
-  acceptance (release, recorded in 09-acceptance): 10/10 vs
-  uniform-random at 400/4k/10k sims, 20/20 vs `TacticsEvaluator` at
-  200 sims (5.9 s/game, 599 evals/s), 100/100 engine-proven VCF
-  puzzles solved. Sub-chapter 07's A/B (the quiet whisper,
-  `[experiment]`): 20/20 both arms, whisper arm 32% faster to the win
-  (23.5 vs 34.5 avg plies) — kept. Design spec:
+  the early solution papers quote it with real line numbers. The
+  merged sub-chapter 08 papers quote the verified reference worktree
+  `../rust-ml-unified08-ref` (detached at base HEAD 2b6ec75,
+  uncommitted): full QA `cargo test --release --locked --all-targets`
+  563 passed / 0 failed / 5 ignored, `clippy --all-targets` and `fmt`
+  green, with `mcts`/`baseline`/`engine` byte-untouched. The retired
+  hook-era packs (`08-the-tss-eye/`, `08b-the-ai-player/`) and their
+  scratch references (`../rust-ml-tss-root-doc-ref`,
+  `../rust-ml-ai-player-ref`) are kept on disk as legacy history
+  only. The solution papers are inspiration only; the
+  learner's own implementation on `main` is the reference. The
+  learner is still at chapter 07 — `main` has no `player` crate yet.
+  Measured
+  acceptance (release, recorded in 09-acceptance) is **old provenance
+  from the `baseline-reference` CLI-probe integration**, kept for
+  historical comparison only: 10/10 vs uniform-random at 400/4k/10k sims, 20/20
+  vs `TacticsEvaluator` at 200 sims (5.9 s/game, 599
+  requested_sims/search_wall_time), 100/100
+  engine-proven VCF puzzles solved. Sub-chapter 07's A/B (the quiet
+  whisper, `[experiment]`): 20/20 both arms, whisper arm 32% faster
+  to the win (23.5 vs 34.5 avg plies) — kept as independent old valid
+  data. The proof path has changed twice since those numbers
+  (root hook, then player-level probe); rerunning the strength ladder
+  is future work. The player is
+  synchronous with no tree reuse; the guard defaults are
+  `[experiment]` (5 candidates / 1000 nodes / 10 depth) and an
+  unrefuted candidate means unknown, not safe.
+  Design spec:
   [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md)
-  (weights stand; the primer supersedes its chapter order).
+  (weights stand; the primer supersedes its chapter order; the spec
+  has been narrowly amended to player-level orchestration).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
   **COMPLETE (2026-10-26)**: chapters 01–07 and the chapter-09
   acceptance are worked and on `main` (242 cli tests green, one

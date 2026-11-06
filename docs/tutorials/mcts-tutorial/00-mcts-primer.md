@@ -423,6 +423,15 @@ pub trait Evaluator {
 }
 ```
 
+> **Forward note:** the baseline tutorial later adds certified forced
+> wins *above* this seam, in a `player` crate that wraps the
+> evaluator: the player's `decide` runs a bounded TSS proof once per
+> move before calling `mcts::search`. This trait stays exactly as
+> shown — one method, no hooks — and `search` keeps returning
+> `SearchOutcome`. The milestone-2 exercises are unaffected. See
+> `docs/tutorials/baseline-tutorial/00-baseline-primer.md`
+> §7 for the player-level design.
+
 `EvalRequest` carries plain data — encoded planes, the legal-move
 mask, and (in the self-play implementation) a oneshot reply channel.
 `EvalResult` carries plain data back — 225 policy logits and a value.

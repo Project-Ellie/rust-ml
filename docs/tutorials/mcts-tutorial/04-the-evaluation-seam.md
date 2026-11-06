@@ -160,6 +160,16 @@ pub trait Evaluator {
 }
 ```
 
+> **Forward note:** the baseline tutorial later adds certified forced
+> wins *above* this seam, in a `player` crate: the player's `decide`
+> runs a bounded TSS proof once per move before calling the search.
+> This trait stays exactly as shown — one method, no hooks — so no
+> decorator or wrapper can strip root certification; certification
+> lives in the player, outside the evaluator. The milestone-2
+> exercises in this tutorial keep the one-method `evaluate` contract
+> shown here; do not let the future player distract from the seam you
+> are building now.
+
 Functions:
 
 ```rust

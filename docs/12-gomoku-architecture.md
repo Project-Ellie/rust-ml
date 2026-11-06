@@ -297,6 +297,13 @@ pub trait Evaluator {
 }
 ```
 
+(The baseline tutorial adds a player-level bounded TSS proof for
+certified forced wins above this seam: a `player` crate's per-seat
+`AiPlayer` probes `engine::prove_forced_win` once per move before
+calling the search. This trait stays one-method and `mcts::search`
+keeps returning `SearchOutcome`; see
+`docs/tutorials/baseline-tutorial/00-baseline-primer.md` §7.)
+
 A blocking-channel client implements it for self-play, a direct
 `net::Model` wrapper implements it for tests and arena play, and a mock
 implements it for MCTS unit tests. Why a trait and not a generic
@@ -877,11 +884,15 @@ honest: **soundness over completeness** (only machine-verified lines
 become labels — §12 item 3), and a *small* fraction, because forcing
 positions are a narrow, weird slice of the game and overfeeding them
 warps the policy in quiet positions. External puzzle collections can
-validate the prover but are not bulk training data (appendix). Later, a
-registered upgrade can call the same prover *inside* MCTS — proven
-nodes back up exact ±1 instead of the network's value, the classic
-strong-Gomoku shortcut; that is milestone-8 material, deliberately not
-v1.
+validate the prover but are not bulk training data (appendix). The
+baseline-tutorial player uses a separate, narrower mechanism: a
+player-level bounded TSS proof — the `player` crate's per-seat
+`AiPlayer` runs `engine::prove_forced_win` once per move before any
+simulations begin and plays a certified win directly. That probe is
+not the same as calling the prover
+*inside* the MCTS tree; the latter — proven nodes backing up exact ±1
+instead of the network's value, the classic strong-Gomoku shortcut —
+remains a milestone-8 registered upgrade, deliberately not v1.
 
 After milestone 6 we are where DeepGomoku once was — but in Rust, tabula
 rasa, with a design that grows. Everything after that is compute and

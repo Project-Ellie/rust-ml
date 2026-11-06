@@ -93,9 +93,9 @@ The value readout cannot see a forced sequence. It sees only whether a
 single move creates a win, a double threat, or a block. A VCF win that
 takes ten forcing moves looks quiet to this heuristic until the final
 ply. The tutorial names this limitation everywhere rather than hiding
-it. Sub-chapter 08 adds a root-level TSS probe for sequences, and the
-net tutorial will eventually replace the whole heuristic with a learned
-value head.
+it. Sub-chapter 08 adds an evaluator-owned root-level TSS hook for
+sequences, and the net tutorial will eventually replace the whole
+heuristic with a learned value head.
 
 ## Decision 7 — Accumulate, then clamp
 
@@ -174,5 +174,5 @@ flowchart TD
   — the policy readout design this value readout extends.
 * [`../06-the-three-ladder/the-three-ladder-design.md`](../06-the-three-ladder/the-three-ladder-design.md)
   — the double-three rungs added next.
-* [`../08-the-tss-eye/the-tss-eye-design.md`](../08-the-tss-eye/the-tss-eye-design.md)
-  — the root probe that owns sequences.
+* [`../08-the-ai-player/the-ai-player-design.md`](../08-the-ai-player/the-ai-player-design.md)
+  — the player-level root probe that owns sequences.

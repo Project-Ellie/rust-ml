@@ -3,7 +3,10 @@
 ## Context
 
 Chapter 07 left you with a `SearchOutcome`: a tree whose root node has
-225 outgoing edges, each carrying a visit count. The search has done
+225 outgoing edges, each carrying a visit count. (The baseline
+tutorial later adds a `player` crate above this seam whose `decide`
+may play a certified forced win without a search; the milestone-2 code
+you are building here stays with `SearchOutcome`.) The search has done
 its work. Now you must turn those counts into two different things:
 
 * a move to play on the board;

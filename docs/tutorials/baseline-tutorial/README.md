@@ -13,10 +13,16 @@ The through-line: **the seat is playable from sub-chapter 01, and
 every sub-chapter makes it smarter.** The search never changes — only
 the evaluator's two answers (policy logits, value) grow layers:
 vicinity gravity first, then engine-proven wins and blocks, an honest
-value, the three ladder, and finally a root-level TSS probe that sees
-proven forced wins. Playing strength is a **measured hypothesis**: the
-same protocol reruns after every sub-chapter, and the numbers climb
-(or you find out why not).
+value, and the three ladder. Sub-chapter 08 is the one exception to
+"only the evaluator changes": it extracts move-decision orchestration
+from the CLI into a reusable `player` crate, where a persistent
+per-seat `AiPlayer` runs its own bounded TSS proof before the PUCT
+simulations begin and guards the chosen move against certified
+opponent refutations — the search and the evaluator contract still
+stand.
+Playing strength is a **measured hypothesis**: the same protocol
+reruns after every sub-chapter, and the numbers climb (or you find
+out why not).
 
 ## How this tutorial works
 
@@ -37,8 +43,9 @@ with the four-paper layout of the playable-CLI sub-chapters:
   who should not read the solution. The solution (`name-solution.md`)
   quotes the verified reference implementation — open it only after
   twenty stuck minutes, or to compare after finishing.
-- **Gates per sub-chapter:** `cargo test -p baseline` (and `-p cli`
-  when the CLI is touched), `cargo clippy --all-targets -- -D
+- **Gates per sub-chapter:** `cargo test -p baseline` (plus `-p cli`
+  when the CLI is touched and `-p player` when the player crate is
+  touched), `cargo clippy --all-targets -- -D
   warnings`, and `cargo fmt --all -- --check`, all from `gomoku/`.
 - **Commit after every sub-chapter**, with the message the chapter
   names.
@@ -58,8 +65,15 @@ with the four-paper layout of the playable-CLI sub-chapters:
 | 05 | [The honest value](05-the-honest-value/the-honest-value.md) | The saturating value readout, clamped away from ±1. | …know when it is winning — backup informs every branch. |
 | 06 | [The three ladder](06-the-three-ladder/the-three-ladder.md) | Tiers T3–T4c: double threats, double-threes, three-makers, defensive threes. | …build forks and defend threats two moves early. |
 | 07 | [The quiet whisper](07-the-quiet-whisper/the-quiet-whisper.md) | `[experiment]` A super-naive quiet-position value term (gravity differential, capped ±0.05) with a measured A/B. | …hear a whisper where the threat ladder is silent — and check whether it helps. |
-| 08 | [The TSS eye](08-the-tss-eye/the-tss-eye.md) | The root probe: `prove_forced_win` once per move, budgeted, pre-empting search. | …*see* proven forced wins instead of stumbling into them. |
+| 08 | [The AI player](08-the-ai-player/the-ai-player.md) | The `player` crate: a persistent, reusable per-seat `AiPlayer` (decision orchestration extracted from the CLI) that runs its own bounded, verified TSS proof before the search and then guards the chosen move against certified opponent refutations — a certified refutation, not a safe-defense guarantee. | …keep one evaluator per seat, *see* proven forced wins instead of stumbling into them, and refuse moves the opponent can *prove*; unrefuted means unknown, not safe. |
 | 09 | [Acceptance: the measured ladder](09-acceptance/acceptance.md) | Tactical asserts, self-play flood, the match vs `TacticsEvaluator`, the sims gradient, the VCF solve rate; the default flips. | …answer for its strength in recorded numbers. |
+
+*Legacy (superseded, kept for history):* the retired hook-era packs
+remain on disk — old sub-chapter 08 "the TSS eye" in
+`08-the-tss-eye/` (the evaluator-owned root-hook design) and old
+sub-chapter 08b in `08b-the-ai-player/` (the player consuming that
+hook). Both describe the superseded hook-based design, are not the
+active path, and are preserved unmodified as historical material.
 
 The order is the motivation: the smallest experiencable increment
 first, the socket before the smarts, and every layer of the trust
@@ -72,8 +86,24 @@ included, nine small sub-chapters with four papers each; sub-chapter
 07 (the quiet whisper, an `[experiment]` gamble with a measured A/B)
 was inserted 2026-10-26); the
 original flat chapter set written 2026-10-13 is superseded (git
-history keeps it). The primer is the design authority;
-per-sub-chapter solutions quote the verified reference build.
+history keeps it). Redesigned again 2026-11-06: sub-chapters 08 (the TSS eye) and 08b
+(the AI player) are merged into ONE sub-chapter 08, "the AI player",
+at the player-orchestration level. The evaluator-owned root hook is
+retired before ever landing on `main`: `mcts::Evaluator` stays a
+one-method trait and `mcts::search` keeps returning `SearchOutcome`;
+the new `player` crate's `AiPlayer::decide` runs its own bounded,
+verified TSS proof for the side to move before the search and then
+applies the opponent-refutation guard. The four papers live in
+`08-the-ai-player/` and quote the verified reference worktree
+`../rust-ml-unified08-ref` (detached at base HEAD, uncommitted):
+`cargo test --release --locked --all-targets` reports 563 passed /
+0 failed / 5 ignored, with clippy and fmt green. The retired packs —
+old 08 in `08-the-tss-eye/` and old 08b in `08b-the-ai-player/` — are
+kept on disk as legacy (superseded, kept for history); they describe
+the hook-based design and are not the active path. The primer is the
+design authority; per-sub-chapter solutions quote the verified
+reference build that matches the document they appear in. The learner
+code has **not** landed — `main` has no `player` crate yet.
 **Not yet worked.** Keep this section current as sub-chapters land.
 
 ## References

@@ -281,8 +281,9 @@ and the `±0.20` double-three rung that sets the cap.
 * [`../06-the-three-ladder/the-three-ladder.md`](../06-the-three-ladder/the-three-ladder.md)
 — the previous sub-chapter: the value ladder rungs that must stay above
 the whisper.
-* [`../08-the-tss-eye/the-tss-eye.md`](../08-the-tss-eye/the-tss-eye.md)
-— the next sub-chapter: the root probe that sees sequences the whisper
+* [`../08-the-ai-player/the-ai-player.md`](../08-the-ai-player/the-ai-player.md)
+— the next sub-chapter: the player's own TSS probe that sees
+  sequences the whisper
 cannot.
 * [`../09-acceptance/acceptance.md`](../09-acceptance/acceptance.md) —
 where the A/B numbers feed the measured ladder.
