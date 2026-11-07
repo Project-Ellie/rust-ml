@@ -3,7 +3,16 @@ use std::rc::Rc;
 
 use engine::{Board, Move, Status};
 use mcts::{EvalRequest, EvalResult, Evaluator, SearchConfig, UniformEvaluator};
-use player::{AiPlayer, DecisionError, GuardConfig, GuardOutcome, OwnTssConfig, PlayerOptions};
+use player::{
+    AiPlayer, DecisionAction, DecisionError, GuardConfig, GuardOutcome, OwnTssConfig, PlayerOptions,
+};
+
+fn played(action: DecisionAction) -> Move {
+    match action {
+        DecisionAction::Play(mv) => mv,
+        DecisionAction::Resign(_) => panic!("expected play"),
+    }
+}
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 fn winning_position() -> Board {
@@ -64,7 +73,7 @@ fn zero_temperature_tied_visits_follow_the_highest_root_prior() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert_eq!(decision.mv, favorite);
+    assert_eq!(decision.action, DecisionAction::Play(favorite));
     assert_eq!(rng.random::<u64>(), untouched_rng.random::<u64>());
 }
 
@@ -141,8 +150,8 @@ fn ordinary_decisions_match_manual_search_stats_and_seeded_selection() {
 
         let decision = player.decide(&board, &options, &mut player_rng).unwrap();
 
-        assert_eq!(decision.mv, expected_move);
-        assert!(board.is_legal(decision.mv));
+        assert_eq!(decision.action, DecisionAction::Play(expected_move));
+        assert!(board.is_legal(played(decision.action)));
         let stats = decision
             .search
             .expect("ordinary search has real statistics");
@@ -155,6 +164,39 @@ fn ordinary_decisions_match_manual_search_stats_and_seeded_selection() {
         assert_eq!(stats.prior, expected_prior);
         assert_eq!(stats.value, expected_value);
         assert_eq!(player_rng.random::<u64>(), manual_rng.random::<u64>());
+    }
+}
+
+#[test]
+fn unknown_resignation_preserves_exact_decision_and_rng_with_noise_sampling_and_guard() {
+    let mut board = Board::new();
+    board.play(Move::new(7, 7).unwrap()).unwrap();
+    let original = board.clone();
+    for guard in [GuardConfig::disabled(), GuardConfig::baseline()] {
+        for simulations in [0, 3] {
+            let disabled = PlayerOptions {
+                simulations,
+                temperature: 0.7,
+                noise_epsilon: 0.25,
+                guard,
+                ..PlayerOptions::default()
+            };
+            let enabled = PlayerOptions {
+                resign: true,
+                ..disabled
+            };
+            let mut a = AiPlayer::new(Box::new(UniformEvaluator::new(0.3)));
+            let mut b = AiPlayer::new(Box::new(UniformEvaluator::new(0.3)));
+            let mut rng_a = StdRng::seed_from_u64(19);
+            let mut rng_b = StdRng::seed_from_u64(19);
+            assert_eq!(rng_a.random::<u64>(), rng_b.random::<u64>());
+            let ordinary = a.decide(&board, &disabled, &mut rng_a).unwrap();
+            let fallback = b.decide(&board, &enabled, &mut rng_b).unwrap();
+            assert_eq!(fallback, ordinary);
+            assert!(matches!(fallback.action, DecisionAction::Play(_)));
+            assert_eq!(rng_a.random::<u64>(), rng_b.random::<u64>());
+            assert_eq!(board, original);
+        }
     }
 }
 
@@ -190,10 +232,10 @@ fn evaluator_instance_persists_across_two_decisions() {
 
     let first = player.decide(&board, &options, &mut rng).unwrap();
     assert_eq!(*observed.borrow(), [1, 2]);
-    board.play(first.mv).unwrap();
+    board.play(played(first.action)).unwrap();
     let second = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert!(board.is_legal(second.mv));
+    assert!(board.is_legal(played(second.action)));
     assert_eq!(*observed.borrow(), [1, 2, 3, 4]);
 }
 
@@ -229,6 +271,7 @@ fn white_own_proof_bypasses_search_and_certifies_absolute_color() {
     let mut player = AiPlayer::new(Box::new(NeverEvaluate));
     let options = PlayerOptions {
         simulations: 100,
+        resign: true,
         own: OwnTssConfig::baseline(),
         ..PlayerOptions::default()
     };
@@ -237,14 +280,21 @@ fn white_own_proof_bypasses_search_and_certifies_absolute_color() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert_eq!(decision.mv, Move::new(7, 7).unwrap());
+    assert_eq!(
+        decision.action,
+        DecisionAction::Play(Move::new(7, 7).unwrap())
+    );
     assert!(decision.search.is_none());
-    assert_eq!(decision.guard.outcome, GuardOutcome::ProvenWin);
+    assert_eq!(
+        decision.guard.as_ref().unwrap().outcome,
+        GuardOutcome::ProvenWin
+    );
     assert_eq!(rng.random::<u64>(), untouched_rng.random::<u64>());
 }
 
 #[test]
 fn own_tss_config_defaults_and_presets() {
+    assert!(!PlayerOptions::default().resign);
     assert_eq!(PlayerOptions::default().own, OwnTssConfig::disabled());
     assert_eq!(
         OwnTssConfig::baseline(),
@@ -298,6 +348,7 @@ fn own_proof_bypasses_search_stats_and_rng() {
         simulations: 100,
         temperature: 1.0,
         noise_epsilon: 0.25,
+        resign: true,
         own: OwnTssConfig::baseline(),
         guard: GuardConfig::baseline(),
         ..PlayerOptions::default()
@@ -307,12 +358,13 @@ fn own_proof_bypasses_search_stats_and_rng() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert_eq!(decision.mv, certified);
+    assert_eq!(decision.action, DecisionAction::Play(certified));
     assert!(decision.search.is_none());
-    assert_eq!(decision.guard.outcome, GuardOutcome::ProvenWin);
-    assert_eq!(decision.guard.proposal, certified);
-    assert_eq!(decision.guard.checked, 0);
-    assert!(decision.guard.refuted.is_empty());
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::ProvenWin);
+    assert_eq!(guard.proposal, certified);
+    assert_eq!(guard.checked, 0);
+    assert!(guard.refuted.is_empty());
     assert_eq!(rng.random::<u64>(), untouched_rng.random::<u64>());
 }
 
@@ -343,13 +395,16 @@ fn disabled_own_probe_searches_vcf_position() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert!(board.is_legal(decision.mv));
+    assert!(board.is_legal(played(decision.action)));
     assert!(calls.get() > 0, "disabled probe must really search");
     let stats = decision
         .search
         .expect("ordinary search has real statistics");
     assert_eq!(stats.visits.iter().map(|(_, n)| n).sum::<u32>(), 9);
-    assert_eq!(decision.guard.outcome, GuardOutcome::Disabled);
+    assert_eq!(
+        decision.guard.as_ref().unwrap().outcome,
+        GuardOutcome::Disabled
+    );
 }
 
 #[test]
@@ -374,13 +429,16 @@ fn zero_budget_own_probe_falls_through_to_search() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert!(board.is_legal(decision.mv));
+    assert!(board.is_legal(played(decision.action)));
     assert!(
         calls.get() > 0,
         "an exhausted probe is unknown, so search runs"
     );
     assert!(decision.search.is_some());
-    assert_eq!(decision.guard.outcome, GuardOutcome::Disabled);
+    assert_eq!(
+        decision.guard.as_ref().unwrap().outcome,
+        GuardOutcome::Disabled
+    );
 }
 
 #[test]
@@ -403,7 +461,7 @@ fn proven_decision_does_not_short_circuit_a_later_quiet_root() {
     let mut rng = StdRng::seed_from_u64(17);
 
     let proven = player.decide(&vcf, &options, &mut rng).unwrap();
-    assert_eq!(proven.mv, certified);
+    assert_eq!(proven.action, DecisionAction::Play(certified));
     assert!(proven.search.is_none());
     assert_eq!(calls.get(), 0, "the proof path must not evaluate");
 
@@ -420,10 +478,14 @@ fn proven_decision_does_not_short_circuit_a_later_quiet_root() {
     let stats = searched.search.expect("the quiet root has real statistics");
     assert_eq!(stats.side_to_move, quiet.to_move());
     assert_eq!(stats.visits.iter().map(|(_, n)| n).sum::<u32>(), 5);
-    assert!(quiet.is_legal(searched.mv));
+    assert!(quiet.is_legal(played(searched.action)));
     assert_ne!(
-        searched.mv, certified,
+        searched.action,
+        DecisionAction::Play(certified),
         "no stale proof move from the earlier decision"
     );
-    assert_eq!(searched.guard.outcome, GuardOutcome::Disabled);
+    assert_eq!(
+        searched.guard.as_ref().unwrap().outcome,
+        GuardOutcome::Disabled
+    );
 }

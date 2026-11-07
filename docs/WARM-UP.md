@@ -340,6 +340,21 @@ Two further tutorial tracks are written and verified, ready to work:
   (its historical weights are superseded by the fork-bonus revision;
   the primer supersedes its chapter order; the spec has been narrowly
   amended to player-level orchestration).
+  **Native study save/load:** the owner's implementation landed on `main`
+  at `06d9598` (2026-11-07), with shell-only file I/O, complete-tree
+  validation, transactional load, bounded records, and same-directory
+  replacement writes. **Opt-in heuristic resignation:** implemented in
+  the working tree; both player and CLI/history/version-2 persistence
+  slices passed independent review.
+  `--resign` is false by default for both evaluators; concession annotates
+  the current node, retains real search statistics and existing children,
+  and is not a global loss proof. The writer emits v2; the reader accepts
+  v1/v2, refusing v1 resignation semantics. Full-workspace release QA:
+  **649 passed / 0 failed / 7 ignored**, plus **3 passing doc tests**;
+  clippy, formatting, engine-island and genuine lean-CLI checks passed.
+  Tests used `gomoku/target/resignation-qa`; the existing release executable
+  and the owner's saved game were left unchanged. See the
+  [CLI usage and persistence contract](../gomoku/crates/cli/README.md).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
   **COMPLETE (2026-10-26)**: chapters 01–07 and the chapter-09
   acceptance are worked and on `main` (242 cli tests green, one

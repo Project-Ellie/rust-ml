@@ -1,6 +1,6 @@
 # Save/load, then optional AI resignation — solution
 
-This is proposed code, checked against working-tree source at `a64420f`, not an implemented or compiled patch. Apply Part 1 independently before Part 2. Existing learner code is the implementation reference; baseline fork bonuses and saved diagnostic results are outside this change.
+Status (2026-11-07): the owner's native save/load implementation landed on `main` at `06d9598`. The opt-in resignation feature, including CLI/history/version-2 persistence, is implemented in the working tree; both slices passed independent review. Fresh full-workspace release QA passed: 649 tests, zero failures, seven ignored, plus three doc tests; clippy, formatting, the engine-island check, and a genuine lean-CLI compile check passed. Builds used `gomoku/target/resignation-qa`, leaving the existing release executable and the owner's saved game untouched. The examples below are the original implementation proposal, not an exact transcription of current source. Existing learner code is the implementation reference; baseline fork bonuses and saved diagnostic results are outside this change.
 
 ## Part 1 — `save PATH` and `load PATH`
 
@@ -709,7 +709,8 @@ mod tests {
         let init = SessionInit { seed: Some(3477), ..SessionInit::hotseat() };
         let mut core = SessionCore::new(init);
         let _ = core.rng.random::<u64>();
-        let mut expected_save_rng = core.rng.clone();
+        let mut expected_save_rng = StdRng::seed_from_u64(3477);
+        let _ = expected_save_rng.random::<u64>();
         let text = core.export_record_json().unwrap();
         assert_eq!(core.rng.random::<u64>(), expected_save_rng.random::<u64>());
         let mut loaded = SessionCore::import_record_json(&text).unwrap();
@@ -839,7 +840,7 @@ Create `gomoku/crates/player/src/resign.rs` with this complete private helper.
 ```rust
 //! Conservative admission for an explicitly enabled heuristic concession.
 use crate::{GuardConfig, ResignReason};
-use engine::{Board, Color, Move, Proof, SearchBudget, Status};
+use engine::{Board, Color, Proof, SearchBudget, Status};
 use mcts::Edge;
 
 pub(crate) fn consider(
@@ -853,8 +854,9 @@ pub(crate) fn consider(
     if !engine::immediate_wins(board, board.to_move()).is_empty() {
         return None;
     }
-    let legal: Vec<Move> = board.empty_moves().filter(|&mv| board.is_legal(mv)).collect();
-    if legal.is_empty() || edges.len() != legal.len() {
+    // On an ongoing board every empty cell is legal; no temporary vector.
+    let legal_count = board.empty_moves().count();
+    if legal_count == 0 || edges.len() != legal_count {
         return None;
     }
     let mut seen = [false; 225];
@@ -1123,7 +1125,7 @@ In `restore`, insert this second pass immediately before its final `history.curs
             if let Some(ResignationRecord::VerifiedOpponentVcf { by, candidates }) = &node.resignation {
                 history.cursor = index as u32;
                 let board = history.board();
-                let cap = board.empty_moves().filter(|&mv| board.is_legal(mv)).count().min(5);
+                let cap = board.empty_moves().count().min(5);
                 if board.status() != engine::Status::Ongoing || *by != board.to_move()
                     || *candidates == 0 || *candidates > cap
                 {
@@ -1272,7 +1274,7 @@ Add this test inside the existing tests of [player/src/lib.rs](../../gomoku/crat
         let expected = SearchStats::from_searched(&searched.tree, searched.root, &board);
         let mut ai = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.0)));
         let mut rng = StdRng::seed_from_u64(77);
-        let mut untouched = rng.clone();
+        let mut untouched = StdRng::seed_from_u64(77);
         let decision = ai.decide(&board, &options, &mut rng).unwrap();
         assert_eq!(decision.action, DecisionAction::Resign(
             ResignReason::VerifiedOpponentVcf { candidates: 5 }));
@@ -1292,7 +1294,7 @@ Add this test inside the existing tests of [player/src/lib.rs](../../gomoku/crat
         let mut a = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.0)));
         let mut b = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.0)));
         let mut rng_a = StdRng::seed_from_u64(19);
-        let mut rng_b = rng_a.clone();
+        let mut rng_b = StdRng::seed_from_u64(19);
         let previous = a.decide(&board, &ordinary, &mut rng_a).unwrap();
         let fallback = b.decide(&board, &enabled, &mut rng_b).unwrap();
         assert_eq!(fallback, previous);

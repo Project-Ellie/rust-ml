@@ -2,7 +2,8 @@
 //!
 //! An [`AiPlayer`] retains its evaluator across decisions. Each decision
 //! runs a fresh MCTS search; certified own forced wins bypass sampling
-//! and carry no fabricated search statistics.
+//! and carry no fabricated search statistics. Optional heuristic resignation
+//! requires verified opponent refutations of the top search candidates.
 
 #![deny(missing_docs)]
 
@@ -11,6 +12,7 @@ use mcts::{Evaluator, SearchConfig};
 use rand::Rng;
 
 mod guard;
+mod resign;
 pub use guard::{GuardConfig, GuardDiagnostics, GuardOutcome};
 
 /// Own-side bounded TSS probe settings for one decision.
@@ -73,6 +75,9 @@ pub struct PlayerOptions {
     pub own: OwnTssConfig,
     /// Optional [experiment] defensive refutation guard; disabled by default.
     pub guard: GuardConfig,
+    /// Enable heuristic resignation after verified top-candidate refutations;
+    /// disabled by default. Unchecked lower-ranked moves may still defend.
+    pub resign: bool,
 }
 
 impl Default for PlayerOptions {
@@ -86,19 +91,39 @@ impl Default for PlayerOptions {
             noise_alpha: 0.3,
             own: OwnTssConfig::disabled(),
             guard: GuardConfig::disabled(),
+            resign: false,
         }
     }
 }
 
-/// A chosen move and, when a search ran, its real statistics.
+/// Why the player voluntarily conceded, not an engine adjudication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResignReason {
+    /// Every checked top-ranked candidate has a verified opponent VCF.
+    VerifiedOpponentVcf {
+        /// Checked candidates; weaker unchecked moves may still defend.
+        candidates: usize,
+    },
+}
+
+/// A decision either plays a stone or concedes without playing one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionAction {
+    /// Play this legal move.
+    Play(engine::Move),
+    /// Concede under an explicitly enabled heuristic.
+    Resign(ResignReason),
+}
+
+/// One player action and statistics from the real search, when it ran.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decision {
-    /// Move to play.
-    pub mv: engine::Move,
-    /// Search statistics, or `None` when a certified own win bypassed search.
+    /// Play or concede; no sentinel move represents resignation.
+    pub action: DecisionAction,
+    /// Real search stats; absent only for the certified own-proof bypass.
     pub search: Option<SearchStats>,
-    /// Defensive experiment diagnostics, independent of search statistics.
-    pub guard: GuardDiagnostics,
+    /// Selection diagnostics; absent when no proposal was sampled.
+    pub guard: Option<GuardDiagnostics>,
 }
 
 /// Statistics extracted from a real searched tree, never from a proof.
@@ -108,7 +133,8 @@ pub struct SearchStats {
     pub side_to_move: engine::Color,
     /// All root moves and visit counts, descending by count, then move index.
     pub visits: Vec<(engine::Move, u32)>,
-    /// All root priors after optional noise, descending by prior, then move index.
+    /// All root priors, descending by prior, then move index.
+    /// Pre-noise on resignation; after optional noise on ordinary play.
     pub prior: Vec<(engine::Move, f32)>,
     /// Root value from the side-to-move perspective: `sum(W) / sum(N)`.
     /// Zero when no simulations have visited an edge.
@@ -142,7 +168,7 @@ impl SearchStats {
     }
 }
 
-/// Failure to decide a move.
+/// Failure to decide an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecisionError {
     /// The board is already won or drawn.
@@ -187,17 +213,22 @@ impl AiPlayer {
         Self { evaluator }
     }
 
-    /// Decide a move without modifying `board`.
+    /// Decide whether to play or concede without modifying `board`.
     ///
     /// A certified own forced win returns immediately without consuming RNG,
     /// calling the evaluator, or constructing search statistics. Otherwise
-    /// the order is search, optional root noise, then temperature selection
-    /// over the root edges (zero temperature breaks visit ties by prior). Noise is deliberately applied after search to
-    /// preserve the existing CLI behavior. An enabled guard then checks the
+    /// the order is search, optional heuristic resignation, optional root
+    /// noise, then temperature selection over the root edges (zero
+    /// temperature breaks visit ties by prior). Noise is deliberately applied
+    /// after search to preserve the existing CLI behavior. An enabled guard then checks the
     /// selected proposal and ranked alternatives on cloned boards; it may
     /// substitute the returned move, but the search statistics always describe
     /// the real proposal search, never the guard's hypothetical probes. An
-    /// unrefuted candidate is unknown, not certified safe.
+    /// unrefuted candidate is unknown, not certified safe. Resignation checks
+    /// the top `min(5, legal_count)` candidates with the baseline guard budget
+    /// before any RNG draws. Every successor must have a verified opponent VCF;
+    /// unknown cancels resignation. Lower-ranked moves may still defend, so
+    /// this opt-in concession is not an all-legal-moves loss proof.
     ///
     /// # Errors
     /// Returns [`DecisionError::GameOver`] for a won or drawn board, without
@@ -222,9 +253,9 @@ impl AiPlayer {
                 .and_then(|proof| certified_own_move(board, &proof))
             {
                 return Ok(Decision {
-                    mv,
+                    action: DecisionAction::Play(mv),
                     search: None,
-                    guard: GuardDiagnostics::new(mv, GuardOutcome::ProvenWin),
+                    guard: Some(GuardDiagnostics::new(mv, GuardOutcome::ProvenWin)),
                 });
             }
         }
@@ -234,6 +265,16 @@ impl AiPlayer {
         };
         let mcts::SearchOutcome { mut tree, root } =
             mcts::search(board, &mut *self.evaluator, &config);
+        if options.resign
+            && let Some(reason) =
+                resign::consider(board, tree.node(root).edges(), engine::prove_forced_win)
+        {
+            return Ok(Decision {
+                action: DecisionAction::Resign(reason),
+                search: Some(SearchStats::from_searched(&tree, root, board)),
+                guard: None,
+            });
+        }
         if options.noise_epsilon > 0.0 {
             mcts::add_dirichlet_noise(
                 &mut tree,
@@ -254,9 +295,9 @@ impl AiPlayer {
             engine::prove_forced_win,
         );
         Ok(Decision {
-            mv,
+            action: DecisionAction::Play(mv),
             search: Some(SearchStats::from_searched(&tree, root, board)),
-            guard,
+            guard: Some(guard),
         })
     }
 }
@@ -285,6 +326,75 @@ mod tests {
             board.play(Move::new(row, col).unwrap()).unwrap();
         }
         board
+    }
+
+    #[test]
+    fn resignation_keeps_real_pre_noise_statistics_and_consumes_no_rng() {
+        use rand::{RngExt, SeedableRng, rngs::StdRng};
+        let mv = |r, c| Move::new(r, c).unwrap();
+        let board = Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let original = board.clone();
+        let options = PlayerOptions {
+            simulations: 7,
+            resign: true,
+            temperature: 1.0,
+            noise_epsilon: 0.25,
+            guard: GuardConfig::baseline(),
+            ..PlayerOptions::default()
+        };
+        let mut evaluator = mcts::UniformEvaluator::new(0.4);
+        let searched = mcts::search(
+            &board,
+            &mut evaluator,
+            &SearchConfig {
+                simulations: options.simulations,
+                c_puct: options.c_puct,
+            },
+        );
+        let expected = SearchStats::from_searched(&searched.tree, searched.root, &board);
+        assert_eq!(expected.visits.iter().map(|e| e.1).sum::<u32>(), 7);
+        let mut ai = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.4)));
+        let mut rng = StdRng::seed_from_u64(77);
+        let mut untouched = StdRng::seed_from_u64(77);
+        // Compare after an already-advanced generator, not just fresh seeds.
+        assert_eq!(rng.random::<u64>(), untouched.random::<u64>());
+        let decision = ai.decide(&board, &options, &mut rng).unwrap();
+        assert_eq!(
+            decision.action,
+            DecisionAction::Resign(ResignReason::VerifiedOpponentVcf { candidates: 5 })
+        );
+        assert!(decision.guard.is_none());
+        assert_eq!(decision.search, Some(expected));
+        assert_eq!(rng.random::<u64>(), untouched.random::<u64>());
+        assert_eq!(board, original);
+    }
+
+    #[test]
+    fn ordinary_action_has_optional_selection_diagnostics() {
+        use rand::{SeedableRng, rngs::StdRng};
+        let board = Board::new();
+        let mut ai = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.0)));
+        let decision = ai
+            .decide(
+                &board,
+                &PlayerOptions {
+                    simulations: 0,
+                    ..PlayerOptions::default()
+                },
+                &mut StdRng::seed_from_u64(1),
+            )
+            .unwrap();
+        assert_eq!(
+            decision.action,
+            DecisionAction::Play(Move::new(0, 0).unwrap())
+        );
+        assert_eq!(decision.guard.unwrap().outcome, GuardOutcome::Disabled);
+        assert!(decision.search.is_some());
     }
 
     #[test]

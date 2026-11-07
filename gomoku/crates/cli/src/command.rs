@@ -94,7 +94,7 @@ pub enum Command {
     Load {
         /// Literal source path
         path: PathBuf,
-    }
+    },
 }
 
 /// Phase of a Swap2 opening ceremony.
@@ -176,6 +176,13 @@ pub enum Event {
         /// Final status.
         result: Status,
     },
+    /// The side to move made a heuristic concession without placing a stone.
+    Resigned {
+        /// Side that conceded.
+        by: Color,
+        /// Number of top candidates with verified opponent refutations.
+        candidates: usize,
+    },
     /// The session was reset to its initial opening.
     Reset,
     /// A stone was placed during Swap2 opening.
@@ -253,6 +260,10 @@ impl fmt::Display for Event {
                 write!(f, "{seat:?} simulations set to {sims}")
             }
             Event::GameOver { result } => write!(f, "Game over: {result:?}"),
+            Event::Resigned { by, candidates } => write!(
+                f,
+                "{by:?} resigned: {candidates} top candidates VCF-refuted (heuristic; other moves unchecked)"
+            ),
             Event::Reset => write!(f, "Reset"),
             Event::StonePlaced { mv, color } => write!(f, "Placed {color:?} at {}", fmt_move(*mv)),
             Event::StoneRemoved { mv } => write!(f, "Removed stone from {}", fmt_move(*mv)),
@@ -401,10 +412,10 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             return Err(CommandError::Parse(format!("{verb} requires a path")));
         }
         let path = std::path::PathBuf::from(remainder);
-        return Ok(if verb.eq_ignore_ascii_case("save"){
-           Command::Save{path}
+        return Ok(if verb.eq_ignore_ascii_case("save") {
+            Command::Save { path }
         } else {
-            Command::Load {path}
+            Command::Load { path }
         });
     }
 
@@ -792,13 +803,25 @@ mod tests {
 
     #[test]
     fn file_paths_preserve_case_and_internal_spaces() {
-        assert_eq!(parse("  SaVe   Games/My  Study.JSON \t").unwrap(),
-                   Command::Save { path: "Games/My  Study.JSON".into() });
-        assert_eq!(parse("LoAd\tMixed Case/a.json").unwrap(),
-                   Command::Load { path: "Mixed Case/a.json".into() });
+        assert_eq!(
+            parse("  SaVe   Games/My  Study.JSON \t").unwrap(),
+            Command::Save {
+                path: "Games/My  Study.JSON".into()
+            }
+        );
+        assert_eq!(
+            parse("LoAd\tMixed Case/a.json").unwrap(),
+            Command::Load {
+                path: "Mixed Case/a.json".into()
+            }
+        );
         assert!(parse("save \t").is_err());
         assert!(parse("load").is_err());
-        assert_eq!(parse("save ~/x.json").unwrap(),
-                   Command::Save { path: "~/x.json".into() });
+        assert_eq!(
+            parse("save ~/x.json").unwrap(),
+            Command::Save {
+                path: "~/x.json".into()
+            }
+        );
     }
 }

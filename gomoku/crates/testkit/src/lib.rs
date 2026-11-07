@@ -65,6 +65,7 @@ pub fn event_type(ev: &Event) -> &'static str {
         Event::SeatChanged { .. } => "SeatChanged",
         Event::ConfigChanged { .. } => "ConfigChanged",
         Event::GameOver { .. } => "GameOver",
+        Event::Resigned { .. } => "Resigned",
         Event::Reset => "Reset",
         Event::StonePlaced { .. } => "StonePlaced",
         Event::StoneRemoved { .. } => "StoneRemoved",
@@ -94,6 +95,7 @@ pub fn ai_config_tactics() -> AiConfig {
         temperature: 0.0,
         noise_epsilon: 0.0,
         explicit_selection: false,
+        resign: false,
     }
 }
 
@@ -108,6 +110,7 @@ pub fn default_ai_config() -> AiConfig {
         temperature: 0.0,
         noise_epsilon: 0.0,
         explicit_selection: false,
+        resign: false,
     }
 }
 

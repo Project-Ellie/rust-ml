@@ -12,10 +12,10 @@ pub mod actor;
 pub mod command;
 /// Text-formatting helpers.
 pub mod fmt;
-/// Persistent variation tree.
-pub mod history;
 /// load and save files
 pub mod game_file;
+/// Persistent variation tree.
+pub mod history;
 /// Algebraic notation.
 pub mod notation;
 /// Swap2 opening ceremony state.

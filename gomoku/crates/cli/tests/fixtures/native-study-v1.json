@@ -1,0 +1,292 @@
+{
+  "format": "gomoku-study",
+  "version": 1,
+  "history": {
+    "root": {
+      "black": [],
+      "white": [],
+      "to_move": "Black"
+    },
+    "nodes": [
+      {
+        "parent": null,
+        "square": null
+      },
+      {
+        "parent": 0,
+        "square": [
+          7,
+          7
+        ]
+      },
+      {
+        "parent": 1,
+        "square": [
+          8,
+          8
+        ]
+      },
+      {
+        "parent": 2,
+        "square": [
+          6,
+          8
+        ]
+      },
+      {
+        "parent": 3,
+        "square": [
+          6,
+          7
+        ]
+      },
+      {
+        "parent": 4,
+        "square": [
+          8,
+          6
+        ]
+      },
+      {
+        "parent": 5,
+        "square": [
+          9,
+          5
+        ]
+      },
+      {
+        "parent": 6,
+        "square": [
+          7,
+          6
+        ]
+      },
+      {
+        "parent": 7,
+        "square": [
+          7,
+          5
+        ]
+      },
+      {
+        "parent": 8,
+        "square": [
+          5,
+          6
+        ]
+      },
+      {
+        "parent": 9,
+        "square": [
+          9,
+          6
+        ]
+      },
+      {
+        "parent": 10,
+        "square": [
+          5,
+          9
+        ]
+      },
+      {
+        "parent": 11,
+        "square": [
+          4,
+          10
+        ]
+      },
+      {
+        "parent": 12,
+        "square": [
+          5,
+          7
+        ]
+      },
+      {
+        "parent": 9,
+        "square": [
+          6,
+          6
+        ]
+      },
+      {
+        "parent": 14,
+        "square": [
+          5,
+          9
+        ]
+      },
+      {
+        "parent": 15,
+        "square": [
+          4,
+          10
+        ]
+      },
+      {
+        "parent": 16,
+        "square": [
+          5,
+          8
+        ]
+      },
+      {
+        "parent": 17,
+        "square": [
+          5,
+          7
+        ]
+      },
+      {
+        "parent": 18,
+        "square": [
+          4,
+          8
+        ]
+      },
+      {
+        "parent": 19,
+        "square": [
+          3,
+          8
+        ]
+      },
+      {
+        "parent": 20,
+        "square": [
+          6,
+          10
+        ]
+      },
+      {
+        "parent": 21,
+        "square": [
+          3,
+          7
+        ]
+      },
+      {
+        "parent": 22,
+        "square": [
+          8,
+          12
+        ]
+      },
+      {
+        "parent": 23,
+        "square": [
+          7,
+          11
+        ]
+      },
+      {
+        "parent": 24,
+        "square": [
+          6,
+          9
+        ]
+      },
+      {
+        "parent": 25,
+        "square": [
+          4,
+          7
+        ]
+      },
+      {
+        "parent": 26,
+        "square": [
+          2,
+          7
+        ]
+      },
+      {
+        "parent": 27,
+        "square": [
+          9,
+          7
+        ]
+      },
+      {
+        "parent": 28,
+        "square": [
+          7,
+          9
+        ]
+      },
+      {
+        "parent": 29,
+        "square": [
+          4,
+          9
+        ]
+      },
+      {
+        "parent": 30,
+        "square": [
+          6,
+          11
+        ]
+      },
+      {
+        "parent": 31,
+        "square": [
+          6,
+          12
+        ]
+      },
+      {
+        "parent": 32,
+        "square": [
+          7,
+          10
+        ]
+      },
+      {
+        "parent": 33,
+        "square": [
+          7,
+          8
+        ]
+      },
+      {
+        "parent": 34,
+        "square": [
+          8,
+          9
+        ]
+      },
+      {
+        "parent": 35,
+        "square": [
+          9,
+          9
+        ]
+      }
+    ],
+    "cursor": 36
+  },
+  "black": {
+    "Ai": {
+      "evaluator": "Baseline",
+      "simulations": 10000,
+      "c_puct": 1.5,
+      "temperature": 1.0,
+      "noise_epsilon": 0.0,
+      "explicit_selection": true
+    }
+  },
+  "white": "Human",
+  "default_config": {
+    "evaluator": "Baseline",
+    "simulations": 10000,
+    "c_puct": 1.5,
+    "temperature": 1.0,
+    "noise_epsilon": 0.0,
+    "explicit_selection": true
+  },
+  "black_sims": null,
+  "white_sims": null,
+  "seed": 3477
+}

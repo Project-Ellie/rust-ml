@@ -138,6 +138,15 @@ pub fn print_state(core: &SessionCore, header: &str) -> Vec<String> {
         "ply {}  status {:?}  black {:?}  white {:?}",
         snapshot.ply, snapshot.status, snapshot.black, snapshot.white
     ));
+    if let Some(resignation) = snapshot.resignation {
+        lines.push(
+            crate::command::Event::Resigned {
+                by: resignation.by,
+                candidates: resignation.candidates,
+            }
+            .to_string(),
+        );
+    }
     if !snapshot.branch_options.is_empty() {
         let opts: Vec<String> = snapshot
             .branch_options

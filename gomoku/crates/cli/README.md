@@ -1,10 +1,23 @@
 # `cli` — terminal Gomoku front-end
 
+## Abstract
+
 The `cli` crate is split into a headless library (variation-tree
 history, command language, session core, seat actors, the Swap2
 opening) and the thin `gomoku` binary. The terminal front-end is the
 study table: two seats, human or AI in any combination, on a
 persistent variation tree.
+
+## Glossary
+
+- **Study**: a root board, variation tree, cursor, and seat configurations.
+- **MCTS**: Monte Carlo tree search, which supplies candidate visits and priors.
+- **PUCT**: the prior-guided exploration rule used by MCTS.
+- **TSS**: threat-space search, the engine's bounded forced-win prover.
+- **VCF**: victory by continuous fours, the forcing lines checked by the
+  existing engine proof verifier.
+- **Concession**: a historical resignation annotation, not an engine win
+  or a proof that every legal move loses.
 
 ## Build
 
@@ -91,17 +104,40 @@ mode:
 | command | action |
 |---------|--------|
 | `<square>` or `play <square>` | play a move, e.g. `h8` |
-| `step` | let the AI play the side to move |
+| `step` | let the AI play or, with `--resign`, concede for the side to move |
 | `back [N]` / `forward [N]` | walk the variation tree |
 | `var N` | choose child variation N |
 | `take black\|white\|both` | make seat(s) human |
 | `release black\|white\|both` | release seat(s) to the AI |
 | `sims black\|white N` | set per-seat simulations |
 | `new` | reset to the opening |
+| `save PATH` / `load PATH` | save or replace a standalone study |
 | `h`, `help`, `?` | show help |
 | `q`, `quit`, `exit` | leave |
 
-An empty line steps the AI when the side-to-move seat is AI.
+An empty line steps the AI when the side-to-move seat is AI and the
+position is unfinished.
+
+### Saving and loading
+
+`save PATH` writes the full variation tree and cursor, root stones, seats,
+AI defaults, simulation overrides, and optional launch seed. `load PATH`
+validates the complete study before replacing the session; a failed load
+leaves the session and overlays unchanged. Both refuse an unfinished
+Swap2 ceremony. Paths are literal trimmed command remainders: spaces are
+retained, but quotes, `~`, variables, and shell escapes are not expanded.
+
+The writer emits native study **version 2**, including optional concession
+annotations on every tree node and AI resignation settings. The reader
+accepts versions 1 and 2 only. Old version-1 records load with missing
+resignation settings disabled and annotations absent; version 1 cannot
+contain enabled resignation settings or annotations. Part-1-only readers
+reject version 2 rather than dropping its semantics.
+
+Search statistics, proofs, puzzle-pack context, display state, and random
+generator state are not saved. Loading reseeds from the saved launch seed
+(or fresh randomness if absent), not from the point at which play stopped.
+Loaded `new` returns to the loaded root with fresh unannotated history.
 
 ### Line mode
 
@@ -129,11 +165,38 @@ End of input quits the session.
 | `--black-sims N` | — | override the Black seat's simulations |
 | `--white-sims N` | — | override the White seat's simulations |
 | `--seed N` | random | seed for reproducible sessions |
+| `--resign` | false | opt in to heuristic top-five concession for either evaluator |
 
 When neither `--temperature` nor `--noise` is given, AI-vs-AI sessions
 from an empty board use an opening schedule for the first ten plies
 (temperature 1.0 with Dirichlet noise) to vary the opening. Passing
-either flag explicitly disables the schedule.
+either flag explicitly disables the schedule. `--resign` does not disable
+or otherwise change this schedule; it reaches both initial AI seats and
+seats later assigned with `release`.
+
+### Optional heuristic resignation
+
+After a real search, before noise or sampling, the player ranks candidates
+by visits, then prior, then move index. With `--resign`, it checks at most
+five top candidates (all if fewer than five empty cells remain). Each
+successor must have an opponent VCF certificate accepted by the existing
+engine verifier. Each probe uses the existing 1,000-node / 10-ply guard
+budget; unknown or exhausted results cancel the concession. An own
+immediate win also cancels it, and the existing certified-own-win bypass
+remains unchanged.
+
+This is a **heuristic**, not a global loss proof: other moves are unchecked
+and might save the game. The displayed outcome states the candidate count
+and this limitation. Concession annotates the current node without adding
+a stone, advancing the cursor, or changing engine status. The real search
+statistics remain available for policy and value display; TSS display is
+disabled at finished nodes.
+
+At a conceded node, Enter, Space, and an empty line do nothing; typed
+`play` and `step` fail. No command overrides the concession there.
+`back`, `forward`, and `var` remain available, including navigation into
+already-existing children or siblings. Returning to the annotated node
+restores its concession. `new` and puzzle navigation create fresh roots.
 
 ## Self-play
 
@@ -155,3 +218,11 @@ cargo run -p cli --bin sessiondemo    # headless REPL over the session core
 
 All board input uses algebraic notation: columns `a`–`o` (left to
 right), rows `1`–`15` (top to bottom); `h8` is the centre.
+
+## References
+
+- [Player decision pipeline](../player/src/lib.rs) and
+  [concession admission](../player/src/resign.rs).
+- [Engine TSS prover and proof verifier](../engine/src/tss.rs).
+- [Native study validation](src/session/record.rs) and
+  [history records](src/history/record.rs).

@@ -196,15 +196,17 @@ pub struct Snapshot {
     pub last_move: Option<Move>,
     /// the Swap2 ceremony state, `None` when no ceremony is in progress
     pub opening: Option<OpeningSnapshot>,
+    /// Historical heuristic concession at the current position, if any.
+    pub resignation: Option<crate::history::Resignation>,
 }
 
 impl Serialize for Snapshot {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        // The `opening` field is written only while a ceremony is in
-        // progress, so the wire format of an ordinary session is
-        // byte-identical to before the Swap2 sub-chapter.
-        let field_count = if self.opening.is_some() { 7 } else { 6 };
+        // Optional annotations are omitted, preserving the old wire format
+        // for ordinary sessions without a ceremony or concession.
+        let field_count =
+            6 + usize::from(self.opening.is_some()) + usize::from(self.resignation.is_some());
         let mut state = serializer.serialize_struct("Snapshot", field_count)?;
         state.serialize_field("ply", &self.ply)?;
         state.serialize_field("branch_options", &self.branch_options)?;
@@ -214,6 +216,9 @@ impl Serialize for Snapshot {
         state.serialize_field("last_move", &self.last_move)?;
         if let Some(opening) = &self.opening {
             state.serialize_field("opening", opening)?;
+        }
+        if let Some(resignation) = &self.resignation {
+            state.serialize_field("resignation", resignation)?;
         }
         state.end()
     }
@@ -232,6 +237,7 @@ impl<'de> Deserialize<'de> for Snapshot {
             // `Option` fields are implicitly optional on the wire: a
             // snapshot written before this field existed still parses.
             opening: Option<OpeningSnapshot>,
+            resignation: Option<crate::history::Resignation>,
         }
         let helper = SnapshotHelper::deserialize(deserializer)?;
         Ok(Snapshot {
@@ -242,6 +248,7 @@ impl<'de> Deserialize<'de> for Snapshot {
             status: status_from_str(&helper.status).map_err(serde::de::Error::custom)?,
             last_move: helper.last_move,
             opening: helper.opening,
+            resignation: helper.resignation,
         })
     }
 }
@@ -331,6 +338,7 @@ impl SessionCore {
             status: self.history.board().status(),
             last_move: self.history.board().moves().last().copied(),
             opening: self.opening.as_ref().map(OpeningState::snapshot),
+            resignation: self.history.resignation(),
         }
     }
 
@@ -344,6 +352,12 @@ impl SessionCore {
     #[must_use]
     pub fn board(&self) -> Board {
         self.history.board()
+    }
+
+    /// Whether the cursor position is finished by engine result or concession.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.history.board().status() != Status::Ongoing || self.history.resignation().is_some()
     }
 
     /// The stored search info at the cursor, if any.
@@ -390,7 +404,7 @@ impl SessionCore {
             Command::Reveal => self.execute_reveal(),
             Command::NextPuzzle => self.execute_puzzle_nav(1),
             Command::PrevPuzzle => self.execute_puzzle_nav(-1),
-            Command::Save {..} | Command::Load{..} => Err(CommandError::ShellOnly),
+            Command::Save { .. } | Command::Load { .. } => Err(CommandError::ShellOnly),
         }
     }
 
@@ -426,10 +440,10 @@ impl SessionCore {
         if self.opening.is_some() {
             return Err(CommandError::OpeningInProgress);
         }
-        let board = self.history.board();
-        if board.status() != Status::Ongoing {
+        if self.is_finished() {
             return Err(CommandError::GameOver);
         }
+        let board = self.history.board();
         let side = board.to_move();
         let config = match self.occupant(side) {
             Occupant::Ai(cfg) => cfg.clone(),
@@ -450,6 +464,7 @@ impl SessionCore {
             temperature: effective_config.temperature,
             noise_epsilon: effective_config.noise_epsilon,
             noise_alpha: 0.3,
+            resign: effective_config.resign,
             own: match effective_config.evaluator {
                 EvaluatorKind::Baseline => player::OwnTssConfig::baseline(),
                 EvaluatorKind::Tactics => player::OwnTssConfig::disabled(),
@@ -468,7 +483,13 @@ impl SessionCore {
         let decision = player
             .decide(&board, &options, &mut self.rng)
             .map_err(|player::DecisionError::GameOver| CommandError::GameOver)?;
-        let mv = decision.mv;
+        let mv = match decision.action {
+            player::DecisionAction::Play(mv) => mv,
+            player::DecisionAction::Resign(reason) => {
+                let stats = decision.search.expect("resignation follows a real search");
+                return Ok(self.record_resignation(reason, stats, &effective_config));
+            }
+        };
         let Some(stats) = decision.search else {
             // A certified own forced win bypasses search and its statistics.
             return self.execute_play(mv);
@@ -501,6 +522,26 @@ impl SessionCore {
         }
 
         Ok(events)
+    }
+
+    fn record_resignation(
+        &mut self,
+        reason: player::ResignReason,
+        stats: player::SearchStats,
+        config: &AiConfig,
+    ) -> Vec<Event> {
+        let player::ResignReason::VerifiedOpponentVcf { candidates } = reason;
+        let resignation = crate::history::Resignation {
+            by: self.history.board().to_move(),
+            candidates,
+        };
+        self.history.set_resignation(resignation);
+        self.search_info
+            .insert(self.history.cursor(), SearchInfo::from_stats(stats, config));
+        vec![Event::Resigned {
+            by: resignation.by,
+            candidates,
+        }]
     }
 
     /// Reset the session to its initial opening.
@@ -569,10 +610,10 @@ impl SessionCore {
             return opening.place(mv);
         }
 
-        let board = self.history.board();
-        if board.status() != Status::Ongoing {
+        if self.is_finished() {
             return Err(CommandError::GameOver);
         }
+        let board = self.history.board();
         let original_cursor = self.history.cursor();
         let outcome = self.history.play(mv)?;
         let mut events = Vec::new();
@@ -862,6 +903,287 @@ mod tests {
         let (coords, _) = moves.as_chunks::<2>();
         for [r, c] in coords.iter() {
             play(core, *r, *c);
+        }
+    }
+
+    #[test]
+    fn resign_step_both_evaluator_mappings_preserve_position_and_real_stats() {
+        use rand::RngExt;
+        let board = Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let white_loses = Board::from_position(
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6), mv(12, 12)],
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            Color::White,
+        )
+        .unwrap();
+        for board in [board, white_loses] {
+            let side = board.to_move();
+            for kind in [EvaluatorKind::Tactics, EvaluatorKind::Baseline] {
+                let config = AiConfig {
+                    simulations: 3,
+                    resign: true,
+                    ..AiConfig::default()
+                };
+                let mut core = SessionCore::new(SessionInit {
+                    opening: board.clone(),
+                    seed: Some(42),
+                    ..SessionInit::versus_ai(side.other(), config.clone())
+                });
+                *core.occupant_mut(side) = Occupant::Ai(AiConfig {
+                    evaluator: kind,
+                    ..config
+                });
+                let injected = Some(player::AiPlayer::new(Box::new(
+                    mcts::UniformEvaluator::default(),
+                )));
+                match side {
+                    Color::Black => core.black_player = injected,
+                    Color::White => core.white_player = injected,
+                }
+                let before = core.snapshot();
+                let cursor = core.history.cursor();
+                let events = core.execute(Command::Step).unwrap();
+                assert_eq!(
+                    events,
+                    vec![Event::Resigned {
+                        by: side,
+                        candidates: 5
+                    }]
+                );
+                assert_eq!(core.board(), board);
+                assert_eq!(core.history.cursor(), cursor);
+                assert_eq!(core.snapshot().ply, before.ply);
+                assert_eq!(core.snapshot().last_move, before.last_move);
+                assert_eq!(core.snapshot().status, Status::Ongoing);
+                assert!(core.is_finished());
+                assert_eq!(
+                    core.snapshot().resignation,
+                    Some(crate::history::Resignation {
+                        by: side,
+                        candidates: 5
+                    })
+                );
+                let info = core.search_info().unwrap();
+                assert_eq!(info.side_to_move, side);
+                assert_eq!(info.config.evaluator, kind);
+                assert!(info.config.resign);
+                assert_eq!(info.visits.iter().map(|(_, n)| n).sum::<u32>(), 3);
+                assert!(!info.prior.is_empty());
+                let mut expected_rng = StdRng::seed_from_u64(42);
+                assert_eq!(core.rng.random::<u64>(), expected_rng.random::<u64>());
+                assert_eq!(core.execute(Command::Step), Err(CommandError::GameOver));
+                assert_eq!(
+                    core.execute(Command::Play { mv: mv(0, 0) }),
+                    Err(CommandError::GameOver)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resign_input_shortcuts_are_inert_but_typed_commands_reach_core_errors() {
+        use crate::tui::input::{InputOutcome, InputState, handle_key, line_outcome};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.execute_release(SeatSel::Both).unwrap();
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::Black,
+            candidates: 5,
+        });
+        for key in [KeyCode::Enter, KeyCode::Char(' ')] {
+            assert_eq!(
+                handle_key(
+                    KeyEvent::new(key, KeyModifiers::NONE),
+                    &mut InputState::new(),
+                    &core
+                ),
+                InputOutcome::None
+            );
+        }
+        for line in ["", "   "] {
+            assert_eq!(line_outcome(line, &core), InputOutcome::None);
+        }
+        for line in ["step", "play a1"] {
+            let InputOutcome::Command(cmd) = line_outcome(line, &core) else {
+                panic!("typed command")
+            };
+            assert_eq!(core.execute(cmd), Err(CommandError::GameOver));
+        }
+    }
+
+    #[test]
+    fn resign_render_suppresses_stale_tss_but_keeps_policy_and_value() {
+        use crate::tui::overlay::PolicyOverlay;
+        use crate::tui::render::{StudyView, render_study};
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        play(&mut core, 7, 7);
+        core.history.back(1);
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::Black,
+            candidates: 5,
+        });
+        core.search_info.insert(
+            0,
+            SearchInfo {
+                side_to_move: Color::Black,
+                visits: vec![(mv(0, 0), 37)],
+                prior: vec![(mv(0, 0), 1.0)],
+                value: -0.75,
+                config: AiConfig::default(),
+            },
+        );
+        core.execute_forward(1).unwrap();
+        core.execute_back(1).unwrap();
+        let proof = engine::Proof {
+            winner: Color::Black,
+            line: vec![mv(0, 0), mv(0, 1), mv(0, 2)],
+        };
+        for styled in [false, true] {
+            for mode in [
+                PolicyOverlay::Off,
+                PolicyOverlay::Visits,
+                PolicyOverlay::Prior,
+            ] {
+                let normal = render_study(
+                    &StudyView::new(&core, &[])
+                        .styled(styled)
+                        .policy_overlay(mode)
+                        .show_value_strip(true),
+                );
+                let stale = render_study(
+                    &StudyView::new(&core, &[])
+                        .styled(styled)
+                        .policy_overlay(mode)
+                        .show_value_strip(true)
+                        .tss_proof(Some(&proof)),
+                );
+                assert_eq!(stale, normal);
+                let text = stale.join("\n");
+                assert!(text.contains("Black resigned"));
+                assert!(text.contains("5 top candidates"));
+                assert!(text.contains("heuristic; other moves unchecked"));
+                assert!(!text.contains("To move: Black"));
+                assert!(text.contains("Value strip:"));
+                assert!(text.contains("value -0.75 for Black"));
+            }
+        }
+    }
+
+    #[test]
+    fn resign_repl_state_names_heuristic_concession_without_fabricating_status() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::Black,
+            candidates: 5,
+        });
+        let text = crate::repl::print_state(&core, "").join("\n");
+        assert!(text.contains("status Ongoing"));
+        assert!(text.contains("Black resigned: 5 top candidates"));
+        assert!(text.contains("heuristic; other moves unchecked"));
+    }
+
+    #[test]
+    fn resign_navigation_retains_children_siblings_and_new_clears_annotation() {
+        let opening = Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let config = AiConfig {
+            resign: true,
+            simulations: 2,
+            ..AiConfig::default()
+        };
+        let mut core = SessionCore::new(SessionInit {
+            opening,
+            seed: Some(42),
+            ..SessionInit::versus_ai(Color::White, config)
+        });
+        play_some(&mut core, &[0, 0, 0, 1, 0, 2, 0, 3]);
+        core.execute_back(2).unwrap();
+        play(&mut core, 0, 4);
+        core.execute_back(1).unwrap();
+        let board = core.board();
+        let cursor = core.history.cursor();
+        core.black_player = Some(player::AiPlayer::new(Box::new(
+            mcts::UniformEvaluator::default(),
+        )));
+        assert_eq!(
+            core.execute(Command::Step).unwrap(),
+            vec![Event::Resigned {
+                by: Color::Black,
+                candidates: 5
+            }]
+        );
+        assert_eq!(core.board(), board);
+        assert_eq!(core.history.cursor(), cursor);
+        assert_eq!(core.history.children(cursor), vec![mv(0, 2), mv(0, 4)]);
+        assert!(matches!(
+            core.execute_forward(1).unwrap().as_slice(),
+            [Event::BranchPoint { .. }]
+        ));
+        for index in [0, 1] {
+            core.execute_var(index).unwrap();
+            assert!(!core.is_finished());
+            assert!(core.snapshot().resignation.is_none());
+            core.execute_back(1).unwrap();
+            assert!(core.is_finished());
+            assert_eq!(core.search_info().unwrap().side_to_move, Color::Black);
+        }
+        core.execute_var(0).unwrap();
+        core.execute_forward(1).unwrap();
+        assert_eq!(core.snapshot().ply, 4);
+        core.execute_back(4).unwrap();
+        assert!(!core.is_finished());
+        core.execute_forward(2).unwrap();
+        assert!(core.is_finished());
+        core.execute(Command::New).unwrap();
+        assert_eq!(core.history.cursor(), 0);
+        assert!(core.snapshot().resignation.is_none());
+        assert!(!core.is_finished());
+        assert!(core.search_info().is_none());
+        assert!(core.snapshot().branch_options.is_empty());
+    }
+
+    #[test]
+    fn resign_released_seats_honor_default_without_disabling_opening_schedule() {
+        let mut core = SessionCore::new(SessionInit {
+            default_config: AiConfig {
+                resign: true,
+                ..AiConfig::default()
+            },
+            ..SessionInit::hotseat()
+        });
+        core.execute_release(SeatSel::Both).unwrap();
+        for seat in [core.black(), core.white()] {
+            assert!(
+                matches!(seat, Occupant::Ai(config) if config.resign && !config.explicit_selection)
+            );
+        }
+        assert!(core.opening_schedule_active(Color::Black));
+    }
+
+    #[test]
+    fn resign_puzzle_navigation_and_new_create_fresh_unannotated_roots() {
+        let pack = PuzzlePack::from_json(include_str!("../tests/fixtures/mini-pack.json")).unwrap();
+        let init = SessionInit::puzzle(PathBuf::from("fixture"), pack, 0).unwrap();
+        let mut core = SessionCore::new(init);
+        for command in [Command::NextPuzzle, Command::PrevPuzzle, Command::New] {
+            core.history.set_resignation(crate::history::Resignation {
+                by: core.board().to_move(),
+                candidates: 1,
+            });
+            assert!(core.is_finished());
+            core.execute(command).unwrap();
+            assert!(core.snapshot().resignation.is_none());
+            assert!(!core.is_finished());
+            assert_eq!(core.history.cursor(), 0);
         }
     }
 

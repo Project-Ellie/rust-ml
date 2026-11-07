@@ -32,6 +32,7 @@ fn default_ai_config() -> AiConfig {
         temperature: 0.0,
         noise_epsilon: 0.0,
         explicit_selection: false,
+        resign: false,
     }
 }
 
@@ -165,6 +166,7 @@ fn golden_transcript_seeded_study_session() {
         status: Status::Ongoing,
         last_move: Some(mv(2, 9)),
         opening: None,
+        resignation: None,
     };
     assert_eq!(
         core.snapshot(),
@@ -284,6 +286,7 @@ fn sims_vs_strength_measured() {
             temperature: 0.0,
             noise_epsilon: 0.0,
             explicit_selection: true,
+            resign: false,
         };
         let mut init = SessionInit::ai_vs_ai(black_cfg.clone(), seed);
         init.white = Occupant::Human;

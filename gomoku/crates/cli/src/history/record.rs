@@ -19,6 +19,22 @@ pub(crate) struct RootRecord {
 pub struct NodeRecord {
     pub parent: Option<u32>,
     pub square: Option<[u8; 2]>,
+    /// Optional historical concession at this node; absent in version 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resignation: Option<ResignationRecord>,
+}
+
+/// Known historical concession reasons, validated against the node's board.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ResignationRecord {
+    /// The top candidates had verified opponent continuous-four refutations.
+    VerifiedOpponentVcf {
+        /// Side to move that conceded.
+        by: Color,
+        /// Number of checked candidates, bounded by five and empty cells.
+        candidates: usize,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -33,14 +49,17 @@ fn checked_square([row, col]: [u8; 2]) -> Result<Move, String> {
     Move::new(row, col).ok_or_else(|| format!("square out of bounds: {}", col))
 }
 
-fn checked_stones (squares: &[[u8; 2]], occupied: &mut [bool; 225]) -> Result<Vec<Move>, String> {
-    squares.iter().map(|&square| {
-        let mv = checked_square(square)?;
-        if std::mem::replace(&mut occupied[mv.index()], true) {
-            return Err("duplicate or overlapping root cell".into())
-        }
-        Ok(mv)
-    }).collect()
+fn checked_stones(squares: &[[u8; 2]], occupied: &mut [bool; 225]) -> Result<Vec<Move>, String> {
+    squares
+        .iter()
+        .map(|&square| {
+            let mv = checked_square(square)?;
+            if std::mem::replace(&mut occupied[mv.index()], true) {
+                return Err("duplicate or overlapping root cell".into());
+            }
+            Ok(mv)
+        })
+        .collect()
 }
 
 impl RootRecord {
@@ -58,10 +77,14 @@ impl RootRecord {
                 }
             }
         }
-        Self { black, white, to_move: board.to_move() }
+        Self {
+            black,
+            white,
+            to_move: board.to_move(),
+        }
     }
 
-    pub (crate) fn to_board(&self) -> Result<Board, String> {
+    pub(crate) fn to_board(&self) -> Result<Board, String> {
         if self.black.len() + self.white.len() > 225 {
             return Err("too many stones".into());
         }
@@ -81,13 +104,22 @@ impl HistoryRecord {
     pub(crate) fn capture(history: &History) -> Self {
         Self {
             root: RootRecord::from_board(&history.root_board),
-            nodes: history.nodes.iter().map(|node| NodeRecord {
-                parent:  node.parent,
-                square: node.mv.map(|mv| [mv.row(), mv.col()]),
-            }).collect(),
+            nodes: history
+                .nodes
+                .iter()
+                .map(|node| NodeRecord {
+                    parent: node.parent,
+                    square: node.mv.map(|mv| [mv.row(), mv.col()]),
+                    resignation: node
+                        .resignation
+                        .map(|r| ResignationRecord::VerifiedOpponentVcf {
+                            by: r.by,
+                            candidates: r.candidates,
+                        }),
+                })
+                .collect(),
             cursor: history.cursor,
         }
-
     }
 
     pub(crate) fn restore(&self) -> Result<History, String> {
@@ -109,10 +141,28 @@ impl HistoryRecord {
             let mv = checked_square(node.square.ok_or("non-root node needs square")?)?;
             // Child module access is intentional; never navigate untrusted IDs via var().
             history.cursor = parent;
-            let outcome = history.play(mv)
-                .map_err(|e| format!("node {index}: {e}"))?;
+            let outcome = history.play(mv).map_err(|e| format!("node {index}: {e}"))?;
             if outcome != PlayOutcome::Moved(index as u32) {
                 return Err(format!("node {index}: duplicate sibling move"));
+            }
+        }
+        // Rebuild the entire legal tree before applying historical concessions:
+        // existing descendants remain valid and no prover is rerun on import.
+        for (index, node) in self.nodes.iter().enumerate() {
+            if let Some(ResignationRecord::VerifiedOpponentVcf { by, candidates }) =
+                node.resignation
+            {
+                history.cursor = index as u32;
+                let board = history.board();
+                let cap = board.empty_moves().count().min(5);
+                if board.status() != engine::Status::Ongoing
+                    || by != board.to_move()
+                    || candidates == 0
+                    || candidates > cap
+                {
+                    return Err(format!("node {index}: invalid resignation annotation"));
+                }
+                history.set_resignation(super::Resignation { by, candidates });
             }
         }
         history.cursor = self.cursor;
@@ -123,6 +173,30 @@ impl HistoryRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resign_root_and_hidden_annotation_round_trip_with_existing_descendants() {
+        let mut history = History::new();
+        history.play(Move::new(7, 7).unwrap()).unwrap();
+        history.play(Move::new(7, 8).unwrap()).unwrap();
+        history.play(Move::new(8, 8).unwrap()).unwrap();
+        history.back(2);
+        history.set_resignation(super::super::Resignation {
+            by: Color::White,
+            candidates: 4,
+        });
+        history.back(1);
+        history.play(Move::new(0, 0).unwrap()).unwrap();
+        history.back(1);
+        history.set_resignation(super::super::Resignation {
+            by: Color::Black,
+            candidates: 5,
+        });
+        let restored = HistoryRecord::capture(&history).restore().unwrap();
+        assert_eq!(restored, history);
+        assert_eq!(restored.children(0).len(), 2);
+        assert_eq!(restored.children(1), vec![Move::new(7, 8).unwrap()]);
+    }
 
     #[test]
     fn branches_ids_sibling_order_and_cursor_round_trip() {
@@ -138,9 +212,10 @@ mod tests {
 
         assert_eq!(restored, history);
         assert_eq!(restored.cursor, 1);
-        assert_eq!(restored.children(1), vec![
-            Move::new(7, 8).unwrap(), Move::new(8, 8).unwrap()
-        ]);
+        assert_eq!(
+            restored.children(1),
+            vec![Move::new(7, 8).unwrap(), Move::new(8, 8).unwrap()]
+        );
         let mut bad_cursor = record.clone();
         bad_cursor.cursor = bad_cursor.nodes.len() as u32;
         assert!(bad_cursor.restore().is_err());
@@ -165,4 +240,3 @@ mod tests {
         assert!(record.restore().is_err());
     }
 }
-

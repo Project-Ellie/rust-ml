@@ -13,20 +13,22 @@ static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 /// # Errors
 /// Returns filesystem, size, or UTF-8 errors as displayable text.
 pub fn read(path: &Path) -> Result<String, String> {
-
     let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut bytes = Vec::new();
-    file.take((MAX_RECORD_BYTES + 1) as u64).read_to_end(&mut bytes)
+    file.take((MAX_RECORD_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     if bytes.len() > MAX_RECORD_BYTES {
         return Err("Study exceeds 4MiB".into());
     }
 
-    String::from_utf8(bytes).map_err(|e| format!("Study is not UTF-8: {e}" ))
+    String::from_utf8(bytes).map_err(|e| format!("Study is not UTF-8: {e}"))
 }
 
 fn create_temp(path: &Path) -> Result<(PathBuf, File), String> {
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty())
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let name = path.file_name().ok_or("destination needs a filename")?;
     for _ in 0..128 {
@@ -52,7 +54,8 @@ pub fn write(path: &Path, text: &str) -> Result<(), String> {
         return Err("study exceeds 4 MiB".into());
     }
     let (temp, mut file) = create_temp(path)?;
-    let written = file.write_all(text.as_bytes())
+    let written = file
+        .write_all(text.as_bytes())
         .and_then(|()| file.flush())
         .and_then(|()| file.sync_all());
     drop(file);

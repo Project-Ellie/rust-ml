@@ -30,7 +30,7 @@ use crate::tui::overlay::{PolicyOverlay, tss_verdict};
 use crate::tui::render::{StudyView, render_study};
 use crate::tui::screen::{AltScreen, LineScreen, Screen};
 use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind};
-use engine::{Move, SearchBudget, Status};
+use engine::{Move, SearchBudget};
 use std::io::{self, BufRead, IsTerminal};
 
 /// The maximum number of events the panel keeps.
@@ -410,10 +410,10 @@ fn toggle_tss(core: &SessionCore, shell: &mut ShellState) -> String {
         return "TSS is not available during the Swap2 ceremony".to_string();
     }
 
-    let board = core.board();
-    if board.status() != Status::Ongoing {
+    if core.is_finished() {
         return "TSS demo is only available during ongoing games".to_string();
     }
+    let board = core.board();
 
     // The depth cap keeps the painted move numbers single-digit, so a
     // proof cell always fits its three-character slot.
@@ -612,6 +612,23 @@ mod tests {
         let mut input = ScriptedInput::new(keys);
         study_loop(&mut core, &mut screen, &mut input, None)?;
         Ok((core, screen))
+    }
+
+    #[test]
+    fn resign_toggle_tss_refuses_conceded_ongoing_board() {
+        let core = SessionCore::new(SessionInit::hotseat());
+        let mut value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        value["history"]["nodes"][0]["resignation"] = serde_json::json!({
+            "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+        });
+        let core = SessionCore::import_record_json(&value.to_string()).unwrap();
+        let mut shell = ShellState::default();
+        assert_eq!(
+            toggle_tss(&core, &mut shell),
+            "TSS demo is only available during ongoing games"
+        );
+        assert!(shell.tss_proof.is_none());
     }
 
     #[test]

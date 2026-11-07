@@ -162,6 +162,44 @@ Illegal Move Cell is already occupied.
 "#;
 
 #[test]
+fn resignation_in_line_mode_blocks_play_and_step_but_allows_historical_navigation() {
+    use cli::command::{Command, CommandError, SeatSel};
+    let mut source = SessionCore::new(SessionInit::hotseat());
+    source.execute(Command::Play { mv: mv(7, 7) }).unwrap();
+    source.execute(Command::Back { n: 1 }).unwrap();
+    source
+        .execute(Command::Release {
+            seat: SeatSel::Both,
+        })
+        .unwrap();
+    let mut value: serde_json::Value =
+        serde_json::from_str(&source.export_record_json().unwrap()).unwrap();
+    value["history"]["nodes"][0]["resignation"] = serde_json::json!({
+        "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+    });
+    let core = SessionCore::import_record_json(&value.to_string()).unwrap();
+    let (core, transcript) = run_line_script(core, "\nstep\nplay a1\nforward\nback\nquit\n");
+    assert!(core.is_finished());
+    assert_eq!(core.snapshot().ply, 0);
+    assert_eq!(core.board(), source.board());
+    assert_eq!(
+        core.snapshot().branch_options,
+        source.snapshot().branch_options
+    );
+    assert!(transcript.contains("Black resigned: 5 top candidates"));
+    assert!(transcript.contains("heuristic; other moves unchecked"));
+    // Exactly the two explicit commands fail; the empty line is inert.
+    assert_eq!(
+        transcript
+            .matches(&CommandError::GameOver.to_string())
+            .count(),
+        2
+    );
+    assert!(transcript.contains("Cursor moved to ply 1"));
+    assert!(transcript.contains("Cursor moved to ply 0"));
+}
+
+#[test]
 fn the_two_move_transcript_is_byte_exact() {
     let core = SessionCore::new(SessionInit::new_hotseat());
     // Two moves, an illegal repeat of the first (the error line), the

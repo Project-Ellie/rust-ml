@@ -181,7 +181,8 @@ fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
                 print_state(core, "");
             }
             Err(e) => println!("Error {e}"),
-        },        Err(e) => {
+        },
+        Err(e) => {
             println!("Parse error {e}");
         }
     }
@@ -233,6 +234,15 @@ fn print_state(core: &SessionCore, header: &str) {
         "ply {}  status {:?}  black {:?}  white {:?}",
         snapshot.ply, snapshot.status, snapshot.black, snapshot.white
     );
+    if let Some(resignation) = snapshot.resignation {
+        println!(
+            "{}",
+            cli::command::Event::Resigned {
+                by: resignation.by,
+                candidates: resignation.candidates,
+            }
+        );
+    }
     if !snapshot.branch_options.is_empty() {
         let opts: Vec<String> = snapshot
             .branch_options

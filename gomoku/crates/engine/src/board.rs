@@ -437,7 +437,9 @@ mod tests {
         for r in 0..15 {
             for c in 0..15 {
                 let mv = Move::new(r, c).unwrap();
-                if mv == last { continue; }
+                if mv == last {
+                    continue;
+                }
                 if (r + 2 * c) % 4 < 2 {
                     black.push(mv);
                 } else {

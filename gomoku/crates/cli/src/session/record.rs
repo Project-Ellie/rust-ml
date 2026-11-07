@@ -1,4 +1,4 @@
-//! Native version-1 study records; pure conversion and validation.
+//! Native version-2 study records with version-1 compatibility; pure validation.
 use super::{SessionCore, SessionInit};
 use crate::actor::{AiConfig, EvaluatorKind, Occupant};
 use crate::history::record::HistoryRecord;
@@ -71,7 +71,7 @@ impl SessionCore {
 
         let record = StudyRecord {
             format: "gomoku-study".into(),
-            version: 1,
+            version: 2,
             history: HistoryRecord::capture(&self.history),
             black: self.black.clone(),
             white: self.white.clone(),
@@ -102,8 +102,23 @@ impl SessionCore {
             return Err("study exceeds 4 MiB".into());
         }
         let record: StudyRecord = serde_json::from_str(text).map_err(|e| e.to_string())?;
-        if record.format != "gomoku-study" || record.version != 1 {
+        if record.format != "gomoku-study" || !matches!(record.version, 1 | 2) {
             return Err("unsupported study format/version".into());
+        }
+        if record.version == 1 {
+            let seat_resigns =
+                |seat: &Occupant| matches!(seat, Occupant::Ai(config) if config.resign);
+            if record.default_config.resign
+                || seat_resigns(&record.black)
+                || seat_resigns(&record.white)
+                || record
+                    .history
+                    .nodes
+                    .iter()
+                    .any(|node| node.resignation.is_some())
+            {
+                return Err("version 1 cannot contain resignation semantics".into());
+            }
         }
         record.validate_configs()?;
         let history = record.history.restore()?;
@@ -134,8 +149,268 @@ mod tests {
     use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[test]
+    fn resign_writer_uses_v2_and_restores_concession() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.history.set_resignation(crate::history::Resignation {
+            by: engine::Color::Black,
+            candidates: 5,
+        });
+        let text = core.export_record_json().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["version"], 2);
+        let restored = SessionCore::import_record_json(&text).unwrap();
+        assert_eq!(restored.snapshot(), core.snapshot());
+        assert!(restored.is_finished());
+    }
+
+    #[test]
+    fn resign_v1_missing_flags_load_but_smuggled_semantics_are_rejected() {
+        let config = AiConfig {
+            simulations: 1,
+            ..AiConfig::default()
+        };
+        let core = SessionCore::new(SessionInit::ai_vs_ai(config, 17));
+        let mut old: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        old["version"] = 1.into();
+        for path in ["black", "white"] {
+            old[path]["Ai"].as_object_mut().unwrap().remove("resign");
+        }
+        old["default_config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("resign");
+        old["history"]["nodes"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("resignation");
+        let loaded = SessionCore::import_record_json(&old.to_string()).unwrap();
+        assert!(!loaded.default_config().resign);
+        for seat in [loaded.black(), loaded.white()] {
+            assert!(matches!(seat, Occupant::Ai(config) if !config.resign));
+        }
+        assert!(loaded.snapshot().resignation.is_none());
+        for path in ["black", "white", "default_config", "annotation"] {
+            let mut smuggled = old.clone();
+            match path {
+                "annotation" => {
+                    smuggled["history"]["nodes"][0]["resignation"] = serde_json::json!({
+                        "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+                    })
+                }
+                "default_config" => smuggled[path]["resign"] = true.into(),
+                _ => smuggled[path]["Ai"]["resign"] = true.into(),
+            }
+            assert!(
+                SessionCore::import_record_json(&smuggled.to_string()).is_err(),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn resign_v2_rejects_invalid_hidden_annotations_unknown_reason_and_future_version() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.execute(Command::Play {
+            mv: Move::new(7, 7).unwrap(),
+        })
+        .unwrap();
+        core.execute(Command::Play {
+            mv: Move::new(7, 8).unwrap(),
+        })
+        .unwrap();
+        core.execute(Command::Back { n: 2 }).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        for (by, candidates) in [("White", 1), ("Black", 0), ("Black", 6)] {
+            let mut invalid = value.clone();
+            invalid["history"]["nodes"][2]["resignation"] = serde_json::json!({
+                "reason": "verified_opponent_vcf", "by": by, "candidates": candidates
+            });
+            assert!(
+                SessionCore::import_record_json(&invalid.to_string()).is_err(),
+                "{by}, {candidates}"
+            );
+        }
+        let mut unknown = value.clone();
+        unknown["history"]["nodes"][2]["resignation"] = serde_json::json!({
+            "reason": "unverified_value_threshold", "by": "Black", "candidates": 5
+        });
+        assert!(SessionCore::import_record_json(&unknown.to_string()).is_err());
+        let mut future = value.clone();
+        future["version"] = 3.into();
+        assert!(SessionCore::import_record_json(&future.to_string()).is_err());
+        let mut v1_hidden = value;
+        v1_hidden["version"] = 1.into();
+        v1_hidden["history"]["nodes"][2]["resignation"] = serde_json::json!({
+            "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+        });
+        assert!(SessionCore::import_record_json(&v1_hidden.to_string()).is_err());
+    }
+
+    #[test]
+    fn resign_annotations_reject_terminal_and_counts_above_remaining_cells() {
+        use engine::{Board, Color};
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        let last = Move::new(0, 0).unwrap();
+        for row in 0..15 {
+            for col in 0..15 {
+                let mv = Move::new(row, col).unwrap();
+                if mv == last {
+                    continue;
+                }
+                if (row + 2 * col) % 4 < 2 {
+                    black.push(mv);
+                } else {
+                    white.push(mv);
+                }
+            }
+        }
+        let board = Board::from_position(&black, &white, Color::Black).unwrap();
+        let mut core = SessionCore::new(SessionInit::hotseat_from_opening(&board));
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::Black,
+            candidates: 1,
+        });
+        let text = core.export_record_json().unwrap();
+        assert!(
+            SessionCore::import_record_json(&text)
+                .unwrap()
+                .is_finished()
+        );
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        value["history"]["nodes"][0]["resignation"]["candidates"] = 2.into();
+        assert!(SessionCore::import_record_json(&value.to_string()).is_err());
+        // Imported final-cell draws are terminal even though their move log is short.
+        let mut draw = board;
+        draw.play(last).unwrap();
+        assert_eq!(draw.status(), engine::Status::Draw);
+        let won = Board::from_position(
+            &(0..5)
+                .map(|col| Move::new(7, col).unwrap())
+                .collect::<Vec<_>>(),
+            &(0..4)
+                .map(|col| Move::new(0, col * 2).unwrap())
+                .collect::<Vec<_>>(),
+            Color::White,
+        )
+        .unwrap();
+        for terminal in [draw, won] {
+            let mut terminal_core = SessionCore::new(SessionInit::hotseat_from_opening(&terminal));
+            terminal_core
+                .history
+                .set_resignation(crate::history::Resignation {
+                    by: terminal.to_move(),
+                    candidates: 1,
+                });
+            assert!(
+                SessionCore::import_record_json(&terminal_core.export_record_json().unwrap())
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn resign_terminal_annotation_is_rejected_on_hidden_node_too() {
+        use engine::{Board, Color};
+        let opening = Board::from_position(
+            &(0..4)
+                .map(|col| Move::new(7, col).unwrap())
+                .collect::<Vec<_>>(),
+            &(0..4)
+                .map(|col| Move::new(0, col * 2).unwrap())
+                .collect::<Vec<_>>(),
+            Color::Black,
+        )
+        .unwrap();
+        let mut core = SessionCore::new(SessionInit::hotseat_from_opening(&opening));
+        core.execute(Command::Play {
+            mv: Move::new(7, 4).unwrap(),
+        })
+        .unwrap();
+        core.execute(Command::Back { n: 1 }).unwrap();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        value["history"]["nodes"][1]["resignation"] = serde_json::json!({
+            "reason": "verified_opponent_vcf", "by": "White", "candidates": 1
+        });
+        assert!(SessionCore::import_record_json(&value.to_string()).is_err());
+    }
+
+    #[test]
+    fn resign_v2_full_tree_round_trip_preserves_flags_cursor_and_historical_annotations() {
+        use engine::Color;
+        let config = AiConfig {
+            resign: true,
+            simulations: 2,
+            ..AiConfig::default()
+        };
+        let mut core = SessionCore::new(SessionInit::ai_vs_ai(config, 8));
+        for (row, col) in [(7, 7), (7, 8), (8, 8)] {
+            core.execute(Command::Play {
+                mv: Move::new(row, col).unwrap(),
+            })
+            .unwrap();
+        }
+        core.execute(Command::Back { n: 2 }).unwrap();
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::White,
+            candidates: 4,
+        });
+        core.execute(Command::Back { n: 1 }).unwrap();
+        core.execute(Command::Play {
+            mv: Move::new(0, 0).unwrap(),
+        })
+        .unwrap();
+        core.execute(Command::Back { n: 1 }).unwrap();
+        core.history.set_resignation(crate::history::Resignation {
+            by: Color::Black,
+            candidates: 5,
+        });
+        let text = core.export_record_json().unwrap();
+        let mut restored = SessionCore::import_record_json(&text).unwrap();
+        assert_eq!(restored.export_record_json().unwrap(), text);
+        assert_eq!(restored.history, core.history);
+        restored.execute(Command::Var { index: 0 }).unwrap();
+        assert!(restored.is_finished());
+        assert_eq!(restored.snapshot().resignation.unwrap().by, Color::White);
+        restored.execute(Command::Forward { n: 2 }).unwrap();
+        assert!(!restored.is_finished());
+        assert_eq!(restored.snapshot().ply, 3);
+        assert!(restored.default_config().resign);
+        assert!(restored.search_info().is_none());
+    }
+
+    #[test]
+    fn v1_saved_game_fixture_import_is_read_only() {
+        let text = include_str!("../../tests/fixtures/native-study-v1.json");
+        let value: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(value["version"], 1);
+        if !cfg!(feature = "baseline") {
+            assert!(
+                SessionCore::import_record_json(text)
+                    .err()
+                    .unwrap()
+                    .contains("baseline feature")
+            );
+            return;
+        }
+        let core = SessionCore::import_record_json(text).unwrap();
+        assert!(!core.default_config().resign);
+        assert!(core.snapshot().resignation.is_none());
+        assert_eq!(
+            core.history.cursor(),
+            value["history"]["cursor"].as_u64().unwrap() as u32
+        );
+    }
+
+    #[test]
     fn save_does_not_advance_rng_and_load_reseeds_instead_of_continuing() {
-        let init = SessionInit { seed: Some(3477), ..SessionInit::hotseat() };
+        let init = SessionInit {
+            seed: Some(3477),
+            ..SessionInit::hotseat()
+        };
         let mut core = SessionCore::new(init);
         let _ = core.rng.random::<u64>();
         let mut expected_save_rng = StdRng::seed_from_u64(3477);
@@ -158,12 +433,19 @@ mod tests {
         let mut opening = engine::Board::new();
         opening.play(Move::new(7, 7).unwrap()).unwrap();
         let mut source = SessionCore::new(SessionInit::hotseat_from_opening(&opening));
-        source.execute(Command::Play { mv: Move::new(7, 8).unwrap() }).unwrap();
+        source
+            .execute(Command::Play {
+                mv: Move::new(7, 8).unwrap(),
+            })
+            .unwrap();
         let text = source.export_record_json().unwrap();
         let mut loaded = SessionCore::import_record_json(&text).unwrap();
         loaded.execute(Command::New).unwrap();
         assert_eq!(loaded.snapshot().ply, 0);
-        assert_eq!(loaded.board().stone_at(Move::new(7, 7).unwrap()), Some(engine::Color::Black));
+        assert_eq!(
+            loaded.board().stone_at(Move::new(7, 7).unwrap()),
+            Some(engine::Color::Black)
+        );
         assert_eq!(loaded.board().stone_at(Move::new(7, 8).unwrap()), None);
         assert!(!loaded.init.swap2);
         assert!(loaded.puzzle().is_none());

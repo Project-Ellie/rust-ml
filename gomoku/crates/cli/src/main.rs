@@ -104,6 +104,10 @@ struct SearchArgs {
     #[arg(long, value_name = "N")]
     white_sims: Option<u32>,
 
+    /// Allow heuristic resignation if every top-five candidate is VCF-refuted.
+    #[arg(long)]
+    resign: bool,
+
     /// Random seed for reproducible sessions.
     #[arg(long, value_name = "N")]
     seed: Option<u64>,
@@ -323,6 +327,7 @@ fn ai_config_from(search: &SearchArgs) -> AiConfig {
         temperature: search.temperature.unwrap_or(0.0),
         noise_epsilon: search.noise.unwrap_or(0.0),
         explicit_selection: search.temperature.is_some() || search.noise.is_some(),
+        resign: search.resign,
     }
 }
 
@@ -354,6 +359,31 @@ fn player_color(color: PlayerColor) -> Color {
 mod default_brain_tests {
     use super::*;
 
+    #[test]
+    fn resign_opt_in_preserves_selection_and_reaches_seats_and_defaults() {
+        let default = CliArgs::try_parse_from(["gomoku"]).unwrap();
+        assert!(!ai_config_from(&default.play.search).resign);
+        for ai in ["tactics", "baseline"] {
+            let args =
+                CliArgs::try_parse_from(["gomoku", "selfplay", "--ai", ai, "--resign"]).unwrap();
+            let Some(Commands::Selfplay(search)) = args.cmd else {
+                panic!("selfplay")
+            };
+            let init = selfplay_init(&search);
+            assert!(init.default_config.resign);
+            assert!(!init.default_config.explicit_selection);
+            assert_eq!(init.default_config.temperature, 0.0);
+            assert_eq!(init.default_config.noise_epsilon, 0.0);
+            for seat in [&init.black, &init.white] {
+                assert!(matches!(seat, Occupant::Ai(config) if config.resign));
+            }
+        }
+        let args = CliArgs::try_parse_from(["gomoku", "--resign"]).unwrap();
+        let init = play_init(&args.play.search, false);
+        assert!(init.black.is_human() && init.white.is_human());
+        assert!(init.default_config.resign);
+    }
+
     /// Search flags as clap delivers them when no flag is passed.
     fn bare_search_args() -> SearchArgs {
         SearchArgs {
@@ -366,6 +396,7 @@ mod default_brain_tests {
             black_sims: None,
             white_sims: None,
             seed: None,
+            resign: false,
         }
     }
 

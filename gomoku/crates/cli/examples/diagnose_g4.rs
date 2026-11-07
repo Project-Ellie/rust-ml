@@ -5,7 +5,7 @@ use cli::{
 };
 use engine::{Board, Color, Move, Proof, SearchBudget, Status, immediate_wins, verify_line};
 use mcts::{EvalRequest, EvalResult, Evaluator};
-use player::{AiPlayer, GuardConfig, OwnTssConfig, PlayerOptions};
+use player::{AiPlayer, DecisionAction, GuardConfig, OwnTssConfig, PlayerOptions};
 use rand::{SeedableRng, rngs::StdRng};
 use serde_json::{Value, json};
 use std::time::Instant;
@@ -94,14 +94,19 @@ fn main() {
         let result = ai
             .decide(root, &options, &mut StdRng::seed_from_u64(3477))
             .unwrap();
-        assert_eq!(result.guard.proposal, candidate);
+        let selected = match result.action {
+            DecisionAction::Play(mv) => mv,
+            DecisionAction::Resign(_) => panic!("resignation is disabled in this diagnostic"),
+        };
+        let guard = result.guard.as_ref().expect("resignation disabled");
+        assert_eq!(guard.proposal, candidate);
         println!(
             "CONTROLLED guard, NOT original 10000-sim/RNG reproduction: proposal={} chosen={} checked={} refuted={:?} outcome={:?} config={:?} elapsed_ms={:.3}",
-            algebraic(result.guard.proposal),
-            algebraic(result.mv),
-            result.guard.checked,
-            names(result.guard.refuted.iter().copied()),
-            result.guard.outcome,
+            algebraic(guard.proposal),
+            algebraic(selected),
+            guard.checked,
+            names(guard.refuted.iter().copied()),
+            guard.outcome,
             options.guard,
             start.elapsed().as_secs_f64() * 1000.0
         );
@@ -237,6 +242,11 @@ fn real_decision(root: &Board, simulations: u32) {
     let result = ai
         .decide(root, &options, &mut StdRng::seed_from_u64(3477))
         .unwrap();
+    let selected = match result.action {
+        DecisionAction::Play(mv) => mv,
+        DecisionAction::Resign(_) => panic!("resignation is disabled in this diagnostic"),
+    };
+    let guard = result.guard.as_ref().expect("resignation disabled");
     let mut ranked = Vec::new();
     if let Some(stats) = &result.search {
         for &(m, visits) in &stats.visits {
@@ -258,7 +268,7 @@ fn real_decision(root: &Board, simulations: u32) {
     let ordering: Vec<_> = ranked.iter().enumerate().map(|(n, &(m, visits, prior))| json!({"rank": n+1, "move": algebraic(m), "index": m.index(), "visits": visits, "prior": prior})).collect();
     println!(
         "{}",
-        json!({"simulations": simulations, "seed": 3477, "fresh_seed_not_exact_replay": true, "original_proposal": algebraic(result.guard.proposal), "selected_move": algebraic(result.mv), "checked": result.guard.checked, "refuted": names(result.guard.refuted.iter().copied()), "outcome": format!("{:?}", result.guard.outcome), "own_certified_move_bypassed_search": result.search.is_none(), "search_value": result.search.as_ref().map(|s| s.value), "chosen_rank": rank(result.mv), "proposal_rank": rank(result.guard.proposal), "requested_ranks": ranks, "ordering": ordering, "elapsed_ms": start.elapsed().as_secs_f64()*1000.0})
+        json!({"simulations": simulations, "seed": 3477, "fresh_seed_not_exact_replay": true, "original_proposal": algebraic(guard.proposal), "selected_move": algebraic(selected), "checked": guard.checked, "refuted": names(guard.refuted.iter().copied()), "outcome": format!("{:?}", guard.outcome), "own_certified_move_bypassed_search": result.search.is_none(), "search_value": result.search.as_ref().map(|s| s.value), "chosen_rank": rank(selected), "proposal_rank": rank(guard.proposal), "requested_ranks": ranks, "ordering": ordering, "elapsed_ms": start.elapsed().as_secs_f64()*1000.0})
     );
 }
 

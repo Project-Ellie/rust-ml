@@ -178,7 +178,11 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         view.cursor,
         view.styled,
         view.policy_overlay,
-        view.tss_proof,
+        if core.is_finished() {
+            None
+        } else {
+            view.tss_proof
+        },
         search_info,
     );
     let panel_lines = render_side_panel(
@@ -507,12 +511,20 @@ fn render_side_panel(
 /// result, path tail, and branch options.
 fn position_lines(lines: &mut Vec<String>, core: &SessionCore, board: &Board, snapshot: &Snapshot) {
     lines.push(format!("Ply: {}", snapshot.ply));
-    // One line covers both states a game can be in: waiting for a side,
-    // or finished with a result.
-    match snapshot.status {
-        Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
-        Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
-        Status::Draw => lines.push("Game over: draw".to_string()),
+    if let Some(resignation) = snapshot.resignation {
+        lines.push(
+            Event::Resigned {
+                by: resignation.by,
+                candidates: resignation.candidates,
+            }
+            .to_string(),
+        );
+    } else {
+        match snapshot.status {
+            Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
+            Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
+            Status::Draw => lines.push("Game over: draw".to_string()),
+        }
     }
     lines.push(format!("Path: {}", path_tail_string(board)));
     if let Some(study) = core.puzzle() {

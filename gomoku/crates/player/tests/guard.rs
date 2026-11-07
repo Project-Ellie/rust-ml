@@ -1,6 +1,13 @@
 use engine::{Board, Color, Move, SearchBudget, Status};
 use mcts::{EvalRequest, EvalResult, Evaluator, UniformEvaluator};
-use player::{AiPlayer, GuardConfig, GuardOutcome, OwnTssConfig, PlayerOptions};
+use player::{AiPlayer, DecisionAction, GuardConfig, GuardOutcome, OwnTssConfig, PlayerOptions};
+
+fn played(action: DecisionAction) -> Move {
+    match action {
+        DecisionAction::Play(mv) => mv,
+        DecisionAction::Resign(_) => panic!("expected play"),
+    }
+}
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 fn mv(row: u8, col: u8) -> Move {
@@ -94,9 +101,9 @@ fn real_proof_refutes_proposal_and_guard_finds_unvisited_block_without_mutating_
             &mut StdRng::seed_from_u64(1),
         )
         .unwrap();
-    assert_eq!(initial.mv, mv(0, 0));
+    assert_eq!(initial.action, DecisionAction::Play(mv(0, 0)));
     let mut hypothetical = board.clone();
-    hypothetical.play(initial.mv).unwrap();
+    hypothetical.play(played(initial.action)).unwrap();
     let opponent = hypothetical.to_move();
     let proof =
         engine::prove_forced_win(&hypothetical, opponent, GuardConfig::baseline().budget).unwrap();
@@ -112,15 +119,19 @@ fn real_proof_refutes_proposal_and_guard_finds_unvisited_block_without_mutating_
             &mut StdRng::seed_from_u64(1),
         )
         .unwrap();
-    assert_eq!(guarded.mv, block);
-    assert_eq!(guarded.guard.proposal, initial.mv);
-    assert_eq!(guarded.guard.refuted, vec![initial.mv]);
-    assert_eq!(guarded.guard.checked, 2);
-    assert_eq!(guarded.guard.outcome, GuardOutcome::Unrefuted);
+    assert_eq!(guarded.action, DecisionAction::Play(block));
+    let guard = guarded.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.proposal, played(initial.action));
+    assert_eq!(guard.refuted, vec![played(initial.action)]);
+    assert_eq!(guard.checked, 2);
+    assert_eq!(guard.outcome, GuardOutcome::Unrefuted);
     assert_eq!(guarded.search, initial.search);
     assert_eq!(board, original);
     assert_eq!(board.zobrist(), original.zobrist());
-    assert_eq!(initial.guard.outcome, GuardOutcome::Disabled);
+    assert_eq!(
+        initial.guard.as_ref().unwrap().outcome,
+        GuardOutcome::Disabled
+    );
 }
 
 #[test]
@@ -143,11 +154,12 @@ fn two_opponent_winning_threats_require_our_immediate_winning_alternative() {
         &mut StdRng::seed_from_u64(1),
     )
     .unwrap();
-    assert_eq!(decision.guard.proposal, mv(0, 0));
-    assert_eq!(decision.guard.refuted, vec![mv(0, 0)]);
-    assert_eq!(decision.mv, winning);
-    assert_eq!(decision.guard.outcome, GuardOutcome::Terminal);
-    assert_eq!(decision.guard.checked, 2);
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.proposal, mv(0, 0));
+    assert_eq!(guard.refuted, vec![mv(0, 0)]);
+    assert_eq!(decision.action, DecisionAction::Play(winning));
+    assert_eq!(guard.outcome, GuardOutcome::Terminal);
+    assert_eq!(guard.checked, 2);
 }
 
 #[test]
@@ -222,20 +234,24 @@ fn blocking_one_of_two_distinct_opponent_lines_is_refuted_in_favor_of_own_immedi
     }))
     .decide(&board, &options(guard), &mut guarded_rng)
     .unwrap();
-    assert_eq!(plain.mv, proposal);
-    assert_eq!(plain.guard.outcome, GuardOutcome::Disabled);
+    assert_eq!(plain.action, DecisionAction::Play(proposal));
+    assert_eq!(
+        plain.guard.as_ref().unwrap().outcome,
+        GuardOutcome::Disabled
+    );
     let stats = plain.search.as_ref().unwrap();
     assert!(stats.visits.iter().all(|&(_, visits)| visits == 0));
     assert_eq!(stats.prior[0].0, proposal);
-    assert_eq!(guarded.guard.proposal, proposal);
-    assert_eq!(guarded.guard.refuted, vec![proposal]);
-    assert_eq!(guarded.guard.checked, 2);
-    assert_eq!(guarded.guard.outcome, GuardOutcome::Terminal);
-    assert_eq!(guarded.mv, winning);
+    let guard = guarded.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.proposal, proposal);
+    assert_eq!(guard.refuted, vec![proposal]);
+    assert_eq!(guard.checked, 2);
+    assert_eq!(guard.outcome, GuardOutcome::Terminal);
+    assert_eq!(guarded.action, DecisionAction::Play(winning));
     assert_eq!(guarded.search, plain.search);
     assert_eq!(plain_rng.random::<u64>(), guarded_rng.random::<u64>());
     let mut after_win = board.clone();
-    after_win.play(guarded.mv).unwrap();
+    after_win.play(played(guarded.action)).unwrap();
     assert_eq!(after_win.status(), Status::Won(Color::Black));
     assert_eq!(board, original);
     assert_eq!(board.zobrist(), original.zobrist());
@@ -261,9 +277,10 @@ fn white_player_guard_probes_actual_black_opponent() {
         &mut StdRng::seed_from_u64(1),
     )
     .unwrap();
-    assert_eq!(decision.guard.refuted, vec![mv(0, 0)]);
-    assert_eq!(decision.mv, block);
-    assert_eq!(decision.guard.outcome, GuardOutcome::Unrefuted);
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.refuted, vec![mv(0, 0)]);
+    assert_eq!(decision.action, DecisionAction::Play(block));
+    assert_eq!(guard.outcome, GuardOutcome::Unrefuted);
     assert_eq!(board, original);
 }
 
@@ -280,10 +297,11 @@ fn zero_depth_probe_is_unknown_even_with_opponent_immediate_win() {
     let decision = AiPlayer::new(Box::new(Prefer(mv(0, 0))))
         .decide(&board, &options(config), &mut StdRng::seed_from_u64(1))
         .unwrap();
-    assert_eq!(decision.mv, mv(0, 0));
-    assert_eq!(decision.guard.outcome, GuardOutcome::Unrefuted);
-    assert_eq!(decision.guard.checked, 1);
-    assert!(decision.guard.refuted.is_empty());
+    assert_eq!(decision.action, DecisionAction::Play(mv(0, 0)));
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::Unrefuted);
+    assert_eq!(guard.checked, 1);
+    assert!(guard.refuted.is_empty());
 }
 
 #[test]
@@ -299,10 +317,11 @@ fn zero_node_probe_is_unknown_even_with_opponent_immediate_win() {
     let decision = AiPlayer::new(Box::new(UniformEvaluator::new(0.0)))
         .decide(&board, &options(config), &mut StdRng::seed_from_u64(1))
         .unwrap();
-    assert_eq!(decision.mv, mv(0, 0));
-    assert_eq!(decision.guard.outcome, GuardOutcome::Unrefuted);
-    assert_eq!(decision.guard.checked, 1);
-    assert!(decision.guard.refuted.is_empty());
+    assert_eq!(decision.action, DecisionAction::Play(mv(0, 0)));
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::Unrefuted);
+    assert_eq!(guard.checked, 1);
+    assert!(guard.refuted.is_empty());
 }
 
 #[test]
@@ -319,10 +338,11 @@ fn cap_falls_back_to_unchecked_block_not_refuted_original() {
     }))
     .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
     .unwrap();
-    assert_eq!(decision.mv, block);
-    assert_eq!(decision.guard.outcome, GuardOutcome::BudgetExhausted);
-    assert_eq!(decision.guard.checked, 1);
-    assert_eq!(decision.guard.refuted, vec![mv(0, 0)]);
+    assert_eq!(decision.action, DecisionAction::Play(block));
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::BudgetExhausted);
+    assert_eq!(guard.checked, 1);
+    assert_eq!(guard.refuted, vec![mv(0, 0)]);
 }
 
 #[test]
@@ -335,10 +355,11 @@ fn zero_candidate_cap_keeps_original_unchecked() {
     let decision = AiPlayer::new(Box::new(Prefer(mv(0, 0))))
         .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
         .unwrap();
-    assert_eq!(decision.mv, mv(0, 0));
-    assert_eq!(decision.guard.checked, 0);
-    assert!(decision.guard.refuted.is_empty());
-    assert_eq!(decision.guard.outcome, GuardOutcome::BudgetExhausted);
+    assert_eq!(decision.action, DecisionAction::Play(mv(0, 0)));
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.checked, 0);
+    assert!(guard.refuted.is_empty());
+    assert_eq!(guard.outcome, GuardOutcome::BudgetExhausted);
 }
 
 #[test]
@@ -360,18 +381,19 @@ fn every_legal_move_really_refuted_reports_all_refuted_and_original_fallback() {
     let decision = AiPlayer::new(Box::new(UniformEvaluator::new(0.0)))
         .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
         .unwrap();
-    assert_eq!(decision.guard.outcome, GuardOutcome::AllRefuted);
-    assert_eq!(decision.guard.checked, board.empty_moves().count());
-    assert_eq!(decision.guard.refuted.len(), board.empty_moves().count());
+    let diagnostics = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(diagnostics.outcome, GuardOutcome::AllRefuted);
+    assert_eq!(diagnostics.checked, board.empty_moves().count());
+    assert_eq!(diagnostics.refuted.len(), board.empty_moves().count());
     for candidate in board.empty_moves() {
-        assert!(decision.guard.refuted.contains(&candidate));
+        assert!(diagnostics.refuted.contains(&candidate));
         let mut after = board.clone();
         after.play(candidate).unwrap();
         let proof = engine::prove_forced_win(&after, after.to_move(), guard.budget).unwrap();
         assert!(engine::verify_line(&after, &proof));
     }
-    assert_eq!(decision.mv, decision.guard.proposal);
-    assert!(board.is_legal(decision.mv));
+    assert_eq!(decision.action, DecisionAction::Play(diagnostics.proposal));
+    assert!(board.is_legal(played(decision.action)));
     assert_eq!(board, original);
 }
 
@@ -391,12 +413,13 @@ fn own_immediate_win_is_terminal_not_opponent_probe_unknown() {
     let decision = AiPlayer::new(Box::new(UniformEvaluator::new(0.0)))
         .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
         .unwrap();
-    assert_eq!(decision.mv, mv(0, 0));
-    assert_eq!(decision.guard.outcome, GuardOutcome::Terminal);
-    assert_eq!(decision.guard.checked, 1);
-    assert!(decision.guard.refuted.is_empty());
+    assert_eq!(decision.action, DecisionAction::Play(mv(0, 0)));
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::Terminal);
+    assert_eq!(guard.checked, 1);
+    assert!(guard.refuted.is_empty());
     let mut after = board.clone();
-    after.play(decision.mv).unwrap();
+    after.play(played(decision.action)).unwrap();
     assert_eq!(after.status(), Status::Won(Color::Black));
 }
 
@@ -427,9 +450,10 @@ fn enabled_unknown_preserves_seeded_first_candidate_noise_stats_and_rng() {
         let guarded = AiPlayer::new(Box::new(UniformEvaluator::new(0.3)))
             .decide(&board, &guarded_options, &mut guarded_rng)
             .unwrap();
-        assert_eq!(guarded.mv, plain.mv);
-        assert_eq!(guarded.guard.proposal, plain.mv);
-        assert_eq!(guarded.guard.outcome, GuardOutcome::Unrefuted);
+        assert_eq!(guarded.action, plain.action);
+        let guard = guarded.guard.as_ref().expect("play has diagnostics");
+        assert_eq!(guard.proposal, played(plain.action));
+        assert_eq!(guard.outcome, GuardOutcome::Unrefuted);
         assert_eq!(guarded.search, plain.search);
         assert_eq!(plain_rng.random::<u64>(), guarded_rng.random::<u64>());
         assert_eq!(board, original);
@@ -481,9 +505,10 @@ fn enabled_own_probe_precedes_guard_and_search() {
 
     let decision = player.decide(&board, &options, &mut rng).unwrap();
 
-    assert_eq!(decision.mv, certified);
+    assert_eq!(decision.action, DecisionAction::Play(certified));
     assert!(decision.search.is_none());
-    assert_eq!(decision.guard.outcome, GuardOutcome::ProvenWin);
-    assert_eq!(decision.guard.checked, 0);
-    assert!(decision.guard.refuted.is_empty());
+    let guard = decision.guard.as_ref().expect("play has diagnostics");
+    assert_eq!(guard.outcome, GuardOutcome::ProvenWin);
+    assert_eq!(guard.checked, 0);
+    assert!(guard.refuted.is_empty());
 }

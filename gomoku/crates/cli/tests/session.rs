@@ -226,6 +226,44 @@ fn round_trip(snapshot: &Snapshot) {
 }
 
 #[test]
+fn resignation_snapshot_serde_preserves_old_wire_and_both_optional_fields() {
+    use cli::history::Resignation;
+    use cli::session::Snapshot;
+    let core = SessionCore::new(SessionInit::hotseat());
+    let plain = core.snapshot();
+    let old_wire = serde_json::to_value(&plain).unwrap();
+    assert_eq!(old_wire.as_object().unwrap().len(), 6);
+    assert!(old_wire.get("resignation").is_none());
+    assert_eq!(serde_json::from_value::<Snapshot>(old_wire).unwrap(), plain);
+    let opening = SessionCore::new(SessionInit::hotseat().with_swap2(true))
+        .snapshot()
+        .opening;
+    for opening in [None, opening] {
+        let annotated = Snapshot {
+            resignation: Some(Resignation {
+                by: Color::Black,
+                candidates: 5,
+            }),
+            opening,
+            ..plain.clone()
+        };
+        let value = serde_json::to_value(&annotated).unwrap();
+        assert_eq!(
+            value.as_object().unwrap().len(),
+            7 + usize::from(annotated.opening.is_some())
+        );
+        assert_eq!(
+            value["resignation"],
+            serde_json::json!({"by": "Black", "candidates": 5})
+        );
+        assert_eq!(
+            serde_json::from_value::<Snapshot>(value).unwrap(),
+            annotated
+        );
+    }
+}
+
+#[test]
 fn snapshot_serde_round_trip_covers_all_statuses() {
     // A live mid-game snapshot from a real session.
     let mut core = SessionCore::new(SessionInit::new_hotseat());
@@ -248,6 +286,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
             status,
             last_move: Some(mv(7, 7)),
             opening: None,
+            resignation: None,
         });
     }
 
@@ -260,6 +299,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
         status: Status::Ongoing,
         last_move: None,
         opening: None,
+        resignation: None,
     });
 }
 
@@ -273,6 +313,7 @@ fn snapshot_json_wire_format_is_stable() {
         status: Status::Won(Color::Black),
         last_move: Some(mv(7, 7)),
         opening: None,
+        resignation: None,
     };
     let value = serde_json::to_value(&snapshot).unwrap();
     assert_eq!(

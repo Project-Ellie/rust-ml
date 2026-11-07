@@ -21,7 +21,7 @@
 use baseline::{BaselineEvaluator, Device, adapter};
 use engine::{Board, Color, Move, Status, reference::board_from_ascii};
 use mcts::{EvalRequest, EvalResult, Evaluator, TacticsEvaluator};
-use player::{AiPlayer, Decision, GuardConfig, OwnTssConfig, PlayerOptions};
+use player::{AiPlayer, Decision, DecisionAction, GuardConfig, OwnTssConfig, PlayerOptions};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::io::Write;
@@ -282,7 +282,14 @@ fn best_move(
     options: &PlayerOptions,
     rng: &mut StdRng,
 ) -> Move {
-    player.decide(board, options, rng).expect("game ongoing").mv
+    match player
+        .decide(board, options, rng)
+        .expect("game ongoing")
+        .action
+    {
+        DecisionAction::Play(mv) => mv,
+        DecisionAction::Resign(_) => panic!("resignation is disabled in acceptance tests"),
+    }
 }
 
 /// Per-search configured-budget metrics for the baseline seat.
@@ -356,7 +363,12 @@ fn play_game(black: Brain, white: Brain, seed: u64) -> (Status, u32, BaselineMet
                     .decide(&board, &options, &mut rng)
                     .expect("game ongoing");
                 metrics.record(&decision, *sims, start.elapsed().as_secs_f64());
-                decision.mv
+                match decision.action {
+                    DecisionAction::Play(mv) => mv,
+                    DecisionAction::Resign(_) => {
+                        panic!("resignation is disabled in acceptance tests")
+                    }
+                }
             }
             (Brain::Tactics(sims), Seat::Tactics(player)) => {
                 best_move(player, &board, &tactics_options(*sims), &mut rng)
@@ -1180,7 +1192,10 @@ fn interactive_latency_measured() {
                 }
             }
             flush();
-            decision.mv
+            match decision.action {
+                DecisionAction::Play(mv) => mv,
+                DecisionAction::Resign(_) => panic!("resignation is disabled in acceptance tests"),
+            }
         } else {
             best_move(&mut tactics, &board, &tactics_options, &mut rng)
         };

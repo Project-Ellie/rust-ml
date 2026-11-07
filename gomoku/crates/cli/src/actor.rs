@@ -148,6 +148,9 @@ pub struct AiConfig {
     /// opening schedule instead.
     #[serde(default)]
     pub explicit_selection: bool,
+    /// Enable heuristic concession after verified refutations of top candidates.
+    #[serde(default)]
+    pub resign: bool,
 }
 
 impl Default for AiConfig {
@@ -167,6 +170,7 @@ impl Default for AiConfig {
             temperature: 0.0,
             noise_epsilon: 0.0,
             explicit_selection: false,
+            resign: false,
         }
     }
 }

@@ -100,6 +100,7 @@ fn opening_schedule_changes_ai_vs_ai_play() {
     let scheduled_config = default_ai_config();
     let explicit_config = AiConfig {
         explicit_selection: true,
+        resign: false,
         ..default_ai_config()
     };
 

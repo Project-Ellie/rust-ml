@@ -21,7 +21,7 @@ use crate::command::{self, Command, OpeningPhase};
 use crate::opening::OpeningSnapshot;
 use crate::session::SessionCore;
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::{Color, Move, Status};
+use engine::{Color, Move};
 
 /// The message for the `m` key at a phase where it does not apply.
 ///
@@ -268,9 +268,11 @@ fn playing_key(key: KeyEvent, state: &InputState, core: &SessionCore) -> InputOu
     match key.code {
         // Enter (or Space) is the obvious next action: a human seat
         // plays at the cursor, an AI seat searches. The seat table
-        // decides; the session validates the result (an occupied
-        // square, a finished game) and the loop shows the error.
+        // decides; finished positions leave these shortcuts inert.
         KeyCode::Enter | KeyCode::Char(' ') => {
+            if core.is_finished() {
+                return InputOutcome::None;
+            }
             let side = core.board().to_move();
             if core.occupant(side).is_human() {
                 InputOutcome::Command(Command::Play { mv: state.cursor })
@@ -349,7 +351,7 @@ pub fn line_outcome(line: &str, core: &SessionCore) -> InputOutcome {
 /// extension of its rule.
 fn empty_line_outcome(core: &SessionCore) -> InputOutcome {
     let board = core.board();
-    if core.snapshot().opening.is_some() || board.status() != Status::Ongoing {
+    if core.snapshot().opening.is_some() || core.is_finished() {
         return InputOutcome::None;
     }
     if core.occupant(board.to_move()).is_ai() {
@@ -365,6 +367,7 @@ mod tests {
     use crate::command::SeatSel;
     use crate::session::SessionInit;
     use crossterm::event::KeyModifiers;
+    use engine::Status;
 
     /// A key event with no modifiers, as a terminal reports a plain
     /// keypress. `KeyEvent::new` marks the event as a press.

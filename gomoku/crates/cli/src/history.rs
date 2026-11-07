@@ -11,13 +11,23 @@
 //! the move that led to it. Replaying `board()` recomputes the cursor
 //! position from the root each call (≤225 plies).
 
-use engine::{Board, Move, PlayError};
+use engine::{Board, Color, Move, PlayError};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub(crate) mod record;
 
 /// Node identifier in a variation tree.
 pub type NodeId = u32;
+
+/// Historical heuristic concession, not an engine win or a global loss proof.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Resignation {
+    /// Side to move that conceded at this position.
+    pub by: Color,
+    /// Number of top-ranked candidates with verified opponent refutations.
+    pub candidates: usize,
+}
 
 /// One Node in the varation tree.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +38,7 @@ struct Node {
     mv: Option<Move>,
     //Child nodes in creation order
     children: Vec<NodeId>,
+    resignation: Option<Resignation>,
 }
 
 /// Persistent varation tree with a cursor
@@ -93,6 +104,7 @@ impl History {
                 parent: None,
                 mv: None,
                 children: Vec::new(),
+                resignation: None,
             }],
             root: 0,
             cursor: 0,
@@ -104,6 +116,16 @@ impl History {
     #[must_use]
     pub fn cursor(&self) -> NodeId {
         self.cursor
+    }
+
+    /// Historical concession at the current node, if any.
+    #[must_use]
+    pub fn resignation(&self) -> Option<Resignation> {
+        self.nodes[self.cursor as usize].resignation
+    }
+
+    pub(crate) fn set_resignation(&mut self, resignation: Resignation) {
+        self.nodes[self.cursor as usize].resignation = Some(resignation);
     }
 
     /// The board at the cursor, recomputed by replaying the root→cursor path.
@@ -149,6 +171,7 @@ impl History {
             parent: Some(self.cursor),
             mv: Some(mv),
             children: Vec::new(),
+            resignation: None,
         });
         self.nodes[self.cursor as usize].children.push(new_id);
         self.cursor = new_id;
