@@ -28,29 +28,31 @@ const V_CLAMP: f32 = 0.99;
 const QUIET_CAP: f32 = 0.05;
 
 /// Logit weight for an immediate win for the side to move.
-pub const T1_WIN: f32 = 64.0;
+pub const T1_WIN: f32 = 128.0;
 /// Logit weight for a forced block (opponent immediate win).
-pub const T2_FORCED_BLOCK: f32 = 32.0;
+pub const T2_FORCED_BLOCK: f32 = 64.0;
 /// Logit weight for an own double threat.
-pub const T3_DOUBLE_THREAT: f32 = 16.0;
+pub const T3_DOUBLE_THREAT: f32 = 32.0;
 /// Logit weight for an own double-three fork.
-pub const T4A_DOUBLE_THREE: f32 = 8.0;
+pub const T4A_DOUBLE_THREE: f32 = 16.0;
 /// Logit weight for any own three-maker.
 pub const T4B_THREE: f32 = 4.0;
-/// Logit weight for any opponent three-maker or double-three.
+/// Logit weight for an opponent double-three fork, instead of ordinary defense.
+pub const T4_DEFENSIVE_FORK: f32 = 8.0;
+/// Logit weight for any opponent three-maker without an opponent double-three.
 pub const T4C_DEFENSIVE: f32 = 2.0;
 
 /// Maximum possible gravity contribution after normalization.
 #[allow(dead_code)]
 const T5_MAX: f32 = 1.0;
 
-/// Side-to-move value heuristic from two threat maps.
+/// Public map-only value heuristic from the side-to-move perspective.
 ///
-/// The ladder (minus the double-three rungs that land in chapter 06):
-/// own win ⇒ +0.95; opponent ≥2 wins ⇒ −0.99; otherwise accumulate
-/// (−0.75 for opponent's single win, +0.85 for own double threat,
-/// −0.85 for opponent double threat) and clamp to ±0.99. A quiet
-/// board returns exactly 0.0.
+/// Own win ⇒ +0.95; opponent ≥2 wins ⇒ −0.99; otherwise accumulate
+/// −0.75 for an opponent single win, ±0.85 for own/opponent double-threat
+/// presence and ±0.20 for own/opponent potential-fork presence, then
+/// clamp to ±0.99. With no memberships, returns exactly 0.0.
+/// This readout includes neither the formed-fork bonus nor the quiet whisper.
 #[must_use]
 pub fn value(own: &ThreatMaps, opp: &ThreatMaps) -> f32 {
     if has_positive(&own.wins) {
@@ -81,6 +83,24 @@ pub fn value(own: &ThreatMaps, opp: &ThreatMaps) -> f32 {
     }
 
     v.clamp(-V_CLAMP, V_CLAMP)
+}
+
+/// Compose established-fork geometry with map value for the baseline evaluator.
+/// Either win map disables the binary ±0.30 bonus; otherwise add it and clamp.
+/// The public `value` remains the map-only readout.
+pub(crate) fn value_with_forks(
+    own: &ThreatMaps,
+    opp: &ThreatMaps,
+    own_formed: bool,
+    opp_formed: bool,
+) -> f32 {
+    let base = value(own, opp);
+    if has_positive(&own.wins) || has_positive(&opp.wins) {
+        return base;
+    }
+    // Compute the signed bonus first so equal flags cancel exactly.
+    let bonus = (i8::from(own_formed) - i8::from(opp_formed)) as f32 * 0.30;
+    (base + bonus).clamp(-V_CLAMP, V_CLAMP)
 }
 
 fn has_positive(map: &[[f32; 15]; 15]) -> bool {
@@ -153,7 +173,9 @@ pub fn policy_logits(
         if own.threes_per_dir.iter().any(|dir| dir[r][c] > 0.0) {
             logit += T4B_THREE;
         }
-        if opp.double_threes[r][c] > 0.0 || opp.threes_per_dir.iter().any(|dir| dir[r][c] > 0.0) {
+        if opp.double_threes[r][c] > 0.0 {
+            logit += T4_DEFENSIVE_FORK;
+        } else if opp.threes_per_dir.iter().any(|dir| dir[r][c] > 0.0) {
             logit += T4C_DEFENSIVE;
         }
 
@@ -185,6 +207,118 @@ mod tests {
     }
 
     #[test]
+    fn policy_own_win_has_weight_128() {
+        let mut own = empty_maps();
+        own.wins[7][7] = 3.0;
+        let mv = Move::new(7, 7).unwrap();
+        let logits = policy_logits(&[[0.0; 15]; 15], &own, &empty_maps(), &[mv]);
+        assert_eq!(logits[mv.index()], 128.0);
+    }
+
+    #[test]
+    fn policy_forced_block_has_weight_64() {
+        let mut opp = empty_maps();
+        opp.wins[7][7] = 2.0;
+        let mv = Move::new(7, 7).unwrap();
+        let logits = policy_logits(&[[0.0; 15]; 15], &empty_maps(), &opp, &[mv]);
+        assert_eq!(logits[mv.index()], 64.0);
+    }
+
+    #[test]
+    fn policy_own_double_threat_has_weight_32() {
+        let mut own = empty_maps();
+        own.double_threats[7][7] = 4.0;
+        let mv = Move::new(7, 7).unwrap();
+        let logits = policy_logits(&[[0.0; 15]; 15], &own, &empty_maps(), &[mv]);
+        assert_eq!(logits[mv.index()], 32.0);
+    }
+
+    #[test]
+    fn policy_own_fork_stacks_with_binary_own_three_for_20() {
+        let mut own = empty_maps();
+        own.double_threes[7][7] = 3.0;
+        let mv = Move::new(7, 7).unwrap();
+        let fork_only = policy_logits(&[[0.0; 15]; 15], &own, &empty_maps(), &[mv]);
+        assert_eq!(fork_only[mv.index()], 16.0);
+        for dir in &mut own.threes_per_dir {
+            dir[7][7] = 2.0;
+        }
+        let logits = policy_logits(&[[0.0; 15]; 15], &own, &empty_maps(), &[mv]);
+        assert_eq!(logits[mv.index()], 20.0);
+    }
+
+    #[test]
+    fn policy_defensive_fork_is_8_not_10_and_outranks_ordinary_2() {
+        let mut opp = empty_maps();
+        let fork = Move::new(7, 7).unwrap();
+        let ordinary = Move::new(7, 8).unwrap();
+        let fork_only = Move::new(7, 9).unwrap();
+        opp.double_threes[7][7] = 3.0;
+        opp.double_threes[7][9] = 2.0;
+        for dir in &mut opp.threes_per_dir {
+            dir[7][7] = 4.0;
+            dir[7][8] = 2.0;
+        }
+        let logits = policy_logits(
+            &[[0.0; 15]; 15],
+            &empty_maps(),
+            &opp,
+            &[fork, ordinary, fork_only],
+        );
+        assert_eq!(logits[ordinary.index()], 2.0);
+        assert_eq!(logits[fork.index()], 8.0);
+        assert_eq!(logits[fork_only.index()], 8.0);
+        assert!(logits[fork.index()] > logits[ordinary.index()]);
+    }
+
+    #[test]
+    fn policy_own_three_has_binary_weight_4_without_a_fork() {
+        let mut own = empty_maps();
+        for dir in &mut own.threes_per_dir {
+            dir[7][7] = 3.0;
+        }
+        let mv = Move::new(7, 7).unwrap();
+        let logits = policy_logits(&[[0.0; 15]; 15], &own, &empty_maps(), &[mv]);
+        assert_eq!(logits[mv.index()], 4.0);
+    }
+
+    #[test]
+    fn policy_memberships_stack_across_sides_and_with_gravity() {
+        for (defensive_fork, urgent, base) in [
+            (false, false, 22.0),
+            (true, false, 28.0),
+            (true, true, 252.0),
+        ] {
+            let mut own = empty_maps();
+            let mut opp = empty_maps();
+            own.double_threes[7][7] = 2.0;
+            if defensive_fork {
+                opp.double_threes[7][7] = 2.0;
+            }
+            for dir in &mut own.threes_per_dir {
+                dir[7][7] = 3.0;
+            }
+            for dir in &mut opp.threes_per_dir {
+                dir[7][7] = 3.0;
+            }
+            if urgent {
+                own.wins[7][7] = 2.0;
+                opp.wins[7][7] = 2.0;
+                own.double_threats[7][7] = 2.0;
+            }
+            // Opponent double-threat makers still contribute no policy tier.
+            opp.double_threats[7][7] = 4.0;
+            let mv = Move::new(7, 7).unwrap();
+            for g in [0.0, 1.0] {
+                let mut gravity = [[0.0; 15]; 15];
+                gravity[7][7] = g;
+                let logits = policy_logits(&gravity, &own, &opp, &[mv]);
+                assert_eq!(logits[mv.index()], base + g);
+            }
+        }
+    }
+
+    #[test]
     fn logits_are_uniform_when_gravity_is_zero() {
         let gravity = [[0.0f32; 15]; 15];
         let board = Board::new();
@@ -199,32 +333,180 @@ mod tests {
 
     #[test]
     fn logits_mask_illegal_cells() {
-        let gravity = [[0.0f32; 15]; 15];
+        let gravity = [[1.0f32; 15]; 15];
         let mut board = Board::new();
         board.play(Move::new(7, 7).unwrap()).unwrap();
         let legal: Vec<Move> = board.empty_moves().collect();
-        let own = empty_maps();
-        let opp = empty_maps();
+        let mut own = empty_maps();
+        let mut opp = empty_maps();
+        own.wins[7][7] = 1.0;
+        own.double_threats[7][7] = 1.0;
+        own.double_threes[7][7] = 1.0;
+        own.threes_per_dir[0][7][7] = 1.0;
+        opp.wins[7][7] = 1.0;
+        opp.double_threes[7][7] = 1.0;
+        opp.threes_per_dir[0][7][7] = 1.0;
         let logits = policy_logits(&gravity, &own, &opp, &legal);
         assert_eq!(logits[Move::new(7, 7).unwrap().index()], f32::NEG_INFINITY);
     }
 
     #[test]
-    #[allow(clippy::assertions_on_constants)]
     fn domination_invariant_holds() {
-        assert!(
-            T2_FORCED_BLOCK
-                > T3_DOUBLE_THREAT + T4A_DOUBLE_THREE + T4B_THREE + T4C_DEFENSIVE + T5_MAX
+        // Conservatively combine every lower membership, even when real
+        // geometry may not permit it. Defense contributes max(8, 2), not 10.
+        for (tier, (urgent_weight, lower_weight)) in [(32.0, 29.0), (64.0, 61.0), (128.0, 125.0)]
+            .into_iter()
+            .enumerate()
+        {
+            let mut own = empty_maps();
+            let mut opp = empty_maps();
+            match tier {
+                0 => own.double_threats[7][7] = 1.0,
+                1 => opp.wins[7][7] = 1.0,
+                _ => own.wins[7][7] = 1.0,
+            }
+            own.double_threes[7][8] = 2.0;
+            opp.double_threes[7][8] = 2.0;
+            for dir in &mut own.threes_per_dir {
+                dir[7][8] = 3.0;
+            }
+            for dir in &mut opp.threes_per_dir {
+                dir[7][8] = 3.0;
+            }
+            if tier >= 1 {
+                own.double_threats[7][8] = 2.0;
+            }
+            if tier >= 2 {
+                opp.wins[7][8] = 2.0;
+            }
+            let mut gravity = [[0.0; 15]; 15];
+            gravity[7][8] = 1.0;
+            let urgent = Move::new(7, 7).unwrap();
+            let lower = Move::new(7, 8).unwrap();
+            let logits = policy_logits(&gravity, &own, &opp, &[urgent, lower]);
+            assert_eq!(logits[urgent.index()], urgent_weight);
+            assert_eq!(logits[lower.index()], lower_weight);
+            assert!(logits[urgent.index()] > logits[lower.index()]);
+        }
+    }
+
+    #[test]
+    fn formed_bonus_adds_signed_point_three_to_existing_map_value() {
+        let empty = empty_maps();
+        assert_eq!(value_with_forks(&empty, &empty, true, false), 0.30);
+        assert_eq!(value_with_forks(&empty, &empty, false, true), -0.30);
+        let mut potential = empty_maps();
+        potential.double_threes[7][7] = 1.0;
+        assert_eq!(value(&potential, &empty), 0.20);
+        assert_eq!(value_with_forks(&potential, &empty, true, false), 0.50);
+        assert_eq!(value_with_forks(&empty, &potential, false, true), -0.50);
+        assert_eq!(
+            value_with_forks(&potential, &empty, false, true),
+            0.20f32 - 0.30
         );
-        assert!(
-            T1_WIN
-                > T2_FORCED_BLOCK
-                    + T3_DOUBLE_THREAT
-                    + T4A_DOUBLE_THREE
-                    + T4B_THREE
-                    + T4C_DEFENSIVE
-                    + T5_MAX
+        assert_eq!(
+            value_with_forks(&empty, &potential, true, false),
+            -0.20f32 + 0.30
         );
+    }
+
+    #[test]
+    fn formed_bonus_is_disabled_by_either_win_map_for_every_flag_pair() {
+        for own_win in [false, true] {
+            for opp_wins in 0..=2 {
+                if !own_win && opp_wins == 0 {
+                    continue;
+                }
+                for own_dt in [false, true] {
+                    for opp_dt in [false, true] {
+                        for own_potential in [false, true] {
+                            for opp_potential in [false, true] {
+                                let mut own = empty_maps();
+                                let mut opp = empty_maps();
+                                own.wins[7][7] = f32::from(own_win);
+                                opp.wins[7][..opp_wins].fill(1.0);
+                                own.double_threats[7][7] = f32::from(own_dt);
+                                opp.double_threats[7][7] = f32::from(opp_dt);
+                                own.double_threes[7][7] = f32::from(own_potential);
+                                opp.double_threes[7][7] = f32::from(opp_potential);
+                                let old = value(&own, &opp);
+                                for own_formed in [false, true] {
+                                    for opp_formed in [false, true] {
+                                        assert_eq!(
+                                            value_with_forks(&own, &opp, own_formed, opp_formed)
+                                                .to_bits(),
+                                            old.to_bits()
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut own = empty_maps();
+        let mut opp = empty_maps();
+        own.double_threats[7][7] = 1.0;
+        opp.wins[7][7] = 1.0;
+        let old_mixed = -0.75f32 + 0.85;
+        assert_eq!(value(&own, &opp), old_mixed);
+        assert_eq!(value_with_forks(&own, &opp, true, false), old_mixed);
+    }
+
+    #[test]
+    fn formed_bonus_equal_flags_preserve_old_value_bit_for_bit() {
+        for bits in 0..16 {
+            let mut own = empty_maps();
+            let mut opp = empty_maps();
+            own.double_threats[7][7] = f32::from(bits & 1 != 0);
+            opp.double_threats[7][7] = f32::from(bits & 2 != 0);
+            own.double_threes[7][7] = f32::from(bits & 4 != 0);
+            opp.double_threes[7][7] = f32::from(bits & 8 != 0);
+            let old = value(&own, &opp);
+            for flag in [false, true] {
+                assert_eq!(
+                    value_with_forks(&own, &opp, flag, flag).to_bits(),
+                    old.to_bits()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn formed_bonus_keeps_double_threat_rungs_and_saturates_both_signs() {
+        let empty = empty_maps();
+        let mut dt = empty_maps();
+        dt.double_threats[7][7] = 1.0;
+        assert_eq!(value(&dt, &empty), 0.85);
+        assert_eq!(value(&empty, &dt), -0.85);
+        assert_eq!(value_with_forks(&dt, &empty, true, false), 0.99);
+        assert_eq!(value_with_forks(&empty, &dt, false, true), -0.99);
+        assert_eq!(value_with_forks(&dt, &empty, false, true), 0.85f32 - 0.30);
+        assert_eq!(value_with_forks(&empty, &dt, true, false), -0.85f32 + 0.30);
+
+        // The old result is clamped BEFORE adding an opposing formed bonus.
+        dt.double_threes[7][7] = 1.0;
+        assert_eq!(value_with_forks(&dt, &empty, false, true), 0.99f32 - 0.30);
+        assert_eq!(value_with_forks(&empty, &dt, true, false), -0.99f32 + 0.30);
+    }
+
+    #[test]
+    fn formed_bonus_all_no_win_memberships_stay_inside_nonterminal_clamp() {
+        for bits in 0..16 {
+            let mut own = empty_maps();
+            let mut opp = empty_maps();
+            own.double_threats[7][7] = f32::from(bits & 1 != 0);
+            opp.double_threats[7][7] = f32::from(bits & 2 != 0);
+            own.double_threes[7][7] = f32::from(bits & 4 != 0);
+            opp.double_threes[7][7] = f32::from(bits & 8 != 0);
+            for own_formed in [false, true] {
+                for opp_formed in [false, true] {
+                    let v = value_with_forks(&own, &opp, own_formed, opp_formed);
+                    assert!((-0.99..=0.99).contains(&v));
+                }
+            }
+        }
     }
 
     #[test]
@@ -401,7 +683,7 @@ mod tests {
         let res = ev.evaluate(req);
 
         let fork = Move::new(7, 7).unwrap();
-        let expected = T3_DOUBLE_THREAT + gravity[7][7];
+        let expected = 32.0 + gravity[7][7];
         assert_eq!(res.policy[fork.index()], expected);
 
         let max_other = board
@@ -446,7 +728,7 @@ mod tests {
         let res = ev.evaluate(req);
 
         let fork = Move::new(7, 8).unwrap();
-        let expected = T4A_DOUBLE_THREE + T4B_THREE + gravity[7][8];
+        let expected = 20.0 + gravity[7][8];
         assert_eq!(res.policy[fork.index()], expected);
     }
 
@@ -482,7 +764,7 @@ mod tests {
         let res = ev.evaluate(req);
 
         let block = Move::new(7, 6).unwrap();
-        let expected = T4C_DEFENSIVE + gravity[7][6];
+        let expected = 2.0 + gravity[7][6];
         assert_eq!(res.policy[block.index()], expected);
     }
 
@@ -559,21 +841,14 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assertions_on_constants)]
     fn full_table_domination_invariant() {
-        assert!(
-            T2_FORCED_BLOCK
-                > T3_DOUBLE_THREAT + T4A_DOUBLE_THREE + T4B_THREE + T4C_DEFENSIVE + T5_MAX
-        );
-        assert!(
-            T1_WIN
-                > T2_FORCED_BLOCK
-                    + T3_DOUBLE_THREAT
-                    + T4A_DOUBLE_THREE
-                    + T4B_THREE
-                    + T4C_DEFENSIVE
-                    + T5_MAX
-        );
+        // Fork defense and ordinary defense are exclusive: use the larger.
+        let lower_stack =
+            T4A_DOUBLE_THREE + T4B_THREE + T4_DEFENSIVE_FORK.max(T4C_DEFENSIVE) + T5_MAX;
+        assert_eq!(lower_stack, 29.0);
+        assert!(T3_DOUBLE_THREAT > lower_stack);
+        assert!(T2_FORCED_BLOCK > T3_DOUBLE_THREAT + lower_stack);
+        assert!(T1_WIN > T2_FORCED_BLOCK + T3_DOUBLE_THREAT + lower_stack);
     }
 
     #[test]

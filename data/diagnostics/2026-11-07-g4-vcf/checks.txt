@@ -1,0 +1,9 @@
+$ rustfmt --edition 2024 --check gomoku/crates/cli/examples/diagnose_g4.rs
+fmt_exit=0
+$ (cd gomoku && cargo clippy --release --locked -p cli --example diagnose_g4 -- -D warnings)
+    Finished `release` profile [optimized] target(s) in 0.13s
+clippy_exit=0
+$ git diff --binary | shasum -a 256
+27715922cfb6a3aacf5abe10a2a7d70f61865ffcfe58d7f26a50f8a1d98c1773  -
+$ shasum -a 256 data/diagnostics/2026-11-07-g4-vcf/terminal.txt
+ac3b990b243df7f8fb2bb68a14350d2b8198503a5b84a211632b3213f363cdad  data/diagnostics/2026-11-07-g4-vcf/terminal.txt

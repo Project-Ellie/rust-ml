@@ -294,11 +294,21 @@ pub fn study_loop<S: Screen, I: InputSource>(
             // the same words do as normal-mode keys.
             InputOutcome::Command(Command::Help) => show_help(screen, input)?,
             InputOutcome::Command(Command::Quit) => return Ok(()),
-            InputOutcome::Command(cmd) => match core.execute(cmd) {
-                Ok(new_events) => {
-                    record_events(&mut events, &mut message, &new_events);
+
+            InputOutcome::Command(cmd) => match crate::shell_command::execute(core, cmd) {
+                Ok(reply) => {
+                    if reply.loaded {
+                        shell = ShellState::default();
+                        state = InputState::new();
+                        events.clear();
+                        message = None;
+                    }
+                    record_events(&mut events, &mut message, &reply.events);
+                    if let Some(text) = reply.message {
+                        message = Some(text);
+                    }
                 }
-                Err(err) => message = Some(err.to_string()),
+                Err(err) => message = Some(err),
             },
             InputOutcome::ToggleValueStrip => {
                 shell.show_value_strip = !shell.show_value_strip;

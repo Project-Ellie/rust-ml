@@ -1,0 +1,10 @@
+rustfmt_exit=0
+    Finished `release` profile [optimized] target(s) in 0.07s
+focused_clippy_exit=0
+ac3b990b243df7f8fb2bb68a14350d2b8198503a5b84a211632b3213f363cdad  data/diagnostics/2026-11-07-g4-vcf/terminal.txt
+8ee981ef50a7241c739392bb44e51e560494c1bce6c48f1afffe3fbeb10d423c  data/diagnostics/2026-11-07-g4-vcf/position.json
+96377939ea7d056ddc205c70551fe64789c7947ec6eaeef9d6ddfa001ef3b0f9  data/diagnostics/2026-11-07-g4-vcf/metadata.json
+before_protected_tracked_diff_sha256=27715922cfb6a3aacf5abe10a2a7d70f61865ffcfe58d7f26a50f8a1d98c1773
+after_protected_tracked_diff_sha256=27715922cfb6a3aacf5abe10a2a7d70f61865ffcfe58d7f26a50f8a1d98c1773  -
+README relative links: all resolve; ../../../gomoku is correct from this directory
+link_check_exit=0

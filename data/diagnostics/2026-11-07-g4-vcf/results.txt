@@ -1,0 +1,145 @@
+
+$ diagnose_g4 position.json validate
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+to_move=Black status=Ongoing Black_wins=[] White_wins=[]
+wall_ms=154.134 status=0 signal=null error=null
+
+$ diagnose_g4 position.json line e7
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+play White g4
+to_move=Black status=Ongoing Black_wins=[] White_wins=["f3"]
+play Black f3
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+play White h4
+to_move=Black status=Ongoing Black_wins=[] White_wins=["e4", "j4"]
+wall_ms=3.277 status=0 signal=null error=null
+
+$ diagnose_g4 position.json line f6
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+play White g4
+to_move=Black status=Ongoing Black_wins=[] White_wins=["f3"]
+play Black f3
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+play White h4
+to_move=Black status=Ongoing Black_wins=[] White_wins=["e4", "j4"]
+wall_ms=2.904 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe e7 1000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=13.646 total_ms=13.666
+wall_ms=16.069 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe e7 10000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 10 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=11.776 total_ms=11.794
+wall_ms=13.938 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe e7 1000 3
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 1000, max_depth: 3 } winner=White line=["g4", "f3", "h4"] verified=true prover_ms=1.659 total_ms=1.668
+wall_ms=3.629 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe e7 10000 3
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 3 } winner=White line=["g4", "f3", "h4"] verified=true prover_ms=1.563 total_ms=1.571
+wall_ms=3.657 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe e7 10000 30
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black e7
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 30 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=79.941 total_ms=79.956
+wall_ms=81.731 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f6 1000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=9.019 total_ms=9.033
+wall_ms=10.894 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f6 10000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 10 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=8.983 total_ms=8.997
+wall_ms=10.634 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f6 1000 3
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 1000, max_depth: 3 } winner=White line=["g4", "f3", "h4"] verified=true prover_ms=1.294 total_ms=1.301
+wall_ms=2.923 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f6 10000 3
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 3 } winner=White line=["g4", "f3", "h4"] verified=true prover_ms=1.324 total_ms=1.331
+wall_ms=2.891 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f6 10000 30
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f6
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=true
+budget=SearchBudget { max_nodes: 10000, max_depth: 30 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=88.390 total_ms=88.404
+wall_ms=90.010 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe g4 1000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black g4
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=false
+budget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=["k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=24.423 total_ms=24.434
+wall_ms=26.300 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe f3 1000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black f3
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=false
+budget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=["k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=24.414 total_ms=24.425
+wall_ms=25.946 status=0 signal=null error=null
+
+$ diagnose_g4 position.json probe h4 1000 10
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+after Black h4
+to_move=White status=Ongoing Black_wins=[] White_wins=[]
+specific White g4 Black f3 White h4 verified=false
+budget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=["f3", "g4", "k4", "l3", "l5", "i5", "j3"] verified=true prover_ms=8.934 total_ms=8.948
+wall_ms=10.563 status=0 signal=null error=null
+
+$ diagnose_g4 position.json guard e7
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+CONTROLLED guard, NOT original 10000-sim/RNG reproduction: proposal=e7 chosen=e1 checked=5 refuted=["e7", "a1", "b1", "c1", "d1"] outcome=BudgetExhausted config=GuardConfig { enabled: true, max_candidates: 5, budget: SearchBudget { max_nodes: 1000, max_depth: 10 } } elapsed_ms=45.301
+wall_ms=46.884 status=0 signal=null error=null
+
+$ diagnose_g4 position.json guard f6
+PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history
+CONTROLLED guard, NOT original 10000-sim/RNG reproduction: proposal=f6 chosen=e1 checked=5 refuted=["f6", "a1", "b1", "c1", "d1"] outcome=BudgetExhausted config=GuardConfig { enabled: true, max_candidates: 5, budget: SearchBudget { max_nodes: 1000, max_depth: 10 } } elapsed_ms=45.346
+wall_ms=46.938 status=0 signal=null error=null

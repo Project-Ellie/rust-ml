@@ -1,0 +1,20 @@
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       -- Study table --
+   +---------------------------------------------+     Black: AI(10000)
+ 1 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 1   White: Human
+ 2 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 2   
+ 3 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 3   Ply: 42
+ 4 | .  .  .  +  .  o  .  +  o  .  .  +  .  .  . | 4   To move: Black
+ 5 | .  .  .  .  .  .  x  o  .  o  o  .  .  .  . | 5   Path: ... n8 l8 e8 h5 n9 o10 d9 c10
+ 6 | .  .  .  .  .  .  x  x  o  x  x  .  o  .  . | 6   2 variations: [0] e7 [1] f6
+ 7 | .  .  .  .  .  x  o  o  x  o  .  x  .  .  . | 7   
+ 8 | .  .  .  +  x  o  x  x  o  x  x  o  x  x  . | 8   Last events:
+ 9 | .  .  .  x  .  .  x  o  o  x  o  .  .  x  . | 9     Moved e7 by Ai
+10 | .  . [o] .  .  o  o  .  x  .  .  .  .  .  o | 10    Cursor moved to ply 42
+11 | .  .  .  .  .  x  .  o  .  .  .  .  .  .  . | 11    Moved f6 by Ai
+12 | .  .  .  +  .  .  .  +  .  .  .  +  .  .  . | 12    Branched: e7 f6
+13 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 13    Cursor moved to ply 42
+14 | .  .  .  .  .  .  .  .  .  .  .  .  .  .  . | 14  
+15 | .  .  .  .  .  . <.> .  .  .  .  .  .  .  . | 15  ? help · q quit
+   +---------------------------------------------+     
+     a  b  c  d  e  f  g  h  i  j  k  l  m  n  o       
+Cursor moved to ply 42

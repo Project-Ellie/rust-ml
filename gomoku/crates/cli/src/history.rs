@@ -14,6 +14,8 @@
 use engine::{Board, Move, PlayError};
 use thiserror::Error;
 
+pub(crate) mod record;
+
 /// Node identifier in a variation tree.
 pub type NodeId = u32;
 
@@ -250,6 +252,10 @@ impl History {
 
         path.reverse();
         path
+    }
+
+    pub(crate) fn root_board(&self) -> &Board {
+        &self.root_board
     }
 }
 

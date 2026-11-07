@@ -1,0 +1,37 @@
+{
+  "capture_date": "2026-11-07",
+  "source": "Parent-captured terminal.txt; immutable evidence",
+  "source_sha256": "ac3b990b243df7f8fb2bb68a14350d2b8198503a5b84a211632b3213f363cdad",
+  "head": "a64420f740558fb37bcacb060fa28f13f31001b8",
+  "source_state": "main plus existing owner-authorized uncommitted fork bonuses; preserved, no production edits",
+  "process_metadata_provenance": "Supplied by parent, not obtained by attaching to or interacting with live process",
+  "pid": 68910,
+  "argv": "./target/release/gomoku play --ai baseline --sims 10000 --no-swap2 --temperature 1.0 --seed 3477",
+  "started_local": "2026-11-07 12:08:55",
+  "binary_mtime_local": "2026-11-07 12:08:45",
+  "timezone": "unknown",
+  "snapshot": {
+    "ply": 42,
+    "to_move": "black",
+    "black_seat": "AI(10000)",
+    "white_seat": "Human",
+    "black_stones": 21,
+    "white_stones": 21,
+    "variations": ["e7", "f6"],
+    "late_path_suffix": ["n8", "l8", "e8", "h5", "n9", "o10", "d9", "c10"],
+    "full_move_list": null,
+    "branch_rng_state": null,
+    "original_mcts_proposals_and_rankings": null,
+    "native_game_saved": false
+  },
+  "claim_provenance": "Owner claimed White g4; initially unverified; checked independently in results.txt",
+  "fixture": "position.json uses zero-based [column,row], root attacker black, empty solution; parsed and count-validated fixture, not recovered full game",
+  "execution": {
+    "compile_command": "cd gomoku && cargo build --release --locked -p cli --example diagnose_g4",
+    "first_compile_seconds": 22.88,
+    "probe_timeout_ms": 10000,
+    "timeout_signal": "SIGKILL",
+    "live_process_interaction": false,
+    "original_10000_sim_search_reproduced": false
+  }
+}

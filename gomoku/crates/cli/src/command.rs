@@ -11,6 +11,7 @@ use crate::notation::parse_algebraic;
 use engine::{Color, Move, PlayError, Status};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::PathBuf;
 use thiserror::Error;
 
 /// A command issued to `SessionCore`.
@@ -84,6 +85,16 @@ pub enum Command {
     Help,
     /// Leave the session.
     Quit,
+    /// Save the study through a filesystem-capable shell
+    Save {
+        /// Literal destination path
+        path: PathBuf,
+    },
+    /// Load a study through a filesystem-capable shell.
+    Load {
+        /// Literal source path
+        path: PathBuf,
+    }
 }
 
 /// Phase of a Swap2 opening ceremony.
@@ -352,6 +363,9 @@ pub enum CommandError {
         /// Number of puzzles in the pack.
         count: usize,
     },
+    /// Save and load make no sense in a script, or do they...?
+    #[error("save/load must be executed through the shell")]
+    ShellOnly,
 }
 
 impl From<HistoryError> for CommandError {
@@ -378,6 +392,22 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
     if trimmed.is_empty() {
         return Err(CommandError::Parse("empty input".to_string()));
     }
+
+    let split = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+    let verb = &trimmed[..split];
+    if verb.eq_ignore_ascii_case("save") || verb.eq_ignore_ascii_case("load") {
+        let remainder = trimmed[split..].trim();
+        if remainder.is_empty() {
+            return Err(CommandError::Parse(format!("{verb} requires a path")));
+        }
+        let path = std::path::PathBuf::from(remainder);
+        return Ok(if verb.eq_ignore_ascii_case("save"){
+           Command::Save{path}
+        } else {
+            Command::Load {path}
+        });
+    }
+
     let lower = trimmed.to_ascii_lowercase();
     let mut tokens = lower.split_whitespace();
     let first = tokens.next().expect("There's at least one");
@@ -758,5 +788,17 @@ mod tests {
         assert_eq!(parse("prev"), Ok(Command::PrevPuzzle));
         assert!(parse("hint x").is_err());
         assert!(parse("next 2").is_err());
+    }
+
+    #[test]
+    fn file_paths_preserve_case_and_internal_spaces() {
+        assert_eq!(parse("  SaVe   Games/My  Study.JSON \t").unwrap(),
+                   Command::Save { path: "Games/My  Study.JSON".into() });
+        assert_eq!(parse("LoAd\tMixed Case/a.json").unwrap(),
+                   Command::Load { path: "Mixed Case/a.json".into() });
+        assert!(parse("save \t").is_err());
+        assert!(parse("load").is_err());
+        assert_eq!(parse("save ~/x.json").unwrap(),
+                   Command::Save { path: "~/x.json".into() });
     }
 }

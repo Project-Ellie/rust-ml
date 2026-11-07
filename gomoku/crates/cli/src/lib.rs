@@ -14,6 +14,8 @@ pub mod command;
 pub mod fmt;
 /// Persistent variation tree.
 pub mod history;
+/// load and save files
+pub mod game_file;
 /// Algebraic notation.
 pub mod notation;
 /// Swap2 opening ceremony state.
@@ -24,5 +26,7 @@ pub mod puzzle;
 pub mod repl;
 /// Session state machine.
 pub mod session;
+/// commands that interact with the shell
+pub mod shell_command;
 /// Terminal UI.
 pub mod tui;

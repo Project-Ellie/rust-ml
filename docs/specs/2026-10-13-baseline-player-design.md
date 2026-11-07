@@ -345,6 +345,11 @@ search adjudicate.
 
 ### 4.3 The tier table
 
+**Historical weights:** this table and its derivation describe the baseline
+before the owner-approved [2026-11-07 fork-bonus revision](2026-11-07-baseline-fork-bonuses-design.md),
+which supersedes these weights and adds guarded formed-fork value; the current
+`main` implementation is the reference.
+
 Logit contributions, binary membership per tier, additive across
 tiers:
 

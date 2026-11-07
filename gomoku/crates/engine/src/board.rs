@@ -126,7 +126,7 @@ impl Board {
 
         if crate::win::has_any_five(&self.stones(self.to_move)) {
             self.status = Status::Won(self.to_move);
-        } else if self.moves.len() == 225 {
+        } else if self.empty_moves().next().is_none() {
             self.status = Status::Draw;
         }
 
@@ -427,5 +427,39 @@ mod tests {
             }
         }
         assert_eq!(fast.status(), Status::Ongoing);
+    }
+
+    #[test]
+    fn imported_224_stone_root_draws_undoes_and_draws_again() {
+        let last = Move::new(0, 0).unwrap();
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        for r in 0..15 {
+            for c in 0..15 {
+                let mv = Move::new(r, c).unwrap();
+                if mv == last { continue; }
+                if (r + 2 * c) % 4 < 2 {
+                    black.push(mv);
+                } else {
+                    white.push(mv);
+                }
+            }
+        }
+        assert_eq!((white.len(), black.len()), (112, 112));
+        let mut board = Board::from_position(&black, &white, Color::Black).unwrap();
+        assert!(board.moves().is_empty());
+        assert!(!board.has_five_any(Color::Black));
+        assert!(!board.has_five_any(Color::White));
+        assert_eq!(board.empty_moves().collect::<Vec<_>>(), vec![last]);
+        let original = board.clone();
+        for _ in 0..2 {
+            board.play(last).unwrap();
+            assert_eq!(board.status(), Status::Draw);
+            assert_eq!(board.moves(), &[last]);
+            assert_eq!(board.empty_moves().count(), 0);
+            board.undo();
+            assert_eq!(board, original);
+            assert_eq!(board.status(), Status::Ongoing);
+        }
     }
 }

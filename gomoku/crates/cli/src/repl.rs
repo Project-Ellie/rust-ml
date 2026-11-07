@@ -100,19 +100,23 @@ pub fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> Li
             }
             outcome.quit = true;
         }
-        Ok(cmd) => match core.execute(cmd) {
-            Ok(events) => {
-                if events.is_empty() {
+
+        Ok(cmd) => match crate::shell_command::execute(core, cmd) {
+            Ok(reply) => {
+                if reply.events.is_empty() && reply.message.is_none() {
                     outcome.lines.push("(no events)".to_string());
-                } else {
-                    for event in &events {
-                        outcome.lines.push(format!("  {event}"));
-                    }
+                }
+                for event in &reply.events {
+                    outcome.lines.push(format!("  {event}"));
+                }
+                if let Some(message) = reply.message {
+                    outcome.lines.push(message);
                 }
                 outcome.lines.extend(print_state(core, ""));
             }
             Err(e) => outcome.lines.push(format!("Error {e}")),
         },
+
         Err(e) => outcome.lines.push(format!("Parse error {e}")),
     }
     outcome

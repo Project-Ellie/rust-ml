@@ -323,10 +323,23 @@ Two further tutorial tracks are written and verified, ready to work:
   synchronous with no tree reuse; the guard defaults are
   `[experiment]` (5 candidates / 1000 nodes / 10 depth) and an
   unrefuted candidate means unknown, not safe.
-  Design spec:
+  **Baseline fork-bonus revision (2026-11-07): implemented on `main`,
+  owner-authorized and uncommitted.** Policy now separates opponent-fork
+  defense at 8 from ordinary defense at 2, with urgent weights
+  128/64/32 and own-fork weight 16. Value preserves the public map-only
+  ladder and adds a guarded ±0.30 formed-fork bonus through a private
+  geometric detector, retaining the zero-value quiet-whisper gate.
+  No verifier, player or MCTS changes. Full-workspace release QA:
+  608 passed / 0 failed / 7 ignored, plus 3 passing doc tests;
+  clippy/fmt green and release CLI rebuilt. These metrics verify
+  correctness, not strength. Current `main` source
+  remains the implementation reference; see the
+  [fork-bonus policy and value design](specs/2026-11-07-baseline-fork-bonuses-design.md).
+  Original design spec:
   [2026-10-13-baseline-player-design.md](specs/2026-10-13-baseline-player-design.md)
-  (weights stand; the primer supersedes its chapter order; the spec
-  has been narrowly amended to player-level orchestration).
+  (its historical weights are superseded by the fork-bonus revision;
+  the primer supersedes its chapter order; the spec has been narrowly
+  amended to player-level orchestration).
 - [playable-cli-tutorial](tutorials/playable-cli-tutorial/README.md)
   **COMPLETE (2026-10-26)**: chapters 01–07 and the chapter-09
   acceptance are worked and on `main` (242 cli tests green, one

@@ -167,22 +167,21 @@ fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
             }
             return true;
         }
-        Ok(cmd) => match core.execute(cmd) {
-            Ok(events) => {
-                if events.is_empty() {
-                    println!("(no events)")
-                } else {
-                    for event in &events {
-                        println!("  {event}");
-                    }
+        Ok(cmd) => match cli::shell_command::execute(core, cmd) {
+            Ok(reply) => {
+                if reply.events.is_empty() && reply.message.is_none() {
+                    println!("(no events)");
+                }
+                for event in &reply.events {
+                    println!("  {event}");
+                }
+                if let Some(message) = reply.message {
+                    println!("{message}");
                 }
                 print_state(core, "");
             }
-            Err(e) => {
-                println!("Error {e}");
-            }
-        },
-        Err(e) => {
+            Err(e) => println!("Error {e}"),
+        },        Err(e) => {
             println!("Parse error {e}");
         }
     }

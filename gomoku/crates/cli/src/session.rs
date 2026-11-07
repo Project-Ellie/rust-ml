@@ -4,6 +4,9 @@
 //! tree, the seat table, and AI search defaults. Commands go in; events
 //! and snapshots come out. No terminal code, no I/O.
 
+/// Native study record conversion
+pub mod record;
+
 use crate::actor::{AiConfig, EvaluatorKind, Occupant, OccupantKind, SearchInfo};
 use crate::command::{Command, CommandError, Event, SeatSel};
 use crate::history::NodeId as HistoryNodeId;
@@ -387,6 +390,7 @@ impl SessionCore {
             Command::Reveal => self.execute_reveal(),
             Command::NextPuzzle => self.execute_puzzle_nav(1),
             Command::PrevPuzzle => self.execute_puzzle_nav(-1),
+            Command::Save {..} | Command::Load{..} => Err(CommandError::ShellOnly),
         }
     }
 

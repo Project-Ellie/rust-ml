@@ -1,13 +1,15 @@
 //! Hand-written policy/value evaluator for the Gomoku baseline player.
 //!
 //! This crate implements the [`mcts::Evaluator`] seam with a
-//! deterministic policy that combines the gravity kernel with
-//! immediate wins and forced blocks from the threat network. The
-//! value stays flat at `0.0` in this sub-chapter.
+//! deterministic policy that combines gravity with both sides' threat
+//! maps, including separate opponent-fork defense. Value combines the
+//! existing map ladder with a bounded bonus for already formed forks.
+//! An optional quiet-position whisper applies only when that value is zero.
 
 #![deny(missing_docs)]
 
 pub mod adapter;
+mod forks;
 pub mod gravity;
 pub mod readout;
 
@@ -20,10 +22,11 @@ use patterns::net::ThreatNet;
 
 /// The baseline evaluator.
 ///
-/// v4 combines the gravity kernel with the full policy tier table
-/// (wins, forced blocks, double threats, double threes, threes,
-/// defensive threes) and the chapter-06 value ladder including
-/// double-three rungs.
+/// Combines gravity with threat-map policy tiers (wins, forced blocks,
+/// double threats, potential forks, threes and defensive memberships).
+/// Value preserves the map ladder, including ±0.20 potential-fork terms,
+/// and adds a guarded ±0.30 formed-fork bonus, clamped to ±0.99.
+/// The optional quiet whisper applies only to a zero composed value.
 pub struct BaselineEvaluator {
     device: Device,
     kernel: GravityKernel,
@@ -62,13 +65,15 @@ impl Evaluator for BaselineEvaluator {
     fn evaluate(&mut self, req: EvalRequest) -> EvalResult {
         let board = adapter::reconstruct_board(&req.planes, &req.legal);
         let maps = patterns::net::analyze_both(&self.net, &board, &self.device);
-        let (own, opp) = match board.to_move() {
-            Color::Black => (&maps[0], &maps[1]),
-            Color::White => (&maps[1], &maps[0]),
+        let black_formed = forks::has_open_three_fork(&board, Color::Black);
+        let white_formed = forks::has_open_three_fork(&board, Color::White);
+        let (own, opp, own_formed, opp_formed) = match board.to_move() {
+            Color::Black => (&maps[0], &maps[1], black_formed, white_formed),
+            Color::White => (&maps[1], &maps[0], white_formed, black_formed),
         };
         let gravity = self.kernel.compute(&req.planes);
         let policy = readout::policy_logits(&gravity, own, opp, &req.legal);
-        let value = readout::value(own, opp);
+        let value = readout::value_with_forks(own, opp, own_formed, opp_formed);
         // [experiment] quiet whisper: only when the threat ladder is
         // silent. `value == 0.0` also covers symmetric threat
         // cancellation — that counts as "quiet" for this experiment.
@@ -102,6 +107,199 @@ mod tests {
                     .unwrap()
             })
             .unwrap()
+    }
+
+    const SCATTERED: [(u8, u8); 6] = [(0, 0), (0, 3), (0, 6), (0, 9), (0, 12), (14, 0)];
+    const FORMED: [(u8, u8); 5] = [(7, 5), (7, 6), (7, 7), (5, 7), (6, 7)];
+
+    fn position(black: &[(u8, u8)], white: &[(u8, u8)], to_move: Color) -> Board {
+        let moves = |cells: &[(u8, u8)]| -> Vec<Move> {
+            cells
+                .iter()
+                .map(|&(r, c)| Move::new(r, c).unwrap())
+                .collect()
+        };
+        Board::from_position(&moves(black), &moves(white), to_move).unwrap()
+    }
+
+    fn any(map: &[[f32; 15]; 15]) -> bool {
+        map.iter().flatten().any(|&v| v > 0.0)
+    }
+
+    fn assert_three_maps(formed_color: Color, maps: &[patterns::net::ThreatMaps; 2]) {
+        let (threat, quiet) = match formed_color {
+            Color::Black => (&maps[0], &maps[1]),
+            Color::White => (&maps[1], &maps[0]),
+        };
+        assert!(!any(&threat.wins));
+        assert!(any(&threat.double_threats));
+        assert!(!any(&threat.double_threes));
+        assert!(!any(&quiet.wins));
+        assert!(!any(&quiet.double_threats));
+        assert!(!any(&quiet.double_threes));
+        assert_eq!(readout::value(threat, quiet), 0.85);
+    }
+
+    #[test]
+    fn established_fork_saturates_for_both_colors_and_side_to_move_perspectives() {
+        let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        for color in [Color::Black, Color::White] {
+            for to_move in [Color::Black, Color::White] {
+                // Explicit, quiet opposite-side lists for each count-valid perspective.
+                let fillers = match (color, to_move) {
+                    (_, Color::Black) => &SCATTERED[..5],
+                    (Color::Black, Color::White) => &SCATTERED[..4],
+                    (Color::White, Color::White) => &SCATTERED[..6],
+                };
+                let (black, white) = if color == Color::Black {
+                    (&FORMED[..], fillers)
+                } else {
+                    (fillers, &FORMED[..])
+                };
+                let board = position(black, white, to_move);
+                let req = request_from_board(&board);
+                let before = (
+                    req.planes.clone(),
+                    board.zobrist(),
+                    board.status(),
+                    board.to_move(),
+                );
+                let maps = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+                assert_three_maps(color, &maps);
+                assert!(forks::has_open_three_fork(&board, color));
+                assert!(!forks::has_open_three_fork(&board, color.other()));
+                let expected = if color == to_move { 0.99 } else { -0.99 };
+                assert_eq!(
+                    ev.evaluate(req.clone()).value,
+                    expected,
+                    "{color:?} {to_move:?}"
+                );
+                assert_eq!(ev.evaluate(req).value, expected);
+                assert_eq!(
+                    (
+                        engine::encode(&board),
+                        board.zobrist(),
+                        board.status(),
+                        board.to_move()
+                    ),
+                    before
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn one_established_three_retains_point_eighty_five_without_fork_bonus() {
+        let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        let three = [(7, 5), (7, 6), (7, 7)];
+        for color in [Color::Black, Color::White] {
+            for to_move in [Color::Black, Color::White] {
+                let fillers = match (color, to_move) {
+                    (_, Color::Black) => &SCATTERED[..3],
+                    (Color::Black, Color::White) => &SCATTERED[..2],
+                    (Color::White, Color::White) => &SCATTERED[..4],
+                };
+                let (black, white) = if color == Color::Black {
+                    (&three[..], fillers)
+                } else {
+                    (fillers, &three[..])
+                };
+                let board = position(black, white, to_move);
+                let maps = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+                assert_three_maps(color, &maps);
+                assert!(!forks::has_open_three_fork(&board, Color::Black));
+                assert!(!forks::has_open_three_fork(&board, Color::White));
+                let expected = if color == to_move { 0.85 } else { -0.85 };
+                assert_eq!(ev.evaluate(request_from_board(&board)).value, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn potential_maker_is_not_established_until_the_move_is_played() {
+        let mut board = position(
+            &[(7, 5), (7, 6), (5, 7), (6, 7)],
+            &SCATTERED[..4],
+            Color::Black,
+        );
+        let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        let before = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+        assert!(!any(&before[0].wins));
+        assert!(!any(&before[0].double_threats));
+        assert!(before[0].double_threes[7][7] > 0.0);
+        assert!(!any(&before[1].wins));
+        assert!(!any(&before[1].double_threats));
+        assert!(!any(&before[1].double_threes));
+        assert!(!forks::has_open_three_fork(&board, Color::Black));
+        assert!(!forks::has_open_three_fork(&board, Color::White));
+        assert_eq!(ev.evaluate(request_from_board(&board)).value, 0.20);
+
+        board.play(Move::new(7, 7).unwrap()).unwrap();
+        let after = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+        assert_three_maps(Color::Black, &after);
+        assert!(forks::has_open_three_fork(&board, Color::Black));
+        assert!(!forks::has_open_three_fork(&board, Color::White));
+        // All maker maps mask the occupied anchor, but its geometry still counts.
+        assert_eq!(after[0].double_threes[7][7], 0.0);
+        assert_eq!(after[0].double_threats[7][7], 0.0);
+        assert_eq!(board.to_move(), Color::White);
+        assert_eq!(ev.evaluate(request_from_board(&board)).value, -0.99);
+    }
+
+    #[test]
+    fn both_established_forks_cancel_and_still_reach_the_existing_quiet_gate() {
+        let white = [(3, 9), (3, 10), (3, 11), (1, 11), (2, 11)];
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let mut no_quiet = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        for to_move in [Color::Black, Color::White] {
+            let mut black = FORMED.to_vec();
+            if to_move == Color::White {
+                // A nearby sixth Black stone makes the whisper nonzero without
+                // creating an immediate win or changing the map-value memberships.
+                black.push((4, 5));
+            }
+            let board = position(&black, &white, to_move);
+            let maps = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+            for (side, map) in maps.iter().enumerate() {
+                assert!(!any(&map.wins));
+                assert!(any(&map.double_threats));
+                assert!(!any(&map.double_threes), "{to_move:?} side {side}");
+            }
+            assert!(forks::has_open_three_fork(&board, Color::Black));
+            assert!(forks::has_open_three_fork(&board, Color::White));
+            assert_eq!(readout::value(&maps[0], &maps[1]), 0.0);
+            let req = request_from_board(&board);
+            let gravity = ev.kernel.compute(&req.planes);
+            let whisper = readout::quiet_value(&gravity, &req.planes);
+            if to_move == Color::White {
+                assert_ne!(whisper, 0.0);
+            }
+            assert_eq!(no_quiet.evaluate(req.clone()).value, 0.0);
+            assert_eq!(ev.evaluate(req).value, whisper);
+        }
+    }
+
+    #[test]
+    fn multiple_own_anchors_still_cancel_one_opponent_fork_as_binary_presence() {
+        // Black shares the horizontal three at row 7 between two vertical
+        // threes, anchored at (7,5) and (7,7). White has one fork at (3,11).
+        let board = position(
+            &[(7, 5), (7, 6), (7, 7), (5, 7), (6, 7), (5, 5), (6, 5)],
+            &[(3, 9), (3, 10), (3, 11), (1, 11), (2, 11), (0, 0), (0, 3)],
+            Color::Black,
+        );
+        let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
+        let maps = patterns::net::analyze_both(&ev.net, &board, &ev.device);
+        for map in &maps {
+            assert!(!any(&map.wins));
+            assert!(any(&map.double_threats));
+        }
+        assert!(any(&maps[0].double_threes));
+        assert!(!any(&maps[1].double_threes));
+        assert!(forks::has_open_three_fork(&board, Color::Black));
+        assert!(forks::has_open_three_fork(&board, Color::White));
+        assert_eq!(readout::value(&maps[0], &maps[1]), 0.20);
+        assert_eq!(ev.evaluate(request_from_board(&board)).value, 0.20);
     }
 
     #[test]

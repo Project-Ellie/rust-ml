@@ -1,0 +1,243 @@
+[
+  {
+    "args": [
+      "validate"
+    ],
+    "wall_ms": 154.13437499999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nto_move=Black status=Ongoing Black_wins=[] White_wins=[]\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "line",
+      "e7"
+    ],
+    "wall_ms": 3.276959000000005,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nplay White g4\nto_move=Black status=Ongoing Black_wins=[] White_wins=[\"f3\"]\nplay Black f3\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nplay White h4\nto_move=Black status=Ongoing Black_wins=[] White_wins=[\"e4\", \"j4\"]\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "line",
+      "f6"
+    ],
+    "wall_ms": 2.9035829999999976,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nplay White g4\nto_move=Black status=Ongoing Black_wins=[] White_wins=[\"f3\"]\nplay Black f3\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nplay White h4\nto_move=Black status=Ongoing Black_wins=[] White_wins=[\"e4\", \"j4\"]\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "e7",
+      "1000",
+      "10"
+    ],
+    "wall_ms": 16.068666000000007,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=13.646 total_ms=13.666\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "e7",
+      "10000",
+      "10"
+    ],
+    "wall_ms": 13.93754199999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 10 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=11.776 total_ms=11.794\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "e7",
+      "1000",
+      "3"
+    ],
+    "wall_ms": 3.629499999999979,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 1000, max_depth: 3 } winner=White line=[\"g4\", \"f3\", \"h4\"] verified=true prover_ms=1.659 total_ms=1.668\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "e7",
+      "10000",
+      "3"
+    ],
+    "wall_ms": 3.656874999999985,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 3 } winner=White line=[\"g4\", \"f3\", \"h4\"] verified=true prover_ms=1.563 total_ms=1.571\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "e7",
+      "10000",
+      "30"
+    ],
+    "wall_ms": 81.73079099999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black e7\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 30 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=79.941 total_ms=79.956\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f6",
+      "1000",
+      "10"
+    ],
+    "wall_ms": 10.894207999999992,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=9.019 total_ms=9.033\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f6",
+      "10000",
+      "10"
+    ],
+    "wall_ms": 10.634124999999983,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 10 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=8.983 total_ms=8.997\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f6",
+      "1000",
+      "3"
+    ],
+    "wall_ms": 2.9225419999999644,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 1000, max_depth: 3 } winner=White line=[\"g4\", \"f3\", \"h4\"] verified=true prover_ms=1.294 total_ms=1.301\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f6",
+      "10000",
+      "3"
+    ],
+    "wall_ms": 2.8909170000000017,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 3 } winner=White line=[\"g4\", \"f3\", \"h4\"] verified=true prover_ms=1.324 total_ms=1.331\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f6",
+      "10000",
+      "30"
+    ],
+    "wall_ms": 90.00966599999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f6\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=true\nbudget=SearchBudget { max_nodes: 10000, max_depth: 30 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=88.390 total_ms=88.404\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "g4",
+      "1000",
+      "10"
+    ],
+    "wall_ms": 26.300207999999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black g4\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=false\nbudget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=[\"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=24.423 total_ms=24.434\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "f3",
+      "1000",
+      "10"
+    ],
+    "wall_ms": 25.946124999999995,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black f3\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=false\nbudget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=[\"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=24.414 total_ms=24.425\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "probe",
+      "h4",
+      "1000",
+      "10"
+    ],
+    "wall_ms": 10.56295799999998,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nafter Black h4\nto_move=White status=Ongoing Black_wins=[] White_wins=[]\nspecific White g4 Black f3 White h4 verified=false\nbudget=SearchBudget { max_nodes: 1000, max_depth: 10 } winner=White line=[\"f3\", \"g4\", \"k4\", \"l3\", \"l5\", \"i5\", \"j3\"] verified=true prover_ms=8.934 total_ms=8.948\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "guard",
+      "e7"
+    ],
+    "wall_ms": 46.883500000000026,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nCONTROLLED guard, NOT original 10000-sim/RNG reproduction: proposal=e7 chosen=e1 checked=5 refuted=[\"e7\", \"a1\", \"b1\", \"c1\", \"d1\"] outcome=BudgetExhausted config=GuardConfig { enabled: true, max_candidates: 5, budget: SearchBudget { max_nodes: 1000, max_depth: 10 } } elapsed_ms=45.301\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "guard",
+      "f6"
+    ],
+    "wall_ms": 46.93829200000005,
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "stdout": "PuzzlePack validated: 21 Black / 21 White; Black to move; empty claimed line; imported position, NOT recovered history\nCONTROLLED guard, NOT original 10000-sim/RNG reproduction: proposal=f6 chosen=e1 checked=5 refuted=[\"f6\", \"a1\", \"b1\", \"c1\", \"d1\"] outcome=BudgetExhausted config=GuardConfig { enabled: true, max_candidates: 5, budget: SearchBudget { max_nodes: 1000, max_depth: 10 } } elapsed_ms=45.346\n",
+    "stderr": ""
+  }
+]
