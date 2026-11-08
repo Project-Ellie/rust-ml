@@ -1,0 +1,22 @@
+[package]
+name="net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["flex"]
+flex = ["burn/flex", "burn/dataset", "burn/train"]
+gpu = ["burn/wgpu", "burn/dataset", "burn/train"]
+
+[dependencies]
+burn = { workspace = true }
+engine = { path = "../engine" }
+train = { path = "../train" }
+rand = "0.10.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+engine = { path = "../engine", features = ["testutil"] }

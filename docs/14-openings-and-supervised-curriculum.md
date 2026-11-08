@@ -15,7 +15,8 @@ may enter the curriculum** — this project's standing direction is that it
 project follows AlphaZero in spirit but welcomes supervised head
 starts ("alpha-epsilon"), so this chapter defines what is allowed,
 from where, under which licenses, and in which order. The chapter
-ends with five design decisions (D1–D5, locked 2026-09-20). All data
+ends with six design decisions (D1–D5, locked 2026-09-20; D6, locked
+2026-11-08). All data
 sources named here were verified by direct HTTP access on 2026-09-20
 and are catalogued in `docs/references/`; negative findings are
 recorded in `docs/references/findings-external-data.md`.
@@ -49,6 +50,11 @@ recorded in `docs/references/findings-external-data.md`.
 - **Anchor set** — milestone 4's collection of machine-verified
   forced-win puzzles with exact ±1 labels, fed as a small fraction of
   each training batch (ch. 12, milestone 4; soundness: decision 8).
+- **Mentor records** — in-house game records from mentor-vs-mentor
+  self-play (the hand-written baseline agent), stored as games with
+  per-ply visit-distribution targets and outcomes; the in-house member
+  of signal-ladder tier 3 (decision D6, locked 2026-11-08; format per
+  [docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md)).
 - **PSQ** — the plain-text game-record format of the Piskvork
   tournament manager: a header line, then `x,y,ms` move lines.
 - **VCF / VCT** — Victory by Continuous Four / Victory by Continuous
@@ -60,7 +66,8 @@ recorded in `docs/references/findings-external-data.md`.
   moves (ch. 13, decision 1).
 - **Claim labels** — **[paper]** / **[derived]** / **[experiment]** /
   **[proposal]** marks design items not yet
-  locked; decisions D1–D5 of this chapter were locked on 2026-09-20.
+  locked; decisions D1–D5 of this chapter were locked on 2026-09-20,
+  D6 on 2026-11-08.
 
 ## 1. Why the opening needs a design
 
@@ -256,9 +263,10 @@ Training signals ordered by noise, from cleanest to noisiest:
    fraction stays small).
 2. **Synthetic tactical data** (milestone 3's generator): rules-true
    by construction, distribution by design.
-3. **Strong-engine records** (Gomocup archives; Rapfi selfplay):
-   strong but not exact; labels are engine moves, which bake in the
-   engine's style and occasional blunders.
+3. **Strong-engine and mentor records** (Gomocup archives; Rapfi
+   selfplay; in-house mentor self-play, decision D6): strong but not
+   exact; labels are the generating agent's moves and outcomes, which
+   bake in the agent's style and occasional blunders.
 4. **Self-play bootstrap** (`π`, `z`): noisiest early, asymptotically
    exact, and the only signal that tracks the agent's own
    distribution.
@@ -269,9 +277,10 @@ bootstrap taking over as it becomes reliable.
 ### 5.3 Phases (locked decision D2)
 
 - **Phase 0 (pre-training, extends milestone 3):** synthetic tactics
-  set as already designed, *plus* behavior-cloning on the verified
-  permissively-licensed subsets (Karesis/Gomoku; Gomocup PSQ
-  restricted to Freestyle15 for local use). Purpose: the network
+  set as already designed, *plus* mentor self-play records (decision
+  D6), *plus* behavior-cloning on the verified permissively-licensed
+  subsets (Karesis/Gomoku; Gomocup PSQ restricted to Freestyle15 for
+  local use). Purpose: the network
   starts the loop knowing what a five, a four, and a threat look
   like, so early MCTS is not guided by noise. Deliverable check: the
   phase-0 network must pass milestone 3's synthetic benchmark before
@@ -289,8 +298,10 @@ bootstrap taking over as it becomes reliable.
 
 1. **Distribution anchoring.** Behavior-cloned styles cap what
    self-play can discover if the supervised fraction never decays.
-   Mitigation: phase-2 decay schedule (§5.3) and the anchor-fraction
-   discipline already locked in ch. 12.
+   Mitigation: phase-2 decay schedule (§5.3), the anchor-fraction
+   discipline already locked in ch. 12, and — for the mentor
+   fraction specifically — the retention of the external supplements
+   as a counterweight to mentor bias (decision D6).
 2. **Ruleset contamination.** Renju/exact-five positions are wrong
    under our rules (overlines win). Mitigation **(decision D5)**: all
    external positions are re-adjudicated by our engine before use;
@@ -328,6 +339,7 @@ bootstrap taking over as it becomes reliable.
 | D3 | Licensing gate per §5.4 item 3 (permissive/self-generated for redistribution; unlicensed public archives local-only; GPL engines black-box only). |
 | D4 | Rapfi (or c-gomoku-cli + engine) as the sanctioned external generator for opening candidates and sparring benchmarks — an [experiment], never part of the core loop. |
 | D5 | Re-adjudication rule per §5.4 item 2: no external position or label enters any training set without passing our engine and, for tactical claims, `verify_line`. |
+| D6 | (Locked 2026-11-08) Mentor self-play records (baseline-vs-baseline, in-house, engine-adjudicated by construction) join signal-ladder tier 3 alongside the external engine records; the external supplements are retained as a counterweight to mentor bias. Mentor records are stored as games with per-ply visit-distribution targets and outcomes (ch. 12 §9 discipline; format per [docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md)); the phase-2 decay schedule applies to the mentor fraction unchanged; certified mentor endgame suffixes feed the milestone-4 anchor set. |
 
 ## References
 
