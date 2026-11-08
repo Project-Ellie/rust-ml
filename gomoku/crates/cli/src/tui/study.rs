@@ -268,6 +268,7 @@ pub fn study_loop<S: Screen, I: InputSource>(
     let mut message: Option<String> = hint.map(str::to_string);
     let mut shell = ShellState::default();
     loop {
+        shell.invalidate_stale(core);
         // The frame shows the board cursor only when the input source
         // has one to move. The line-mode source has none, so it draws
         // no marker instead of a marker no key can move.
@@ -303,6 +304,22 @@ pub fn study_loop<S: Screen, I: InputSource>(
                         events.clear();
                         message = None;
                     }
+                    for event in &reply.events {
+                        if let Event::DecisionReport { event, candidate } = event {
+                            let lines = crate::decision::report(core, *event, *candidate)
+                                .map_err(io::Error::other)?;
+                            show_decision(screen, input, &lines)?;
+                            if let Some(n) = candidate {
+                                shell.preview = Some(PreviewSelection {
+                                    revision: core.analysis_revision(),
+                                    event: *event,
+                                    candidate: *n,
+                                });
+                                shell.tss_proof = None;
+                                shell.policy_overlay = PolicyOverlay::Off;
+                            }
+                        }
+                    }
                     record_events(&mut events, &mut message, &reply.events);
                     if let Some(text) = reply.message {
                         message = Some(text);
@@ -322,6 +339,7 @@ pub fn study_loop<S: Screen, I: InputSource>(
                 );
             }
             InputOutcome::CyclePolicy => {
+                shell.preview = None;
                 shell.policy_overlay = shell.policy_overlay.cycle();
                 if shell.policy_overlay != PolicyOverlay::Off {
                     // Mutual exclusion: a policy overlay and a TSS proof
@@ -355,6 +373,48 @@ struct ShellState {
     policy_overlay: PolicyOverlay,
     /// The active TSS forced-win proof overlay.
     tss_proof: Option<engine::Proof>,
+    tss_revision: Option<u64>,
+    preview: Option<PreviewSelection>,
+}
+
+#[derive(Debug)]
+struct PreviewSelection {
+    revision: u64,
+    event: Option<usize>,
+    candidate: usize,
+}
+
+impl ShellState {
+    fn invalidate_stale(&mut self, core: &SessionCore) {
+        if self.tss_revision != Some(core.analysis_revision()) {
+            self.tss_proof = None;
+            self.tss_revision = None;
+        }
+        if self
+            .preview
+            .as_ref()
+            .is_some_and(|p| p.revision != core.analysis_revision())
+        {
+            self.preview = None;
+        }
+    }
+}
+
+fn show_decision<S: Screen, I: InputSource>(
+    screen: &mut S,
+    input: &mut I,
+    lines: &[String],
+) -> io::Result<()> {
+    if !input.has_normal_mode() {
+        // Unlike help, a piped report consumes no dismissal line.
+        return screen.draw(lines);
+    }
+    let (width, height) = screen.viewport();
+    for page in crate::decision::pages(lines, usize::from(width), usize::from(height)) {
+        screen.draw(&page)?;
+        input.wait_any_key()?;
+    }
+    Ok(())
 }
 
 /// Assemble the frame for one loop iteration.
@@ -374,11 +434,22 @@ fn build_frame(
     styled: bool,
     shell: &ShellState,
 ) -> Vec<String> {
+    let preview = shell
+        .preview
+        .as_ref()
+        .filter(|p| p.revision == core.analysis_revision())
+        .and_then(|p| crate::decision::preview(core, p.event, p.candidate).ok());
     let view = StudyView::new(core, events)
+        .decision_preview(preview.as_ref())
         .styled(styled)
         .show_value_strip(shell.show_value_strip)
         .policy_overlay(shell.policy_overlay)
-        .tss_proof(shell.tss_proof.as_ref());
+        .tss_proof(
+            shell
+                .tss_proof
+                .as_ref()
+                .filter(|_| shell.tss_revision == Some(core.analysis_revision())),
+        );
     let view = match cursor {
         Some(mv) => view.cursor(mv),
         None => view,
@@ -399,6 +470,8 @@ fn build_frame(
 /// threat-space search prover on the current board and, on success,
 /// store the verified proof and clear any active policy overlay.
 fn toggle_tss(core: &SessionCore, shell: &mut ShellState) -> String {
+    shell.invalidate_stale(core);
+    shell.preview = None;
     if shell.tss_proof.is_some() {
         shell.tss_proof = None;
         return "TSS overlay hidden".to_string();
@@ -410,10 +483,10 @@ fn toggle_tss(core: &SessionCore, shell: &mut ShellState) -> String {
         return "TSS is not available during the Swap2 ceremony".to_string();
     }
 
-    if core.is_finished() {
+    let board = core.board();
+    if board.status() != engine::Status::Ongoing {
         return "TSS demo is only available during ongoing games".to_string();
     }
-    let board = core.board();
 
     // The depth cap keeps the painted move numbers single-digit, so a
     // proof cell always fits its three-character slot.
@@ -433,6 +506,7 @@ fn toggle_tss(core: &SessionCore, shell: &mut ShellState) -> String {
 
     let verdict = tss_verdict(&proof);
     shell.tss_proof = Some(proof);
+    shell.tss_revision = Some(core.analysis_revision());
     shell.policy_overlay = PolicyOverlay::Off;
     verdict
 }
@@ -615,20 +689,332 @@ mod tests {
     }
 
     #[test]
-    fn resign_toggle_tss_refuses_conceded_ongoing_board() {
-        let core = SessionCore::new(SessionInit::hotseat());
-        let mut value: serde_json::Value =
-            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
-        value["history"]["nodes"][0]["resignation"] = serde_json::json!({
-            "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+    fn resign_toggle_tss_searches_real_conceded_board_before_and_after_take() {
+        let mv = |r, c| Move::new(r, c).unwrap();
+        let board = engine::Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let config = crate::actor::AiConfig {
+            simulations: 3,
+            resign: true,
+            ..Default::default()
+        };
+        let mut core = SessionCore::new(SessionInit {
+            opening: board,
+            ..SessionInit::versus_ai(Color::White, config)
         });
-        let core = SessionCore::import_record_json(&value.to_string()).unwrap();
+        core.execute(Command::Step).unwrap();
+        assert!(core.is_finished());
         let mut shell = ShellState::default();
+        assert_eq!(
+            toggle_tss(&core, &mut shell),
+            "no forced win proven within budget"
+        );
+        core.execute_take(crate::command::SeatSel::Black).unwrap();
+        assert_eq!(
+            toggle_tss(&core, &mut shell),
+            "no forced win proven within budget"
+        );
+        assert!(shell.tss_proof.is_none());
+        core.execute_play(mv(0, 0)).unwrap();
+        let proof = engine::Proof {
+            winner: Color::White,
+            line: vec![mv(7, 7)],
+        };
+        assert!(engine::verify_line(&core.board(), &proof));
+        core.execute_play(mv(7, 7)).unwrap();
+        core.execute_take(crate::command::SeatSel::Both).unwrap();
+        assert_eq!(
+            core.execute_play(mv(0, 1)),
+            Err(crate::command::CommandError::GameOver)
+        );
         assert_eq!(
             toggle_tss(&core, &mut shell),
             "TSS demo is only available during ongoing games"
         );
+        let without = render_study(&StudyView::new(&core, &[]));
+        let with_stale = render_study(&StudyView::new(&core, &[]).tss_proof(Some(&proof)));
+        assert_eq!(without, with_stale);
+    }
+
+    #[test]
+    fn decision_report_pages_are_bounded_and_all_events_accessible() {
+        struct SmallScreen {
+            frames: Vec<Vec<String>>,
+        }
+        impl Screen for SmallScreen {
+            fn draw(&mut self, frame: &[String]) -> io::Result<()> {
+                self.frames.push(frame.to_vec());
+                Ok(())
+            }
+            fn viewport(&self) -> (u16, u16) {
+                (23, 7)
+            }
+        }
+        struct Dismiss {
+            calls: usize,
+        }
+        impl InputSource for Dismiss {
+            fn next_outcome(
+                &mut self,
+                _: &mut InputState,
+                _: &SessionCore,
+            ) -> io::Result<InputOutcome> {
+                panic!("report must only dismiss")
+            }
+            fn wait_any_key(&mut self) -> io::Result<()> {
+                self.calls += 1;
+                Ok(())
+            }
+        }
+        let mut core = crate::decision_tests::concession();
+        core.execute(Command::Take {
+            seat: crate::command::SeatSel::Black,
+        })
+        .unwrap();
+        core.execute(Command::Release {
+            seat: crate::command::SeatSel::Black,
+        })
+        .unwrap();
+        core.execute(Command::Step).unwrap();
+        let lines = crate::decision::report(&core, None, None).unwrap();
+        let mut screen = SmallScreen { frames: vec![] };
+        let mut input = Dismiss { calls: 0 };
+        show_decision(&mut screen, &mut input, &lines).unwrap();
+        assert_eq!(input.calls, screen.frames.len());
+        assert!(input.calls > 10);
+        let text: String = screen
+            .frames
+            .iter()
+            .flat_map(|p| {
+                assert!(p.len() <= 7);
+                assert!(p.iter().all(|s| s.chars().count() <= 23));
+                p[1..p.len() - 1].iter().cloned()
+            })
+            .collect();
+        assert_eq!(text, lines.concat());
+        assert!(text.contains("Event 2/2"));
+    }
+
+    fn select_preview(core: &SessionCore) -> ShellState {
+        ShellState {
+            preview: Some(PreviewSelection {
+                revision: core.analysis_revision(),
+                event: None,
+                candidate: 1,
+            }),
+            ..ShellState::default()
+        }
+    }
+
+    #[test]
+    fn decision_preview_identity_covers_navigation_config_errors_and_load_transactions() {
+        let mut core = crate::decision_tests::concession();
+        let mut shell = select_preview(&core);
+        let before = core.analysis_revision();
+        core.execute(Command::Decision {
+            event: None,
+            candidate: None,
+        })
+        .unwrap();
+        assert_eq!(before, core.analysis_revision());
+        shell.invalidate_stale(&core);
+        assert!(shell.preview.is_some());
+        let result = crate::shell_command::execute(
+            &mut core,
+            Command::Load {
+                path: "not-an-existing-decision-test-file".into(),
+            },
+        );
+        assert!(result.is_err());
+        shell.invalidate_stale(&core);
+        assert!(
+            shell.preview.is_some(),
+            "failed transactional load preserves the view"
+        );
+        for command in [
+            Command::Take {
+                seat: crate::command::SeatSel::Black,
+            },
+            Command::Release {
+                seat: crate::command::SeatSel::Black,
+            },
+            Command::SetSims {
+                seat: crate::command::SeatSel::Black,
+                n: 4,
+            },
+        ] {
+            shell = select_preview(&core);
+            let key = core.board().zobrist();
+            core.execute(command).unwrap();
+            assert_eq!(key, core.board().zobrist());
+            shell.invalidate_stale(&core);
+            assert!(shell.preview.is_none());
+        }
+        // A partial forward mutates the cursor then returns ForwardAtLeaf.
+        core.execute(Command::Take {
+            seat: crate::command::SeatSel::Black,
+        })
+        .unwrap();
+        core.execute(Command::Play { mv: mv(0, 0) }).unwrap();
+        core.execute(Command::Back { n: 1 }).unwrap();
+        shell = select_preview(&core);
+        let original = core.board().zobrist();
+        let revision = core.analysis_revision();
+        assert_eq!(
+            core.execute(Command::Forward { n: 2 }),
+            Err(crate::command::CommandError::ForwardAtLeaf)
+        );
+        assert_ne!(core.board().zobrist(), original);
+        assert!(core.analysis_revision() > revision);
+        core.execute(Command::Back { n: 1 }).unwrap();
+        assert_eq!(core.board().zobrist(), original);
+        shell.invalidate_stale(&core);
+        assert!(
+            shell.preview.is_none(),
+            "equal-board roundtrip is not equal identity"
+        );
+        shell = select_preview(&core);
+        core.execute(Command::New).unwrap();
+        assert_eq!(core.board().zobrist(), original);
+        shell.invalidate_stale(&core);
+        assert!(shell.preview.is_none());
+    }
+
+    #[test]
+    fn decision_save_keeps_preview_successful_same_position_load_resets_it() {
+        let dir = std::env::temp_dir().join(format!("gomoku-decision-view-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("study.json");
+        let mut core = crate::decision_tests::concession();
+        let mut shell = select_preview(&core);
+        let revision = core.analysis_revision();
+        crate::shell_command::execute(&mut core, Command::Save { path: path.clone() }).unwrap();
+        assert_eq!(core.analysis_revision(), revision);
+        shell.invalidate_stale(&core);
+        assert!(shell.preview.is_some());
+        let commands = format!(
+            "decision 1\nsave {}\nload {}\nquit\n",
+            path.display(),
+            path.display()
+        );
+        let mut input = LineInput::new(Cursor::new(commands));
+        let mut screen = TestScreen::new();
+        let board = core.board();
+        study_loop(&mut core, &mut screen, &mut input, None).unwrap();
+        assert_eq!(core.board(), board);
+        let frames = &screen.frames;
+        assert!(
+            frames[frames.len() - 2]
+                .join("\n")
+                .contains("HYPOTHETICAL PREVIEW")
+        );
+        assert!(
+            !frames
+                .last()
+                .unwrap()
+                .join("\n")
+                .contains("HYPOTHETICAL PREVIEW")
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn decision_root_tss_identity_and_overlay_mutual_exclusion() {
+        let board = engine::Board::from_position(
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let mut core = SessionCore::new(SessionInit {
+            opening: board,
+            ..SessionInit::hotseat()
+        });
+        let mut shell = ShellState::default();
+        toggle_tss(&core, &mut shell);
+        assert!(shell.tss_proof.is_some());
+        let key = core.board().zobrist();
+        core.execute(Command::Take {
+            seat: crate::command::SeatSel::Both,
+        })
+        .unwrap();
+        assert_eq!(core.board().zobrist(), key);
+        // Frame assembly defensively refuses stale proof even before cleanup.
+        let state = InputState::new();
+        assert_eq!(
+            build_frame(&core, &state, None, &[], None, false, &shell),
+            build_frame(
+                &core,
+                &state,
+                None,
+                &[],
+                None,
+                false,
+                &ShellState::default()
+            )
+        );
+        shell.invalidate_stale(&core);
         assert!(shell.tss_proof.is_none());
+        let mut concession = crate::decision_tests::concession();
+        let mut input = LineInput::new(Cursor::new("decision 1\np\ndecision 2\nt\nquit\n"));
+        let mut screen = TestScreen::new();
+        study_loop(&mut concession, &mut screen, &mut input, None).unwrap();
+        let frames = screen
+            .frames
+            .iter()
+            .filter(|f| f.len() >= 19)
+            .collect::<Vec<_>>();
+        assert!(frames[1].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(!frames[2].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(frames[3].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(!frames[4].join("\n").contains("HYPOTHETICAL PREVIEW"));
+    }
+
+    #[test]
+    fn decision_preview_frame_keeps_actual_status_and_hides_cursor_in_plain_and_styled() {
+        let core = crate::decision_tests::concession();
+        let shell = select_preview(&core);
+        let preview = crate::decision::preview(&core, None, 1).unwrap();
+        let state = InputState::new();
+        for styled in [false, true] {
+            let frame = build_frame(
+                &core,
+                &state,
+                Some(preview.proof.line[0]),
+                &[],
+                None,
+                styled,
+                &shell,
+            );
+            let text = frame.join("\n");
+            assert!(text.contains("HYPOTHETICAL PREVIEW; no move played"));
+            assert!(text.contains("root turn Black, status Ongoing"));
+            assert!(text.contains("White VCF"));
+            assert!(!text.contains("<1>"));
+        }
+        let root_message = toggle_tss(&core, &mut select_preview(&core));
+        assert_eq!(root_message, "no forced win proven within budget");
+    }
+
+    #[test]
+    fn decision_line_report_prints_all_without_swallowing_take_or_play() {
+        let mut core = crate::decision_tests::concession();
+        let mut input = LineInput::new(Cursor::new(
+            "decision\ndecision 1\nt\ntake black\na1\nquit\n",
+        ));
+        let mut screen = TestScreen::new();
+        study_loop(&mut core, &mut screen, &mut input, None).unwrap();
+        let text = screen.all_text();
+        assert!(text.contains("Check 5:"));
+        assert!(text.contains("HYPOTHETICAL PREVIEW"));
+        assert!(text.contains("no forced win proven within budget"));
+        assert_eq!(core.board().stone_at(mv(0, 0)), Some(Color::Black));
+        core.execute(Command::Back { n: 1 }).unwrap();
+        assert_eq!(core.resignation_events().len(), 1);
     }
 
     #[test]

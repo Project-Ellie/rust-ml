@@ -59,6 +59,7 @@ pub struct StudyView<'a> {
     show_value_strip: bool,
     policy_overlay: PolicyOverlay,
     tss_proof: Option<&'a Proof>,
+    decision_preview: Option<&'a crate::decision::Preview<'a>>,
 }
 
 impl<'a> StudyView<'a> {
@@ -76,6 +77,7 @@ impl<'a> StudyView<'a> {
             show_value_strip: false,
             policy_overlay: PolicyOverlay::Off,
             tss_proof: None,
+            decision_preview: None,
         }
     }
 
@@ -146,6 +148,14 @@ impl<'a> StudyView<'a> {
         self
     }
 
+    /// Display a candidate clone and its stored opponent proof. The side panel
+    /// remains the actual session; the board cursor is suppressed.
+    #[must_use]
+    pub fn decision_preview(mut self, preview: Option<&'a crate::decision::Preview<'a>>) -> Self {
+        self.decision_preview = preview;
+        self
+    }
+
     /// Set the TSS forced-win overlay.
     #[must_use]
     pub fn tss_proof(mut self, proof: Option<&'a Proof>) -> Self {
@@ -172,13 +182,19 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
     let opening = snapshot.opening.as_ref();
     let search_info = core.search_info();
     let board_lines = study_board_lines(
-        &board,
+        view.decision_preview.map_or(&board, |p| &p.board),
         opening,
         snapshot.last_move,
-        view.cursor,
+        if view.decision_preview.is_some() {
+            None
+        } else {
+            view.cursor
+        },
         view.styled,
         view.policy_overlay,
-        if core.is_finished() {
+        if let Some(p) = view.decision_preview {
+            Some(p.proof)
+        } else if board.status() != Status::Ongoing {
             None
         } else {
             view.tss_proof
@@ -194,7 +210,16 @@ pub fn render_study(view: &StudyView) -> Vec<String> {
         view.show_value_strip,
     );
     let rows = board_lines.len().max(panel_lines.len());
-    let mut out = Vec::with_capacity(rows + 1);
+    let mut out = Vec::with_capacity(rows + 3);
+    if let Some(p) = view.decision_preview {
+        out.push(p.label.clone());
+        out.push(format!(
+            "Side panel = ACTUAL node: ply {}, root turn {:?}, status {:?}; path unchanged",
+            snapshot.ply,
+            board.to_move(),
+            snapshot.status
+        ));
+    }
     for i in 0..rows {
         let left = board_lines.get(i).map(String::as_str).unwrap_or("");
         let right = panel_lines.get(i).map(String::as_str).unwrap_or("");
@@ -511,19 +536,25 @@ fn render_side_panel(
 /// result, path tail, and branch options.
 fn position_lines(lines: &mut Vec<String>, core: &SessionCore, board: &Board, snapshot: &Snapshot) {
     lines.push(format!("Ply: {}", snapshot.ply));
-    if let Some(resignation) = snapshot.resignation {
-        lines.push(
-            Event::Resigned {
-                by: resignation.by,
-                candidates: resignation.candidates,
+    match snapshot.status {
+        Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
+        Status::Draw => lines.push("Game over: draw".to_string()),
+        Status::Ongoing => {
+            if let Some(resignation) = snapshot.resignation {
+                let label = Event::Resigned {
+                    by: resignation.by,
+                    candidates: resignation.candidates,
+                }
+                .to_string();
+                if snapshot.resignation_resumed {
+                    lines.push(format!("Historical/resumed: {label}"));
+                } else {
+                    lines.push(label);
+                }
             }
-            .to_string(),
-        );
-    } else {
-        match snapshot.status {
-            Status::Ongoing => lines.push(format!("To move: {:?}", board.to_move())),
-            Status::Won(color) => lines.push(format!("Game over: {color:?} wins")),
-            Status::Draw => lines.push("Game over: draw".to_string()),
+            if snapshot.resignation.is_none() || snapshot.resignation_resumed {
+                lines.push(format!("To move: {:?}", board.to_move()));
+            }
         }
     }
     lines.push(format!("Path: {}", path_tail_string(board)));
@@ -673,6 +704,58 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn decision_preview_renders_candidate_and_original_opponent_numbers_in_all_paths() {
+        let core = crate::decision_tests::concession();
+        let before = core.board();
+        for n in 1..=5 {
+            let preview = crate::decision::preview(&core, None, n).unwrap();
+            let candidate = &core.resignation_events()[0]
+                .audit
+                .as_ref()
+                .unwrap()
+                .evidence
+                .candidates[n - 1];
+            let plain = render_study(
+                &StudyView::new(&core, &[])
+                    .decision_preview(Some(&preview))
+                    .cursor(preview.proof.line[0]),
+            );
+            let styled = render_study(
+                &StudyView::new(&core, &[])
+                    .decision_preview(Some(&preview))
+                    .cursor(preview.proof.line[0])
+                    .styled(true),
+            );
+            assert_eq!(
+                plain,
+                styled.iter().map(|s| strip_ansi(s)).collect::<Vec<_>>()
+            );
+            let cell = |mv: Move| -> String {
+                plain[4 + usize::from(mv.row())]
+                    .chars()
+                    .skip(4 + usize::from(mv.col()) * 3)
+                    .take(3)
+                    .collect()
+            };
+            assert_eq!(cell(candidate.mv), " x ");
+            for (i, mv) in preview.proof.line.iter().enumerate() {
+                assert_eq!(
+                    cell(*mv),
+                    render_tss_cell_plain(
+                        i + 1,
+                        if i % 2 == 0 {
+                            crate::tui::overlay::TssSide::Attacker
+                        } else {
+                            crate::tui::overlay::TssSide::Defender
+                        }
+                    )
+                );
+            }
+            assert_eq!(core.board(), before);
+        }
     }
 
     #[test]

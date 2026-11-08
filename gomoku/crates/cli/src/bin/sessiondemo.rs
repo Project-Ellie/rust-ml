@@ -34,6 +34,7 @@ const HELP: &str = r#"Commands (case-insensitive):
   take black|white|both      make seat(s) human
   release black|white|both   release seat(s) to AI
   sims black|white N         set per-seat simulations
+  decision [N] [event E]   original concession report; N previews candidate (1-based)
   info             show AI search info at the cursor
   new              reset to opening
   h, help, ?       show this help
@@ -173,7 +174,13 @@ fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> bool {
                     println!("(no events)");
                 }
                 for event in &reply.events {
-                    println!("  {event}");
+                    if let cli::command::Event::DecisionReport { event, candidate } = event {
+                        for line in cli::repl::print_decision(core, *event, *candidate) {
+                            println!("{line}");
+                        }
+                    } else {
+                        println!("  {event}");
+                    }
                 }
                 if let Some(message) = reply.message {
                     println!("{message}");
@@ -235,13 +242,18 @@ fn print_state(core: &SessionCore, header: &str) {
         snapshot.ply, snapshot.status, snapshot.black, snapshot.white
     );
     if let Some(resignation) = snapshot.resignation {
-        println!(
-            "{}",
-            cli::command::Event::Resigned {
-                by: resignation.by,
-                candidates: resignation.candidates,
-            }
-        );
+        let label = cli::command::Event::Resigned {
+            by: resignation.by,
+            candidates: resignation.candidates,
+        };
+        if snapshot.resignation_resumed {
+            println!("Historical/resumed: {label}");
+        } else {
+            println!("{label}");
+        }
+    }
+    if snapshot.status == engine::Status::Ongoing && snapshot.resignation_resumed {
+        println!("To move: {:?}", core.board().to_move());
     }
     if !snapshot.branch_options.is_empty() {
         let opts: Vec<String> = snapshot

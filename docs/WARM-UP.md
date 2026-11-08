@@ -343,14 +343,30 @@ Two further tutorial tracks are written and verified, ready to work:
   **Native study save/load:** the owner's implementation landed on `main`
   at `06d9598` (2026-11-07), with shell-only file I/O, complete-tree
   validation, transactional load, bounded records, and same-directory
-  replacement writes. **Opt-in heuristic resignation:** implemented in
-  the working tree; both player and CLI/history/version-2 persistence
-  slices passed independent review.
+  replacement writes. **Opt-in heuristic resignation:** initially landed
+  at `158b611`; the inspection and continuation corrections below are
+  implemented in the working tree and passed independent review.
   `--resign` is false by default for both evaluators; concession annotates
   the current node, retains real search statistics and existing children,
-  and is not a global loss proof. The writer emits v2; the reader accepts
-  v1/v2, refusing v1 resignation semantics. Full-workspace release QA:
-  **649 passed / 0 failed / 7 ignored**, plus **3 passing doc tests**;
+  and is not a global loss proof. **Continuation and durable audits:**
+  `take` resumes an active concession only when it includes the conceding
+  side; original evidence remains historical/resumed, and later concessions
+  append independent events. Ordinary `t` analysis is allowed on any ongoing
+  engine board, including an active concession; it still searches for the
+  current side's forced win. The writer emits v3 with original options,
+  pre-noise root statistics and candidate proofs; the reader accepts v1/v2/v3,
+  verifies original lines without rerunning search, and explicitly marks v2
+  evidence unavailable. **Decision inspection:** implemented and
+  independently reviewed, including direct-API analysis invalidation.
+  `decision` reports all original events; `decision N [event E]` previews
+  a stored opponent certificate after the candidate on a cloned board.
+  Reports are paginated in raw mode and print completely without dismissal
+  input in line mode. Runtime analysis revisions invalidate previews and
+  ordinary TSS overlays after navigation or seat/configuration changes,
+  including partial-mutation errors; transactional failed loads retain them.
+  Reports and previews never rerun search/proofs or consume random numbers.
+  Fresh final full-workspace release QA after the corrections:
+  **676 passed / 0 failed / 7 ignored**, plus **3 passing doc tests**;
   clippy, formatting, engine-island and genuine lean-CLI checks passed.
   Tests used `gomoku/target/resignation-qa`; the existing release executable
   and the owner's saved game were left unchanged. See the

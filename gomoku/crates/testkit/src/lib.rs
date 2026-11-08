@@ -66,6 +66,8 @@ pub fn event_type(ev: &Event) -> &'static str {
         Event::ConfigChanged { .. } => "ConfigChanged",
         Event::GameOver { .. } => "GameOver",
         Event::Resigned { .. } => "Resigned",
+        Event::Resumed { .. } => "Resumed",
+        Event::DecisionReport { .. } => "DecisionReport",
         Event::Reset => "Reset",
         Event::StonePlaced { .. } => "StonePlaced",
         Event::StoneRemoved { .. } => "StoneRemoved",

@@ -226,6 +226,16 @@ fn round_trip(snapshot: &Snapshot) {
 }
 
 #[test]
+fn resignation_resume_event_has_display_and_testkit_classification() {
+    let event = Event::Resumed { by: Color::Black };
+    assert_eq!(testkit::event_type(&event), "Resumed");
+    assert_eq!(
+        event.to_string(),
+        "Resumed Black after heuristic concession"
+    );
+}
+
+#[test]
 fn resignation_snapshot_serde_preserves_old_wire_and_both_optional_fields() {
     use cli::history::Resignation;
     use cli::session::Snapshot;
@@ -239,27 +249,31 @@ fn resignation_snapshot_serde_preserves_old_wire_and_both_optional_fields() {
         .snapshot()
         .opening;
     for opening in [None, opening] {
-        let annotated = Snapshot {
-            resignation: Some(Resignation {
-                by: Color::Black,
-                candidates: 5,
-            }),
-            opening,
-            ..plain.clone()
-        };
-        let value = serde_json::to_value(&annotated).unwrap();
-        assert_eq!(
-            value.as_object().unwrap().len(),
-            7 + usize::from(annotated.opening.is_some())
-        );
-        assert_eq!(
-            value["resignation"],
-            serde_json::json!({"by": "Black", "candidates": 5})
-        );
-        assert_eq!(
-            serde_json::from_value::<Snapshot>(value).unwrap(),
-            annotated
-        );
+        for resumed in [false, true] {
+            let annotated = Snapshot {
+                resignation: Some(Resignation {
+                    by: Color::Black,
+                    candidates: 5,
+                }),
+                resignation_resumed: resumed,
+                opening: opening.clone(),
+                ..plain.clone()
+            };
+            let value = serde_json::to_value(&annotated).unwrap();
+            assert_eq!(
+                value.as_object().unwrap().len(),
+                7 + usize::from(annotated.opening.is_some()) + usize::from(resumed)
+            );
+            assert_eq!(value.get("resignation_resumed").is_some(), resumed);
+            assert_eq!(
+                value["resignation"],
+                serde_json::json!({"by": "Black", "candidates": 5})
+            );
+            assert_eq!(
+                serde_json::from_value::<Snapshot>(value).unwrap(),
+                annotated
+            );
+        }
     }
 }
 
@@ -287,6 +301,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
             last_move: Some(mv(7, 7)),
             opening: None,
             resignation: None,
+            resignation_resumed: false,
         });
     }
 
@@ -300,6 +315,7 @@ fn snapshot_serde_round_trip_covers_all_statuses() {
         last_move: None,
         opening: None,
         resignation: None,
+        resignation_resumed: false,
     });
 }
 
@@ -314,6 +330,7 @@ fn snapshot_json_wire_format_is_stable() {
         last_move: Some(mv(7, 7)),
         opening: None,
         resignation: None,
+        resignation_resumed: false,
     };
     let value = serde_json::to_value(&snapshot).unwrap();
     assert_eq!(

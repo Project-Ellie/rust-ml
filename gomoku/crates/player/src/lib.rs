@@ -115,6 +115,37 @@ pub enum DecisionAction {
     Resign(ResignReason),
 }
 
+/// Original evidence admitted by one heuristic resignation decision.
+///
+/// These are the actual checked candidates and verified opponent proofs,
+/// not a later reconstruction. Unchecked moves may still defend; this is
+/// not a proof that every legal move loses.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResignationEvidence {
+    /// Exact effective settings supplied for this decision.
+    pub options: PlayerOptions,
+    /// Checked candidates in admission order, at most five.
+    pub candidates: Vec<RefutedCandidate>,
+}
+
+/// One ranked candidate refuted by an original, verified opponent proof.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefutedCandidate {
+    /// One-based position in the checked visit/prior/move-index ranking.
+    pub ordinal: u8,
+    /// Candidate move played on a cloned root board before probing.
+    pub mv: engine::Move,
+    /// Actual root-edge visit count, including zero for unvisited candidates.
+    pub visits: u32,
+    /// Actual pre-noise root-edge prior.
+    pub prior: f32,
+    /// Work caps passed to this probe, not nodes consumed or elapsed time.
+    pub probe_budget: SearchBudget,
+    /// Original owned opponent proof, retained after line verification;
+    /// never regenerated from the candidate position.
+    pub proof: engine::Proof,
+}
+
 /// One player action and statistics from the real search, when it ran.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decision {
@@ -124,6 +155,10 @@ pub struct Decision {
     pub search: Option<SearchStats>,
     /// Selection diagnostics; absent when no proposal was sampled.
     pub guard: Option<GuardDiagnostics>,
+    /// Original evidence for a new resignation; absent for every play,
+    /// including own-proof bypasses. Legacy resignations without retained
+    /// evidence cannot reconstruct this field by rerunning the prover.
+    pub resignation: Option<ResignationEvidence>,
 }
 
 /// Statistics extracted from a real searched tree, never from a proof.
@@ -228,7 +263,9 @@ impl AiPlayer {
     /// the top `min(5, legal_count)` candidates with the baseline guard budget
     /// before any RNG draws. Every successor must have a verified opponent VCF;
     /// unknown cancels resignation. Lower-ranked moves may still defend, so
-    /// this opt-in concession is not an all-legal-moves loss proof.
+    /// this opt-in concession is not an all-legal-moves loss proof. The
+    /// returned resignation retains the original verified proofs, candidate
+    /// statistics, actual probe work caps, and an exact copy of `options`.
     ///
     /// # Errors
     /// Returns [`DecisionError::GameOver`] for a won or drawn board, without
@@ -256,6 +293,7 @@ impl AiPlayer {
                     action: DecisionAction::Play(mv),
                     search: None,
                     guard: Some(GuardDiagnostics::new(mv, GuardOutcome::ProvenWin)),
+                    resignation: None,
                 });
             }
         }
@@ -266,13 +304,19 @@ impl AiPlayer {
         let mcts::SearchOutcome { mut tree, root } =
             mcts::search(board, &mut *self.evaluator, &config);
         if options.resign
-            && let Some(reason) =
+            && let Some(candidates) =
                 resign::consider(board, tree.node(root).edges(), engine::prove_forced_win)
         {
             return Ok(Decision {
-                action: DecisionAction::Resign(reason),
+                action: DecisionAction::Resign(ResignReason::VerifiedOpponentVcf {
+                    candidates: candidates.len(),
+                }),
                 search: Some(SearchStats::from_searched(&tree, root, board)),
                 guard: None,
+                resignation: Some(ResignationEvidence {
+                    options: *options,
+                    candidates,
+                }),
             });
         }
         if options.noise_epsilon > 0.0 {
@@ -298,6 +342,7 @@ impl AiPlayer {
             action: DecisionAction::Play(mv),
             search: Some(SearchStats::from_searched(&tree, root, board)),
             guard: Some(guard),
+            resignation: None,
         })
     }
 }
@@ -370,6 +415,29 @@ mod tests {
         );
         assert!(decision.guard.is_none());
         assert_eq!(decision.search, Some(expected));
+        let evidence = decision
+            .resignation
+            .expect("resignation retains its evidence");
+        assert_eq!(evidence.options, options);
+        let mut ranked: Vec<_> = searched.tree.node(searched.root).edges().iter().collect();
+        ranked.sort_by(|a, b| {
+            b.n.cmp(&a.n)
+                .then_with(|| b.prior.partial_cmp(&a.prior).unwrap())
+                .then_with(|| a.mv.index().cmp(&b.mv.index()))
+        });
+        assert_eq!(evidence.candidates.len(), 5);
+        for (index, (candidate, edge)) in evidence.candidates.iter().zip(ranked.iter()).enumerate()
+        {
+            assert_eq!(candidate.ordinal, (index + 1) as u8);
+            assert_eq!(candidate.mv, edge.mv);
+            assert_eq!(candidate.visits, edge.n);
+            assert_eq!(candidate.prior, edge.prior);
+            assert_eq!(candidate.probe_budget, GuardConfig::baseline().budget);
+            let mut after = board.clone();
+            after.play(candidate.mv).unwrap();
+            assert_eq!(candidate.proof.winner, after.to_move());
+            assert!(engine::verify_line(&after, &candidate.proof));
+        }
         assert_eq!(rng.random::<u64>(), untouched.random::<u64>());
         assert_eq!(board, original);
     }

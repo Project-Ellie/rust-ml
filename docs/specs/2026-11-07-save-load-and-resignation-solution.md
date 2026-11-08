@@ -1,6 +1,15 @@
 # Save/load, then optional AI resignation — solution
 
-Status (2026-11-07): the owner's native save/load implementation landed on `main` at `06d9598`. The opt-in resignation feature, including CLI/history/version-2 persistence, is implemented in the working tree; both slices passed independent review. Fresh full-workspace release QA passed: 649 tests, zero failures, seven ignored, plus three doc tests; clippy, formatting, the engine-island check, and a genuine lean-CLI compile check passed. Builds used `gomoku/target/resignation-qa`, leaving the existing release executable and the owner's saved game untouched. The examples below are the original implementation proposal, not an exact transcription of current source. Existing learner code is the implementation reference; baseline fork bonuses and saved diagnostic results are outside this change.
+Status (2026-11-07): the owner's native save/load implementation landed on `main` at `06d9598`, followed by opt-in resignation at `158b611`. The working-tree continuation and inspection corrections add original decision audits, human resumption, and version-3 persistence; all three slices and the review amendment passed independent review. Fresh final full-workspace release QA passed: 676 tests, zero failures, seven ignored, plus three doc tests; clippy, formatting, the engine-island check, and a genuine lean-CLI compile check passed. Fresh offline UI and save/load checks reproduced successful inspection, TSS analysis and human continuation. Builds used `gomoku/target/resignation-qa`, leaving the existing release executable and the owner's saved game untouched. The examples below are the original implementation proposal, not an exact transcription of current source. Existing learner code is the implementation reference; baseline fork bonuses and saved diagnostic results are outside this change.
+
+> **Narrow supersession note:** the current implementation writes v3 original
+> concession audits (options, root statistics, and verified candidate proofs),
+> retains repeated events, and provides `decision` reports and read-only
+> hypothetical opponent-proof previews. `take` can resume a concession while
+> preserving its original record; ordinary `t` analyzes the ongoing actual
+> root even before takeover. These behaviors supersede the corresponding
+> earlier proposals below. The historical snippets are intentionally retained;
+> see the [current CLI contract](../../gomoku/crates/cli/README.md).
 
 ## Part 1 — `save PATH` and `load PATH`
 

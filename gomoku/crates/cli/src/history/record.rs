@@ -22,6 +22,9 @@ pub struct NodeRecord {
     /// Optional historical concession at this node; absent in version 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resignation: Option<ResignationRecord>,
+    /// Append-only v3 events, including explicit legacy provenance.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resignations: Vec<super::audit_record::EventRecord>,
 }
 
 /// Known historical concession reasons, validated against the node's board.
@@ -45,7 +48,7 @@ pub struct HistoryRecord {
     pub cursor: u32,
 }
 
-fn checked_square([row, col]: [u8; 2]) -> Result<Move, String> {
+pub(super) fn checked_square([row, col]: [u8; 2]) -> Result<Move, String> {
     Move::new(row, col).ok_or_else(|| format!("square out of bounds: {}", col))
 }
 
@@ -110,22 +113,42 @@ impl HistoryRecord {
                 .map(|node| NodeRecord {
                     parent: node.parent,
                     square: node.mv.map(|mv| [mv.row(), mv.col()]),
-                    resignation: node
-                        .resignation
-                        .map(|r| ResignationRecord::VerifiedOpponentVcf {
-                            by: r.by,
-                            candidates: r.candidates,
-                        }),
+                    resignation: None,
+                    resignations: node
+                        .resignations
+                        .iter()
+                        .map(super::audit_record::EventRecord::capture)
+                        .collect(),
                 })
                 .collect(),
             cursor: history.cursor,
         }
     }
 
-    pub(crate) fn restore(&self) -> Result<History, String> {
+    pub(crate) fn validate_version(&self, version: u32) -> Result<(), String> {
+        let mut events = 0usize;
+        for node in &self.nodes {
+            if (version < 3 && !node.resignations.is_empty())
+                || (version != 2 && node.resignation.is_some())
+            {
+                return Err("concession fields do not match record version".into());
+            }
+            events += node.resignations.len() + usize::from(node.resignation.is_some());
+            if events > MAX_NODES {
+                return Err("too many resignation events".into());
+            }
+            for (index, event) in node.resignations.iter().enumerate() {
+                event.validate_shape(index + 1 == node.resignations.len())?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore(&self, version: u32) -> Result<History, String> {
         if self.nodes.is_empty() || self.nodes.len() > MAX_NODES {
             return Err("history must contain 1..=10000 nodes".into());
         }
+        self.validate_version(version)?;
         if self.cursor as usize >= self.nodes.len() {
             return Err("cursor outside history".into());
         }
@@ -162,7 +185,22 @@ impl HistoryRecord {
                 {
                     return Err(format!("node {index}: invalid resignation annotation"));
                 }
-                history.set_resignation(super::Resignation { by, candidates });
+                history
+                    .append_legacy_unavailable_resignation(super::Resignation { by, candidates });
+            }
+            for event in &node.resignations {
+                history.cursor = index as u32;
+                let restored = event.restore(&history.board())?;
+                history.append_resignation(restored);
+            }
+        }
+        // All boards, shapes, options, ranking and statistics are checked before
+        // verifying any original proof. Never run a prover, search or evaluator.
+        for index in 0..history.nodes.len() {
+            history.cursor = index as u32;
+            let board = history.board();
+            for event in &history.nodes[index].resignations {
+                super::audit_record::verify_original(&board, event)?;
             }
         }
         history.cursor = self.cursor;
@@ -181,18 +219,18 @@ mod tests {
         history.play(Move::new(7, 8).unwrap()).unwrap();
         history.play(Move::new(8, 8).unwrap()).unwrap();
         history.back(2);
-        history.set_resignation(super::super::Resignation {
+        history.append_legacy_unavailable_resignation(super::super::Resignation {
             by: Color::White,
             candidates: 4,
         });
         history.back(1);
         history.play(Move::new(0, 0).unwrap()).unwrap();
         history.back(1);
-        history.set_resignation(super::super::Resignation {
+        history.append_legacy_unavailable_resignation(super::super::Resignation {
             by: Color::Black,
             candidates: 5,
         });
-        let restored = HistoryRecord::capture(&history).restore().unwrap();
+        let restored = HistoryRecord::capture(&history).restore(3).unwrap();
         assert_eq!(restored, history);
         assert_eq!(restored.children(0).len(), 2);
         assert_eq!(restored.children(1), vec![Move::new(7, 8).unwrap()]);
@@ -208,7 +246,7 @@ mod tests {
         history.back(1);
 
         let record = HistoryRecord::capture(&history);
-        let restored = record.restore().unwrap();
+        let restored = record.restore(3).unwrap();
 
         assert_eq!(restored, history);
         assert_eq!(restored.cursor, 1);
@@ -218,10 +256,10 @@ mod tests {
         );
         let mut bad_cursor = record.clone();
         bad_cursor.cursor = bad_cursor.nodes.len() as u32;
-        assert!(bad_cursor.restore().is_err());
+        assert!(bad_cursor.restore(3).is_err());
         let mut duplicate = record;
         duplicate.nodes[3].square = duplicate.nodes[2].square;
-        assert!(duplicate.restore().is_err());
+        assert!(duplicate.restore(3).is_err());
     }
 
     #[test]
@@ -233,10 +271,10 @@ mod tests {
         let mut record = HistoryRecord::capture(&history);
         record.nodes[2].square = Some([7, 7]);
         assert_eq!(record.cursor, 0);
-        assert!(record.restore().is_err());
+        assert!(record.restore(3).is_err());
         record.nodes[2].square = Some([15, 0]);
-        assert!(record.restore().is_err());
+        assert!(record.restore(3).is_err());
         record.nodes[2].square = Some([0, 255]);
-        assert!(record.restore().is_err());
+        assert!(record.restore(3).is_err());
     }
 }

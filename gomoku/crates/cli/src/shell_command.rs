@@ -86,6 +86,7 @@ mod tests {
         source.execute(Command::Back { n: 2 }).unwrap();
         let mut value: serde_json::Value =
             serde_json::from_str(&source.export_record_json().unwrap()).unwrap();
+        value["version"] = 2.into();
         value["history"]["nodes"][0]["resignation"] = serde_json::json!({
             "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
         });

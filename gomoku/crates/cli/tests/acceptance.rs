@@ -167,6 +167,7 @@ fn golden_transcript_seeded_study_session() {
         last_move: Some(mv(2, 9)),
         opening: None,
         resignation: None,
+        resignation_resumed: false,
     };
     assert_eq!(
         core.snapshot(),

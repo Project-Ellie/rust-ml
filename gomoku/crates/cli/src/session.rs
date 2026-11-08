@@ -198,6 +198,8 @@ pub struct Snapshot {
     pub opening: Option<OpeningSnapshot>,
     /// Historical heuristic concession at the current position, if any.
     pub resignation: Option<crate::history::Resignation>,
+    /// True when the latest historical concession was explicitly resumed.
+    pub resignation_resumed: bool,
 }
 
 impl Serialize for Snapshot {
@@ -205,8 +207,10 @@ impl Serialize for Snapshot {
         use serde::ser::SerializeStruct;
         // Optional annotations are omitted, preserving the old wire format
         // for ordinary sessions without a ceremony or concession.
-        let field_count =
-            6 + usize::from(self.opening.is_some()) + usize::from(self.resignation.is_some());
+        let field_count = 6
+            + usize::from(self.opening.is_some())
+            + usize::from(self.resignation.is_some())
+            + usize::from(self.resignation_resumed);
         let mut state = serializer.serialize_struct("Snapshot", field_count)?;
         state.serialize_field("ply", &self.ply)?;
         state.serialize_field("branch_options", &self.branch_options)?;
@@ -219,6 +223,9 @@ impl Serialize for Snapshot {
         }
         if let Some(resignation) = &self.resignation {
             state.serialize_field("resignation", resignation)?;
+        }
+        if self.resignation_resumed {
+            state.serialize_field("resignation_resumed", &true)?;
         }
         state.end()
     }
@@ -238,6 +245,8 @@ impl<'de> Deserialize<'de> for Snapshot {
             // snapshot written before this field existed still parses.
             opening: Option<OpeningSnapshot>,
             resignation: Option<crate::history::Resignation>,
+            #[serde(default)]
+            resignation_resumed: bool,
         }
         let helper = SnapshotHelper::deserialize(deserializer)?;
         Ok(Snapshot {
@@ -249,6 +258,7 @@ impl<'de> Deserialize<'de> for Snapshot {
             last_move: helper.last_move,
             opening: helper.opening,
             resignation: helper.resignation,
+            resignation_resumed: helper.resignation_resumed,
         })
     }
 }
@@ -274,6 +284,8 @@ fn status_from_str(s: &str) -> Result<Status, String> {
 
 /// Headless session state machine.
 pub struct SessionCore {
+    // Runtime-only identity for shell analysis; never serialized.
+    analysis_revision: u64,
     history: History,
     black: Occupant,
     white: Occupant,
@@ -304,6 +316,7 @@ impl SessionCore {
         let seed = init.seed.unwrap_or_else(rand::random::<u64>);
         let rng = StdRng::seed_from_u64(seed);
         Self {
+            analysis_revision: 0,
             history: History::from_opening(&init.opening),
             black: init.black.clone(),
             white: init.white.clone(),
@@ -339,6 +352,11 @@ impl SessionCore {
             last_move: self.history.board().moves().last().copied(),
             opening: self.opening.as_ref().map(OpeningState::snapshot),
             resignation: self.history.resignation(),
+            resignation_resumed: self
+                .history
+                .resignation_events()
+                .last()
+                .is_some_and(|event| event.resumed),
         }
     }
 
@@ -354,16 +372,39 @@ impl SessionCore {
         self.history.board()
     }
 
-    /// Whether the cursor position is finished by engine result or concession.
+    /// Whether engine termination or an active (not resumed) concession blocks play.
     #[must_use]
     pub fn is_finished(&self) -> bool {
-        self.history.board().status() != Status::Ongoing || self.history.resignation().is_some()
+        self.history.board().status() != Status::Ongoing || self.active_resignation().is_some()
     }
 
     /// The stored search info at the cursor, if any.
+    ///
+    /// With no transient entry (for example after load), borrow the latest
+    /// original concession audit's statistics. Legacy summaries invent none.
     #[must_use]
     pub fn search_info(&self) -> Option<&SearchInfo> {
-        self.search_info.get(&self.history.cursor())
+        self.search_info.get(&self.history.cursor()).or_else(|| {
+            self.resignation_events()
+                .iter()
+                .rev()
+                .find_map(|event| event.audit.as_ref().map(|audit| &audit.search))
+        })
+    }
+
+    /// Borrow all concession events at the cursor, in admission order.
+    ///
+    /// Original audits remain owned by their events independently of search
+    /// display caches; legacy events explicitly have no original audit.
+    #[must_use]
+    pub fn resignation_events(&self) -> &[crate::history::ResignationEvent] {
+        self.history.resignation_events()
+    }
+
+    /// Latest concession that still blocks play, excluding resumed history.
+    #[must_use]
+    pub fn active_resignation(&self) -> Option<crate::history::Resignation> {
+        self.history.active_resignation()
     }
 
     /// Who plays Black: a human at the keys or the AI.
@@ -384,9 +425,28 @@ impl SessionCore {
         &self.default_config
     }
 
+    /// Opaque runtime identity of the analysis context, not a board hash or count.
+    ///
+    /// Mutation entry points invalidate before execution, even on errors or
+    /// equal-board changes. Nested commands may advance it more than once.
+    #[must_use]
+    pub fn analysis_revision(&self) -> u64 {
+        self.analysis_revision
+    }
+
+    fn invalidate_analysis(&mut self) {
+        // Invalidate at mutation entry points, including direct public calls:
+        // navigation can partially succeed before returning an error.
+        self.analysis_revision = self.analysis_revision.wrapping_add(1);
+    }
+
     /// Execute one command and return the events it produced.
     pub fn execute(&mut self, cmd: Command) -> Result<Vec<Event>, CommandError> {
         match cmd {
+            Command::Decision { event, candidate } => {
+                crate::decision::validate(self, event, candidate)?;
+                Ok(vec![Event::DecisionReport { event, candidate }])
+            }
             Command::Play { mv } => self.execute_play(mv),
             Command::Back { n } => self.execute_back(n),
             Command::Forward { n } => self.execute_forward(n),
@@ -409,6 +469,7 @@ impl SessionCore {
     }
 
     fn execute_done(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         match &mut self.opening {
             Some(opening) => opening.done(),
             None => Err(CommandError::NotInOpening),
@@ -416,6 +477,7 @@ impl SessionCore {
     }
 
     fn execute_more(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         match &mut self.opening {
             Some(opening) => opening.more(),
             None => Err(CommandError::NotInOpening),
@@ -423,6 +485,7 @@ impl SessionCore {
     }
 
     fn execute_choose_color(&mut self, color: Color) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         let Some(opening) = &self.opening else {
             return Err(CommandError::NotInOpening);
         };
@@ -433,6 +496,7 @@ impl SessionCore {
     }
 
     fn execute_step(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         // The AI searches game positions. Ceremony stones are not a
         // game position, and a move searched now would be discarded
         // when the ceremony finishes and resets the tree. Refuse
@@ -487,7 +551,10 @@ impl SessionCore {
             player::DecisionAction::Play(mv) => mv,
             player::DecisionAction::Resign(reason) => {
                 let stats = decision.search.expect("resignation follows a real search");
-                return Ok(self.record_resignation(reason, stats, &effective_config));
+                let evidence = decision
+                    .resignation
+                    .expect("real concession must retain original evidence");
+                return Ok(self.record_resignation(reason, stats, evidence, &effective_config));
             }
         };
         let Some(stats) = decision.search else {
@@ -528,6 +595,7 @@ impl SessionCore {
         &mut self,
         reason: player::ResignReason,
         stats: player::SearchStats,
+        evidence: player::ResignationEvidence,
         config: &AiConfig,
     ) -> Vec<Event> {
         let player::ResignReason::VerifiedOpponentVcf { candidates } = reason;
@@ -535,9 +603,22 @@ impl SessionCore {
             by: self.history.board().to_move(),
             candidates,
         };
-        self.history.set_resignation(resignation);
-        self.search_info
-            .insert(self.history.cursor(), SearchInfo::from_stats(stats, config));
+        assert_eq!(
+            candidates,
+            evidence.candidates.len(),
+            "decision evidence count"
+        );
+        let search = SearchInfo::from_stats(stats, config);
+        self.history
+            .append_resignation(crate::history::ResignationEvent {
+                summary: resignation,
+                resumed: false,
+                audit: Some(crate::history::ResignationAudit {
+                    evidence,
+                    search: search.clone(),
+                }),
+            });
+        self.search_info.insert(self.history.cursor(), search);
         vec![Event::Resigned {
             by: resignation.by,
             candidates,
@@ -546,6 +627,7 @@ impl SessionCore {
 
     /// Reset the session to its initial opening.
     pub fn execute_new(&mut self) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         self.reset();
         Ok(vec![Event::Reset])
     }
@@ -556,6 +638,7 @@ impl SessionCore {
         seat: SeatSel,
         sims: u32,
     ) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         self.validate_seat_arg(seat)?;
         if sims == 0 {
             return Err(CommandError::ZeroSims);
@@ -577,6 +660,7 @@ impl SessionCore {
 
     /// Release a seat or seats to the AI.
     pub fn execute_release(&mut self, seat: SeatSel) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         self.validate_seat_arg(seat)?;
         let mut events = Vec::new();
         self.apply_to_seats(seat, |this, color| {
@@ -604,6 +688,7 @@ impl SessionCore {
 
     /// Play a move at the cursor, or place a stone during the Swap2 ceremony.
     pub fn execute_play(&mut self, mv: Move) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         // Phase routing: during the ceremony `play` places a stone in
         // the alternation's color; afterwards `play` is a tree move.
         if let Some(opening) = &mut self.opening {
@@ -640,6 +725,7 @@ impl SessionCore {
 
     /// Go back `n` plies, or undo Swap2 placements during the ceremony.
     pub fn execute_back(&mut self, n: u32) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         // `back` is phase-dependent: it removes placements during the
         // ceremony and navigates the variation tree afterwards.
         if let Some(opening) = &mut self.opening {
@@ -653,6 +739,7 @@ impl SessionCore {
 
     /// Go forward `n` plies along the current line.
     pub fn execute_forward(&mut self, n: u32) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         match self.history.forward(n) {
             ForwardOutcome::Moved(_) => Ok(vec![Event::CursorMoved {
                 ply: self.history.ply(),
@@ -667,6 +754,7 @@ impl SessionCore {
 
     /// Choose child variation `index` at the cursor.
     pub fn execute_var(&mut self, index: usize) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         let cursor = self.history.cursor();
         let children = self.history.children(cursor);
         if children.is_empty() {
@@ -686,6 +774,7 @@ impl SessionCore {
 
     /// Take a seat or seats for the human player.
     pub fn execute_take(&mut self, seat: SeatSel) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         let mut events = Vec::new();
         self.apply_to_seats(seat, |this, color| {
             let new_occupant = Occupant::Human;
@@ -695,6 +784,16 @@ impl SessionCore {
                 now: OccupantKind::Human,
             })
         });
+        if let Some(summary) = self.active_resignation() {
+            let includes = matches!(seat, SeatSel::Both)
+                || matches!(
+                    (seat, summary.by),
+                    (SeatSel::Black, Color::Black) | (SeatSel::White, Color::White)
+                );
+            if includes && self.history.resume_resignation(summary.by) {
+                events.push(Event::Resumed { by: summary.by });
+            }
+        }
         Ok(events)
     }
 
@@ -731,6 +830,7 @@ impl SessionCore {
     /// variation tree root wholesale — every puzzle is a fresh study
     /// position; seats and AI configuration are untouched.
     fn execute_puzzle_nav(&mut self, delta: i64) -> Result<Vec<Event>, CommandError> {
+        self.invalidate_analysis();
         let (study, _) = self.puzzle_context()?;
         let count = study.pack.items.len();
         let next = study.index as i64 + delta;
@@ -986,15 +1086,172 @@ mod tests {
     }
 
     #[test]
+    fn decision_multistep_original_proofs_render_without_more_evaluations() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        struct Counted(Rc<Cell<usize>>);
+        impl mcts::Evaluator for Counted {
+            fn evaluate(&mut self, request: mcts::EvalRequest) -> mcts::EvalResult {
+                self.0.set(self.0.get() + 1);
+                let mut result =
+                    mcts::Evaluator::evaluate(&mut mcts::UniformEvaluator::default(), request);
+                for col in 10..15 {
+                    result.policy[mv(14, col).index()] = 20.0;
+                }
+                result
+            }
+        }
+        let board = Board::from_position(
+            &[mv(7, 3), mv(0, 0), mv(0, 2), mv(0, 4), mv(0, 6)],
+            &[mv(7, 4), mv(7, 5), mv(7, 6), mv(6, 6), mv(8, 8)],
+            Color::Black,
+        )
+        .unwrap();
+        let mut core = SessionCore::new(SessionInit {
+            opening: board,
+            ..SessionInit::versus_ai(
+                Color::White,
+                AiConfig {
+                    simulations: 3,
+                    resign: true,
+                    ..AiConfig::default()
+                },
+            )
+        });
+        let calls = Rc::new(Cell::new(0));
+        core.black_player = Some(player::AiPlayer::new(Box::new(Counted(calls.clone()))));
+        assert!(matches!(
+            core.execute(Command::Step).unwrap().as_slice(),
+            [Event::Resigned { candidates: 5, .. }]
+        ));
+        let original_calls = calls.get();
+        assert!(original_calls > 0);
+        let original = core.export_record_json().unwrap();
+        for _ in 0..10 {
+            for n in 1..=5 {
+                let p = crate::decision::preview(&core, None, n).unwrap();
+                assert!(p.proof.line.len() >= 3);
+                let lines = crate::repl::print_decision(&core, None, Some(n));
+                let text = lines.join("\n");
+                assert!(text.contains("1. White"));
+                assert!(text.contains("2. Black"));
+                assert!(text.contains("3. White"));
+                for styled in [false, true] {
+                    let frame = crate::tui::render::render_study(
+                        &crate::tui::render::StudyView::new(&core, &[])
+                            .decision_preview(Some(&p))
+                            .styled(styled),
+                    );
+                    if !styled {
+                        assert!(frame.join("\n").contains("[2]"));
+                    }
+                }
+            }
+        }
+        assert_eq!(core.export_record_json().unwrap(), original);
+        assert_eq!(calls.get(), original_calls);
+    }
+
+    #[test]
+    fn decision_inspection_preserves_seeded_rng_and_legacy_is_unavailable() {
+        use rand::RngExt;
+        let mut inspected = crate::decision_tests::concession();
+        let mut control = crate::decision_tests::concession();
+        let revision = inspected.analysis_revision();
+        let original = inspected.export_record_json().unwrap();
+        for _ in 0..30 {
+            inspected
+                .execute(Command::Decision {
+                    event: None,
+                    candidate: Some(5),
+                })
+                .unwrap();
+            let _ = crate::repl::print_decision(&inspected, None, Some(5));
+        }
+        let dir =
+            std::env::temp_dir().join(format!("gomoku-decision-read-only-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("study.json");
+        crate::shell_command::execute(&mut inspected, Command::Save { path: path.clone() })
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(inspected.export_record_json().unwrap(), original);
+        assert_eq!(inspected.analysis_revision(), revision);
+        for _ in 0..20 {
+            assert_eq!(inspected.rng.random::<u64>(), control.rng.random::<u64>());
+        }
+        let mut legacy = SessionCore::new(SessionInit::hotseat());
+        legacy
+            .history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
+        let text = crate::decision::report(&legacy, None, None)
+            .unwrap()
+            .join("\n");
+        assert!(
+            text.contains(
+                "Original decision log/proofs unavailable (legacy record); cannot preview."
+            )
+        );
+        assert!(!text.contains("Verified original VCF"));
+        assert_eq!(
+            legacy.execute(Command::Decision {
+                event: None,
+                candidate: Some(1)
+            }),
+            Err(CommandError::DecisionUnavailable)
+        );
+        let empty = SessionCore::new(SessionInit::hotseat());
+        assert_eq!(
+            crate::decision::report(&empty, None, None).unwrap(),
+            ["No concession events at the current node."]
+        );
+    }
+
+    #[test]
+    fn resign_take_only_conceding_seat_resumes_and_can_play() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.execute_take(SeatSel::Black).unwrap(); // No future exemption.
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
+        core.execute_take(SeatSel::White).unwrap();
+        assert!(core.is_finished());
+        let before = core.board();
+        core.execute_take(SeatSel::Both).unwrap();
+        assert!(!core.is_finished());
+        assert_eq!(core.board(), before);
+        assert!(core.snapshot().resignation.is_some());
+        assert!(core.snapshot().resignation_resumed);
+        let repl = crate::repl::print_state(&core, "").join("\n");
+        let tui = crate::tui::render::render_study(&crate::tui::render::StudyView::new(&core, &[]))
+            .join("\n");
+        for text in [repl, tui] {
+            assert!(text.contains("Historical/resumed:"));
+            assert!(text.contains("To move: Black"));
+        }
+        assert_eq!(core.execute_take(SeatSel::Black).unwrap().len(), 1);
+        core.execute_play(mv(0, 0)).unwrap();
+        core.execute_back(1).unwrap();
+        assert!(!core.is_finished());
+    }
+
+    #[test]
     fn resign_input_shortcuts_are_inert_but_typed_commands_reach_core_errors() {
         use crate::tui::input::{InputOutcome, InputState, handle_key, line_outcome};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut core = SessionCore::new(SessionInit::hotseat());
         core.execute_release(SeatSel::Both).unwrap();
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::Black,
-            candidates: 5,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
         for key in [KeyCode::Enter, KeyCode::Char(' ')] {
             assert_eq!(
                 handle_key(
@@ -1017,16 +1274,33 @@ mod tests {
     }
 
     #[test]
-    fn resign_render_suppresses_stale_tss_but_keeps_policy_and_value() {
+    fn resign_render_allows_verified_tss_and_keeps_value() {
         use crate::tui::overlay::PolicyOverlay;
         use crate::tui::render::{StudyView, render_study};
-        let mut core = SessionCore::new(SessionInit::hotseat());
+        let board = Board::from_position(
+            &[mv(7, 4), mv(7, 5), mv(7, 6), mv(6, 6), mv(8, 8)],
+            &[mv(7, 3), mv(0, 0), mv(0, 2), mv(0, 4), mv(0, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let proof = engine::prove_forced_win(
+            &board,
+            Color::Black,
+            engine::SearchBudget {
+                max_nodes: 100_000,
+                max_depth: 9,
+            },
+        )
+        .unwrap();
+        assert!(engine::verify_line(&board, &proof));
+        let mut core = SessionCore::new(SessionInit::hotseat_from_opening(&board));
         play(&mut core, 7, 7);
         core.history.back(1);
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::Black,
-            candidates: 5,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
         core.search_info.insert(
             0,
             SearchInfo {
@@ -1039,10 +1313,6 @@ mod tests {
         );
         core.execute_forward(1).unwrap();
         core.execute_back(1).unwrap();
-        let proof = engine::Proof {
-            winner: Color::Black,
-            line: vec![mv(0, 0), mv(0, 1), mv(0, 2)],
-        };
         for styled in [false, true] {
             for mode in [
                 PolicyOverlay::Off,
@@ -1062,7 +1332,7 @@ mod tests {
                         .show_value_strip(true)
                         .tss_proof(Some(&proof)),
                 );
-                assert_eq!(stale, normal);
+                assert_ne!(stale, normal);
                 let text = stale.join("\n");
                 assert!(text.contains("Black resigned"));
                 assert!(text.contains("5 top candidates"));
@@ -1077,10 +1347,11 @@ mod tests {
     #[test]
     fn resign_repl_state_names_heuristic_concession_without_fabricating_status() {
         let mut core = SessionCore::new(SessionInit::hotseat());
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::Black,
-            candidates: 5,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
         let text = crate::repl::print_state(&core, "").join("\n");
         assert!(text.contains("status Ongoing"));
         assert!(text.contains("Black resigned: 5 top candidates"));
@@ -1175,10 +1446,11 @@ mod tests {
         let init = SessionInit::puzzle(PathBuf::from("fixture"), pack, 0).unwrap();
         let mut core = SessionCore::new(init);
         for command in [Command::NextPuzzle, Command::PrevPuzzle, Command::New] {
-            core.history.set_resignation(crate::history::Resignation {
-                by: core.board().to_move(),
-                candidates: 1,
-            });
+            core.history
+                .append_legacy_unavailable_resignation(crate::history::Resignation {
+                    by: core.board().to_move(),
+                    candidates: 1,
+                });
             assert!(core.is_finished());
             core.execute(command).unwrap();
             assert!(core.snapshot().resignation.is_none());

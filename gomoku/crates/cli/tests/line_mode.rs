@@ -120,6 +120,7 @@ Commands (case-insensitive):
   take black|white|both      make seat(s) human
   release black|white|both   release seat(s) to AI
   sims black|white N         set per-seat simulations
+  decision [N] [event E]   original concession report; N previews candidate (1-based)
   info             show AI search info at the cursor
   v, value         toggle the value strip
   p, policy        cycle policy overlay (off → visits → prior)
@@ -174,6 +175,7 @@ fn resignation_in_line_mode_blocks_play_and_step_but_allows_historical_navigatio
         .unwrap();
     let mut value: serde_json::Value =
         serde_json::from_str(&source.export_record_json().unwrap()).unwrap();
+    value["version"] = 2.into();
     value["history"]["nodes"][0]["resignation"] = serde_json::json!({
         "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
     });
@@ -197,6 +199,25 @@ fn resignation_in_line_mode_blocks_play_and_step_but_allows_historical_navigatio
     );
     assert!(transcript.contains("Cursor moved to ply 1"));
     assert!(transcript.contains("Cursor moved to ply 0"));
+    let (core, transcript) = run_line_script(
+        core,
+        "t\ntake white\nplay a1\ntake black\nplay a1\nback\nquit\n",
+    );
+    assert!(!core.is_finished());
+    assert!(core.snapshot().resignation_resumed);
+    assert_eq!(core.snapshot().ply, 0);
+    assert_eq!(core.snapshot().branch_options.len(), 2);
+    assert!(core.resignation_events()[0].audit.is_none());
+    assert!(transcript.contains("Historical/resumed:"));
+    assert!(transcript.contains("To move: Black"));
+    assert!(transcript.contains("no forced win proven within budget"));
+    assert!(!transcript.contains("TSS demo is only available"));
+    assert_eq!(
+        transcript
+            .matches(&CommandError::GameOver.to_string())
+            .count(),
+        1
+    );
 }
 
 #[test]

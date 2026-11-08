@@ -81,6 +81,13 @@ pub enum Command {
     /// Navigation clamps: at the first puzzle this is an error, not a
     /// wrap-around.
     PrevPuzzle,
+    /// Inspect stored original concessions; indices are one-based.
+    Decision {
+        /// Event number, or all events (latest for a candidate preview).
+        event: Option<usize>,
+        /// Candidate number to preview, if requested.
+        candidate: Option<usize>,
+    },
     /// Show help.
     Help,
     /// Leave the session.
@@ -183,6 +190,18 @@ pub enum Event {
         /// Number of top candidates with verified opponent refutations.
         candidates: usize,
     },
+    /// A human explicitly resumed the conceding side at this position.
+    Resumed {
+        /// Side whose historical concession no longer blocks play.
+        by: Color,
+    },
+    /// Display original decision evidence without embedding float-bearing audits.
+    DecisionReport {
+        /// One-based event selection, or all events.
+        event: Option<usize>,
+        /// One-based candidate selection, if any.
+        candidate: Option<usize>,
+    },
     /// The session was reset to its initial opening.
     Reset,
     /// A stone was placed during Swap2 opening.
@@ -264,6 +283,8 @@ impl fmt::Display for Event {
                 f,
                 "{by:?} resigned: {candidates} top candidates VCF-refuted (heuristic; other moves unchecked)"
             ),
+            Event::Resumed { by } => write!(f, "Resumed {by:?} after heuristic concession"),
+            Event::DecisionReport { .. } => write!(f, "Original decision report"),
             Event::Reset => write!(f, "Reset"),
             Event::StonePlaced { mv, color } => write!(f, "Placed {color:?} at {}", fmt_move(*mv)),
             Event::StoneRemoved { mv } => write!(f, "Removed stone from {}", fmt_move(*mv)),
@@ -374,6 +395,19 @@ pub enum CommandError {
         /// Number of puzzles in the pack.
         count: usize,
     },
+    /// An event or candidate index is outside the stored audit.
+    #[error("decision {kind} {index} out of range (1..={count})")]
+    DecisionOutOfBounds {
+        /// Selection kind.
+        kind: &'static str,
+        /// Requested one-based index.
+        index: usize,
+        /// Available items.
+        count: usize,
+    },
+    /// Legacy records contain no original certificate to preview.
+    #[error("Original decision log/proofs unavailable (legacy record); cannot preview.")]
+    DecisionUnavailable,
     /// Save and load make no sense in a script, or do they...?
     #[error("save/load must be executed through the shell")]
     ShellOnly,
@@ -503,6 +537,28 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             Ok(Command::New)
         }
 
+        "decision" => {
+            let args: Vec<_> = tokens.collect();
+            let positive = |s: &str| -> Result<usize, CommandError> {
+                s.bytes()
+                    .all(|b| b.is_ascii_digit())
+                    .then(|| s.parse::<usize>().ok())
+                    .flatten()
+                    .filter(|n| *n > 0)
+                    .ok_or_else(|| {
+                        CommandError::Parse("decision expects a positive one-based index".into())
+                    })
+            };
+            let (candidate, event) = match args.as_slice() {
+                [] => (None, None),
+                [n] => (Some(positive(n)?), None),
+                ["event", e] => (None, Some(positive(e)?)),
+                [n, "event", e] => (Some(positive(n)?), Some(positive(e)?)),
+                _ => return Err(CommandError::Parse("usage: decision [N] [event E]".into())),
+            };
+            Ok(Command::Decision { event, candidate })
+        }
+
         "help" | "h" | "?" => {
             ensure_no_more(&mut tokens, "help")?;
             Ok(Command::Help)
@@ -533,6 +589,43 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             ensure_no_more(&mut tokens, "play")?;
 
             Ok(Command::Play { mv })
+        }
+    }
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+
+    #[test]
+    fn decision_parser_strict_selection() {
+        for (text, event, candidate) in [
+            ("decision", None, None),
+            ("decision 1", None, Some(1)),
+            ("decision event 2", Some(2), None),
+            ("decision 5 event 1", Some(1), Some(5)),
+            ("DECISION 2 EVENT 3", Some(3), Some(2)),
+        ] {
+            assert_eq!(
+                parse(text),
+                Ok(Command::Decision { event, candidate }),
+                "{text}"
+            );
+        }
+        for text in [
+            "decision 0",
+            "decision event 0",
+            "decision -1",
+            "decision +1",
+            "decision 1 event 0",
+            "decision 9999999999999999999999999999999",
+            "decision x",
+            "decision 1 event",
+            "decision event 1 2",
+            "decision 1 extra",
+            "decisions",
+        ] {
+            assert!(parse(text).is_err(), "{text}");
         }
     }
 }

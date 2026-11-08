@@ -42,6 +42,11 @@ pub trait Screen {
     fn styled(&self) -> bool {
         false
     }
+
+    /// Bounded report viewport; recording screens default to a safe 80x24.
+    fn viewport(&self) -> (u16, u16) {
+        (80, 24)
+    }
 }
 
 /// The full-screen terminal screen, and the RAII guard for it.
@@ -120,6 +125,10 @@ impl Screen for AltScreen {
     /// The full-screen shell owns the terminal, so styling is safe.
     fn styled(&self) -> bool {
         true
+    }
+
+    fn viewport(&self) -> (u16, u16) {
+        terminal::size().unwrap_or((80, 24))
     }
 }
 

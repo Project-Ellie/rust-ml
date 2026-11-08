@@ -107,9 +107,12 @@ mode:
 | `step` | let the AI play or, with `--resign`, concede for the side to move |
 | `back [N]` / `forward [N]` | walk the variation tree |
 | `var N` | choose child variation N |
-| `take black\|white\|both` | make seat(s) human |
+| `take black\|white\|both` | make seat(s) human; resume an active concession if it includes the conceding side |
 | `release black\|white\|both` | release seat(s) to the AI |
 | `sims black\|white N` | set per-seat simulations |
+| `decision` | report all original concession events at this node |
+| `decision N [event E]` | report and preview candidate N; latest event unless E is selected |
+| `decision event E` | report one earlier event (all indices are one-based) |
 | `new` | reset to the opening |
 | `save PATH` / `load PATH` | save or replace a standalone study |
 | `h`, `help`, `?` | show help |
@@ -127,17 +130,22 @@ leaves the session and overlays unchanged. Both refuse an unfinished
 Swap2 ceremony. Paths are literal trimmed command remainders: spaces are
 retained, but quotes, `~`, variables, and shell escapes are not expanded.
 
-The writer emits native study **version 2**, including optional concession
-annotations on every tree node and AI resignation settings. The reader
-accepts versions 1 and 2 only. Old version-1 records load with missing
-resignation settings disabled and annotations absent; version 1 cannot
-contain enabled resignation settings or annotations. Part-1-only readers
-reject version 2 rather than dropping its semantics.
+The writer emits native study **version 3**. Every node retains an ordered
+list of concessions, their resumed state, and original decision audits:
+effective player options, AI configuration, pre-noise root statistics, and
+the original checked candidate proofs. Loading verifies those proofs;
+it does not rerun search or regenerate evidence. The reader accepts v1/v2/v3.
+Version-2 concessions load as active with evidence explicitly unavailable;
+missing legacy evidence is never reconstructed. Version 1 cannot contain
+concession semantics. Older versions reject meaningful v3 event fields;
+v3 rejects the legacy singular annotation.
 
-Search statistics, proofs, puzzle-pack context, display state, and random
-generator state are not saved. Loading reseeds from the saved launch seed
-(or fresh randomness if absent), not from the point at which play stopped.
-Loaded `new` returns to the loaded root with fresh unannotated history.
+Ordinary move-search statistics and ordinary TSS overlays, puzzle-pack
+context, display state, and random generator state are not saved. Only
+concession audits retain their original statistics and proofs. Loading
+reseeds from the saved launch seed (or fresh randomness if absent), not
+from the point at which play stopped. Loaded `new` returns to the loaded
+root with fresh unannotated history.
 
 ### Line mode
 
@@ -189,14 +197,59 @@ This is a **heuristic**, not a global loss proof: other moves are unchecked
 and might save the game. The displayed outcome states the candidate count
 and this limitation. Concession annotates the current node without adding
 a stone, advancing the cursor, or changing engine status. The real search
-statistics remain available for policy and value display; TSS display is
-disabled at finished nodes.
+statistics remain available for policy and value display. Ordinary `t` /
+`tss` analysis remains available while the engine board is ongoing, even
+before takeover. It searches for the current side's forced win; it is not
+a viewer for the five candidate refutations.
 
-At a conceded node, Enter, Space, and an empty line do nothing; typed
-`play` and `step` fail. No command overrides the concession there.
-`back`, `forward`, and `var` remain available, including navigation into
-already-existing children or siblings. Returning to the annotated node
-restores its concession. `new` and puzzle navigation create fresh roots.
+At an actively conceded node, Enter, Space, and an empty line do nothing;
+typed `play` and `step` fail. `take black`, `take white`, or `take both`
+resumes play only when it includes the conceding side, even if that seat
+is already human. The annotation and audit remain as historical/resumed.
+Taking the other seat does not resume play. Releasing a seat never
+reactivates an old concession; a later AI concession appends a new event.
+An actual engine win or draw cannot be resumed.
+
+`back`, `forward`, and `var` retain existing children and each node's
+active/resumed state. `new` and puzzle navigation create fresh roots.
+### Inspecting original decisions
+
+In the raw-mode command line, enter `:decision` to read every original
+concession event at the current node, including historical/resumed events.
+Enter `:decision 1` for the latest event's full report and a hypothetical
+preview of its first checked candidate. In line mode, use `decision` and
+`decision 1` without the colon. Use `decision event 1` or
+`decision 2 event 1` to select an earlier event and its second candidate.
+Zero, malformed, extra, and out-of-range selections are errors.
+
+The report includes original effective player options and AI configuration,
+root perspective and value, actual visits versus requested simulations,
+legal root-edge count, candidate check order, visits, priors, probe caps,
+opponent winner, and every numbered alternating proof move. These are
+stored pre-noise records, not regenerated analyses. Budgets are caps,
+not measurements of work or elapsed time. A concession remains heuristic:
+other moves were unchecked.
+
+Full-screen reports wrap to the viewport and use bounded pages; each key
+advances one page, and the last key dismisses the report. In line mode,
+all lines print without waiting for dismissal or consuming the next command.
+The report is independent of the recent-events panel's truncation.
+
+A candidate preview plays the candidate only on a cloned board, then
+renders its original opponent VCF as numbered cells. Its prominent
+`HYPOTHETICAL PREVIEW; no move played` label distinguishes it from the
+actual node, ply, turn, status and path. The input cursor is hidden so it
+cannot obscure proof numbers. Ordinary `t` still analyzes the actual root
+for the current side; it does not analyze this hypothetical board.
+
+Play, navigation, seat/configuration changes, `new` and successful load
+clear the preview. Root TSS and policy overlays replace it. `save` and
+read-only inspection retain it; failed transactional loads retain it too.
+The viewer does not search, call an evaluator or prover, consume random
+numbers, change history, or modify the original audits. `take` resumes play
+without deleting those original records. V3 persists them; v1/v2 records
+cannot supply original logs or proofs, and legacy previews are explicitly
+unavailable rather than reconstructed.
 
 ## Self-play
 

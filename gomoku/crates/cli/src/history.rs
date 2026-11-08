@@ -15,6 +15,7 @@ use engine::{Board, Color, Move, PlayError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod audit_record;
 pub(crate) mod record;
 
 /// Node identifier in a variation tree.
@@ -29,6 +30,26 @@ pub struct Resignation {
     pub candidates: usize,
 }
 
+/// Original decision evidence and search statistics, independent of view caches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResignationAudit {
+    /// Exact effective options and original verified candidate proofs.
+    pub evidence: player::ResignationEvidence,
+    /// Original pre-noise root statistics and effective AI configuration.
+    pub search: crate::actor::SearchInfo,
+}
+
+/// One append-only concession at a history node.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResignationEvent {
+    /// Historical heuristic summary.
+    pub summary: Resignation,
+    /// Whether human takeover explicitly resumed this concession.
+    pub resumed: bool,
+    /// Original audit, or unavailable for legacy records. Never reconstructed.
+    pub audit: Option<ResignationAudit>,
+}
+
 /// One Node in the varation tree.
 #[derive(Debug, Clone, PartialEq)]
 struct Node {
@@ -38,7 +59,7 @@ struct Node {
     mv: Option<Move>,
     //Child nodes in creation order
     children: Vec<NodeId>,
-    resignation: Option<Resignation>,
+    resignations: Vec<ResignationEvent>,
 }
 
 /// Persistent varation tree with a cursor
@@ -104,7 +125,7 @@ impl History {
                 parent: None,
                 mv: None,
                 children: Vec::new(),
-                resignation: None,
+                resignations: Vec::new(),
             }],
             root: 0,
             cursor: 0,
@@ -118,14 +139,53 @@ impl History {
         self.cursor
     }
 
-    /// Historical concession at the current node, if any.
+    /// Latest historical concession at the current node, including resumed events.
     #[must_use]
     pub fn resignation(&self) -> Option<Resignation> {
-        self.nodes[self.cursor as usize].resignation
+        self.resignation_events().last().map(|event| event.summary)
     }
 
-    pub(crate) fn set_resignation(&mut self, resignation: Resignation) {
-        self.nodes[self.cursor as usize].resignation = Some(resignation);
+    /// All concessions at the cursor, in original admission order.
+    #[must_use]
+    pub fn resignation_events(&self) -> &[ResignationEvent] {
+        &self.nodes[self.cursor as usize].resignations
+    }
+
+    /// Latest concession if it still blocks play.
+    #[must_use]
+    pub fn active_resignation(&self) -> Option<Resignation> {
+        self.resignation_events()
+            .last()
+            .filter(|event| !event.resumed)
+            .map(|event| event.summary)
+    }
+
+    pub(crate) fn append_resignation(&mut self, event: ResignationEvent) {
+        assert!(
+            self.active_resignation().is_none(),
+            "resume before another concession"
+        );
+        self.nodes[self.cursor as usize].resignations.push(event);
+    }
+
+    pub(crate) fn resume_resignation(&mut self, by: Color) -> bool {
+        let Some(event) = self.nodes[self.cursor as usize].resignations.last_mut() else {
+            return false;
+        };
+        if event.resumed || event.summary.by != by {
+            return false;
+        }
+        event.resumed = true;
+        true
+    }
+
+    // Explicitly legacy-only: summary fixtures and v2 imports cannot invent audits.
+    pub(crate) fn append_legacy_unavailable_resignation(&mut self, summary: Resignation) {
+        self.append_resignation(ResignationEvent {
+            summary,
+            resumed: false,
+            audit: None,
+        });
     }
 
     /// The board at the cursor, recomputed by replaying the root→cursor path.
@@ -171,7 +231,7 @@ impl History {
             parent: Some(self.cursor),
             mv: Some(mv),
             children: Vec::new(),
-            resignation: None,
+            resignations: Vec::new(),
         });
         self.nodes[self.cursor as usize].children.push(new_id);
         self.cursor = new_id;

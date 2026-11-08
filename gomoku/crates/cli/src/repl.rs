@@ -30,6 +30,7 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   take black|white|both      make seat(s) human
   release black|white|both   release seat(s) to AI
   sims black|white N         set per-seat simulations
+  decision [N] [event E]   original concession report; N previews candidate (1-based)
   info             show AI search info at the cursor
   v, value         toggle the value strip
   p, policy        cycle policy overlay (off → visits → prior)
@@ -107,7 +108,13 @@ pub fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> Li
                     outcome.lines.push("(no events)".to_string());
                 }
                 for event in &reply.events {
-                    outcome.lines.push(format!("  {event}"));
+                    if let crate::command::Event::DecisionReport { event, candidate } = event {
+                        outcome
+                            .lines
+                            .extend(print_decision(core, *event, *candidate));
+                    } else {
+                        outcome.lines.push(format!("  {event}"));
+                    }
                 }
                 if let Some(message) = reply.message {
                     outcome.lines.push(message);
@@ -120,6 +127,29 @@ pub fn process_line(line: &str, core: &mut SessionCore, interactive: bool) -> Li
         Err(e) => outcome.lines.push(format!("Parse error {e}")),
     }
     outcome
+}
+
+/// Shared plain decision report and optional numbered hypothetical board.
+/// Selection is validated by the core before an event reaches a shell.
+#[must_use]
+pub fn print_decision(
+    core: &SessionCore,
+    event: Option<usize>,
+    candidate: Option<usize>,
+) -> Vec<String> {
+    let mut lines = match crate::decision::report(core, event, candidate) {
+        Ok(lines) => lines,
+        Err(err) => return vec![format!("Error {err}")],
+    };
+    if let Some(n) = candidate {
+        match crate::decision::preview(core, event, n) {
+            Ok(preview) => lines.extend(crate::tui::render::render_study(
+                &crate::tui::render::StudyView::new(core, &[]).decision_preview(Some(&preview)),
+            )),
+            Err(err) => lines.push(format!("Error {err}")),
+        }
+    }
+    lines
 }
 
 /// The lines that describe the session: optional header, one status line,
@@ -139,13 +169,19 @@ pub fn print_state(core: &SessionCore, header: &str) -> Vec<String> {
         snapshot.ply, snapshot.status, snapshot.black, snapshot.white
     ));
     if let Some(resignation) = snapshot.resignation {
-        lines.push(
-            crate::command::Event::Resigned {
-                by: resignation.by,
-                candidates: resignation.candidates,
-            }
-            .to_string(),
-        );
+        let label = crate::command::Event::Resigned {
+            by: resignation.by,
+            candidates: resignation.candidates,
+        }
+        .to_string();
+        if snapshot.resignation_resumed {
+            lines.push(format!("Historical/resumed: {label}"));
+        } else {
+            lines.push(label);
+        }
+    }
+    if snapshot.status == engine::Status::Ongoing && snapshot.resignation_resumed {
+        lines.push(format!("To move: {:?}", core.board().to_move()));
     }
     if !snapshot.branch_options.is_empty() {
         let opts: Vec<String> = snapshot

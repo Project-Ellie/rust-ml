@@ -10,6 +10,10 @@
 pub mod actor;
 /// Command language and events.
 pub mod command;
+/// Original concession reports and hypothetical proof previews.
+pub mod decision;
+#[cfg(test)]
+mod decision_tests;
 /// Text-formatting helpers.
 pub mod fmt;
 /// load and save files

@@ -1,4 +1,4 @@
-//! Native version-2 study records with version-1 compatibility; pure validation.
+//! Native version-3 study records with version-1/2 compatibility; pure validation.
 use super::{SessionCore, SessionInit};
 use crate::actor::{AiConfig, EvaluatorKind, Occupant};
 use crate::history::record::HistoryRecord;
@@ -21,7 +21,7 @@ struct StudyRecord {
     seed: Option<u64>,
 }
 
-fn validate_config(config: &AiConfig) -> Result<(), String> {
+pub(crate) fn validate_config_values(config: &AiConfig) -> Result<(), String> {
     if config.simulations == 0 {
         return Err("simulations must be positive".into());
     }
@@ -34,6 +34,11 @@ fn validate_config(config: &AiConfig) -> Result<(), String> {
     if !config.noise_epsilon.is_finite() || !(0.0..=1.0).contains(&config.noise_epsilon) {
         return Err("noise_epsilon must be finite and in [0,1]".into());
     }
+    Ok(())
+}
+
+fn validate_config(config: &AiConfig) -> Result<(), String> {
+    validate_config_values(config)?;
     if config.evaluator == EvaluatorKind::Baseline && !cfg!(feature = "baseline") {
         return Err("record requires the baseline feature".into());
     }
@@ -71,7 +76,7 @@ impl SessionCore {
 
         let record = StudyRecord {
             format: "gomoku-study".into(),
-            version: 2,
+            version: 3,
             history: HistoryRecord::capture(&self.history),
             black: self.black.clone(),
             white: self.white.clone(),
@@ -82,6 +87,7 @@ impl SessionCore {
         };
 
         record.validate_configs()?;
+        record.history.validate_version(3)?;
         if record.history.nodes.len() > crate::history::record::MAX_NODES {
             return Err("too many history nodes".into());
         }
@@ -102,7 +108,7 @@ impl SessionCore {
             return Err("study exceeds 4 MiB".into());
         }
         let record: StudyRecord = serde_json::from_str(text).map_err(|e| e.to_string())?;
-        if record.format != "gomoku-study" || !matches!(record.version, 1 | 2) {
+        if record.format != "gomoku-study" || !matches!(record.version, 1..=3) {
             return Err("unsupported study format/version".into());
         }
         if record.version == 1 {
@@ -121,7 +127,7 @@ impl SessionCore {
             }
         }
         record.validate_configs()?;
-        let history = record.history.restore()?;
+        let history = record.history.restore(record.version)?;
         // All untrusted input is checked before any evaluator construction.
         let opening = history.root_board().clone();
         let init = SessionInit {
@@ -148,16 +154,374 @@ mod tests {
     use engine::Move;
     use rand::{RngExt, SeedableRng, rngs::StdRng};
 
-    #[test]
-    fn resign_writer_uses_v2_and_restores_concession() {
-        let mut core = SessionCore::new(SessionInit::hotseat());
-        core.history.set_resignation(crate::history::Resignation {
-            by: engine::Color::Black,
-            candidates: 5,
+    fn real_concession(kind: EvaluatorKind) -> SessionCore {
+        use engine::{Board, Color};
+        let mv = |row, col| Move::new(row, col).unwrap();
+        let board = Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        let config = AiConfig {
+            evaluator: kind,
+            simulations: 3,
+            resign: true,
+            ..AiConfig::default()
+        };
+        let mut core = SessionCore::new(SessionInit {
+            opening: board,
+            seed: Some(42),
+            ..SessionInit::versus_ai(Color::White, config)
         });
+        core.execute(Command::Step).unwrap();
+        assert!(core.is_finished());
+        core
+    }
+
+    #[test]
+    fn resign_original_audits_and_root_stats_survive_active_and_resumed_roundtrip() {
+        use crate::command::SeatSel;
+        for kind in [EvaluatorKind::Tactics, EvaluatorKind::Baseline] {
+            if kind == EvaluatorKind::Baseline && !cfg!(feature = "baseline") {
+                continue;
+            }
+            let mut core = real_concession(kind);
+            for resumed in [false, true] {
+                if resumed {
+                    core.execute_take(SeatSel::Black).unwrap();
+                }
+                let text = core.export_record_json().unwrap();
+                let loaded = SessionCore::import_record_json(&text).unwrap();
+                assert_eq!(loaded.resignation_events(), core.resignation_events());
+                assert_eq!(loaded.search_info(), core.search_info());
+                assert_eq!(loaded.is_finished(), !resumed);
+                assert_eq!(loaded.snapshot().resignation_resumed, resumed);
+                assert_eq!(
+                    loaded.resignation_events()[0]
+                        .audit
+                        .as_ref()
+                        .unwrap()
+                        .evidence
+                        .candidates
+                        .len(),
+                    5
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resign_resume_release_appends_independent_audits_and_preserves_descendants() {
+        use crate::command::{Event, SeatSel};
+        use engine::{Color, Status};
+        let mut core = real_concession(EvaluatorKind::Tactics);
+        let original = core.resignation_events()[0].clone();
+        let board = core.board();
+        assert_eq!(core.execute_take(SeatSel::White).unwrap().len(), 1);
+        assert!(core.is_finished());
+        let events = core.execute_take(SeatSel::Both).unwrap();
+        assert_eq!(events.last(), Some(&Event::Resumed { by: Color::Black }));
+        assert_eq!(events.len(), 3);
+        assert_eq!(core.execute_take(SeatSel::Black).unwrap().len(), 1);
+        assert_eq!(core.snapshot().status, Status::Ongoing);
+        assert_eq!(core.board(), board);
+        core.execute_play(Move::new(0, 0).unwrap()).unwrap();
+        core.execute_back(1).unwrap();
+        core.execute_release(SeatSel::Black).unwrap();
+        assert!(!core.is_finished()); // Release never reactivates old concessions.
+        core.execute_set_sims(SeatSel::Black, 4).unwrap();
+        core.execute(Command::Step).unwrap();
+        assert_eq!(core.resignation_events().len(), 2);
+        let mut resumed_original = original;
+        resumed_original.resumed = true;
+        assert_eq!(core.resignation_events()[0], resumed_original);
+        assert!(!core.resignation_events()[1].resumed);
+        assert_eq!(core.search_info().unwrap().config.simulations, 4);
+        let text = core.export_record_json().unwrap();
+        let mut loaded = SessionCore::import_record_json(&text).unwrap();
+        assert_eq!(loaded.resignation_events(), core.resignation_events());
+        loaded.execute_forward(1).unwrap();
+        assert!(!loaded.is_finished());
+        loaded.execute_back(1).unwrap();
+        assert!(loaded.is_finished());
+        loaded.execute_take(SeatSel::Black).unwrap();
+        loaded.execute_play(Move::new(0, 1).unwrap()).unwrap();
+        loaded.execute_back(1).unwrap();
+        assert_eq!(loaded.snapshot().branch_options.len(), 2);
+        loaded.execute_new().unwrap();
+        assert!(loaded.resignation_events().is_empty());
+    }
+
+    #[test]
+    fn resign_v2_legacy_is_active_and_cannot_invent_audits() {
+        let core = SessionCore::new(SessionInit::hotseat());
+        let mut value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        value["version"] = 2.into();
+        value["history"]["nodes"][0]["resignation"] = serde_json::json!({
+            "reason": "verified_opponent_vcf", "by": "Black", "candidates": 5
+        });
+        let mut loaded = SessionCore::import_record_json(&value.to_string()).unwrap();
+        assert!(loaded.is_finished());
+        assert!(loaded.resignation_events()[0].audit.is_none());
+        assert!(loaded.search_info().is_none());
+        loaded.execute_take(crate::command::SeatSel::Black).unwrap();
+        let v3 = loaded.export_record_json().unwrap();
+        let again = SessionCore::import_record_json(&v3).unwrap();
+        assert_eq!(again.resignation_events(), loaded.resignation_events());
+        assert!(!again.is_finished());
+        let mut unknown: serde_json::Value = serde_json::from_str(&v3).unwrap();
+        unknown["history"]["nodes"][0]["resignations"][0]["evidence"]["fabricated"] = true.into();
+        assert!(SessionCore::import_record_json(&unknown.to_string()).is_err());
+        for version in [1, 3] {
+            value["version"] = version.into();
+            assert!(SessionCore::import_record_json(&value.to_string()).is_err());
+        }
+    }
+
+    #[test]
+    fn resign_hidden_original_corruption_matrix_rejects_and_shell_load_rolls_back() {
+        use serde_json::{Value, json};
+        let mut source = real_concession(EvaluatorKind::Tactics);
+        source.execute_take(crate::command::SeatSel::Black).unwrap();
+        source.execute_play(Move::new(0, 0).unwrap()).unwrap();
+        let value: Value = serde_json::from_str(&source.export_record_json().unwrap()).unwrap();
+        // The audited node is hidden: cursor is its child.
+        assert_eq!(value["history"]["cursor"], 1);
+        let prefix = "/history/nodes/0/resignations/0";
+        let cases = [
+            ("/by", json!("White")),
+            ("/candidates", json!(0)),
+            ("/reason", json!("value_threshold")),
+            ("/resumed", Value::Null),
+            ("/evidence/kind", json!("regenerated")),
+            ("/evidence/candidates/0/ordinal", json!(2)),
+            ("/evidence/candidates/0/square", json!([15, 0])),
+            ("/evidence/candidates/0/visits", json!(17)),
+            ("/evidence/candidates/0/prior", json!(0.99)),
+            ("/evidence/candidates/0/probe_budget/max_nodes", json!(1001)),
+            ("/evidence/candidates/0/probe_budget/max_depth", json!(11)),
+            ("/evidence/candidates/0/proof/winner", json!("Black")),
+            ("/evidence/candidates/0/proof/line", json!([[9, 9]])),
+            ("/evidence/candidates/0/proof/line", json!([[255, 255]])),
+            ("/evidence/candidates/0/proof/line", json!([])),
+            ("/evidence/candidates/0/proof/line", json!([[7, 7], [0, 0]])),
+            ("/evidence/candidates/0/proof/line", json!(vec![[0, 0]; 11])),
+            ("/evidence/search/side_to_move", json!("White")),
+            ("/evidence/search/value", json!(2.0)),
+            ("/evidence/search/value", json!("NaN")),
+            ("/evidence/search/edges/0/square", json!([2, 0])),
+            ("/evidence/search/edges/0/prior", json!(-0.1)),
+            ("/evidence/search/edges/0/prior", json!(0.5)),
+            ("/evidence/search/edges/0/visits", json!(99)),
+            ("/evidence/search/config/simulations", json!(0)),
+            ("/evidence/search/config/temperature", json!(-1.0)),
+            ("/evidence/search/config/c_puct", json!(-1.0)),
+            ("/evidence/search/config/noise_epsilon", json!(1.1)),
+            ("/evidence/search/config/resign", json!(false)),
+            ("/evidence/options/simulations", json!(4)),
+            ("/evidence/options/noise_alpha", json!(0.0)),
+            ("/evidence/options/resign", json!(false)),
+            ("/evidence/options/own/enabled", json!(true)),
+            ("/evidence/options/own/budget/max_depth", json!(29)),
+            ("/evidence/options/guard/max_candidates", json!(4)),
+            ("/evidence/options/guard/budget/max_nodes", json!(999)),
+        ];
+        let mut invalids: Vec<(String, Value)> = cases
+            .into_iter()
+            .map(|(path, replacement)| {
+                let mut invalid = value.clone();
+                *invalid.pointer_mut(&format!("{prefix}{path}")).unwrap() = replacement;
+                (path.to_string(), invalid)
+            })
+            .collect();
+        for path in [
+            "",
+            "/evidence",
+            "/evidence/options",
+            "/evidence/options/own",
+            "/evidence/options/guard/budget",
+            "/evidence/search",
+            "/evidence/search/config",
+            "/evidence/search/edges/0",
+            "/evidence/candidates/0",
+            "/evidence/candidates/0/proof",
+        ] {
+            let mut invalid = value.clone();
+            invalid
+                .pointer_mut(&format!("{prefix}{path}"))
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("unknown".into(), json!(true));
+            invalids.push((format!("unknown {path}"), invalid));
+        }
+        for mode in [
+            "duplicate_candidate",
+            "rank_order",
+            "short_count",
+            "missing_edge",
+            "duplicate_edge",
+            "too_many_edges",
+            "resume_order",
+            "missing_resumed",
+            "old_version",
+        ] {
+            let mut invalid = value.clone();
+            let event = invalid.pointer_mut(prefix).unwrap();
+            match mode {
+                "duplicate_candidate" => {
+                    event["evidence"]["candidates"][1] = event["evidence"]["candidates"][0].clone()
+                }
+                "rank_order" => {
+                    event["evidence"]["candidates"]
+                        .as_array_mut()
+                        .unwrap()
+                        .swap(0, 1);
+                    event["evidence"]["candidates"][0]["ordinal"] = json!(1);
+                    event["evidence"]["candidates"][1]["ordinal"] = json!(2);
+                }
+                "short_count" => {
+                    event["candidates"] = json!(4);
+                    event["evidence"]["candidates"]
+                        .as_array_mut()
+                        .unwrap()
+                        .pop();
+                }
+                "missing_edge" => {
+                    event["evidence"]["search"]["edges"]
+                        .as_array_mut()
+                        .unwrap()
+                        .pop();
+                }
+                "duplicate_edge" => {
+                    event["evidence"]["search"]["edges"][1] =
+                        event["evidence"]["search"]["edges"][0].clone()
+                }
+                "too_many_edges" => {
+                    event["evidence"]["search"]["edges"] =
+                        json!(vec![event["evidence"]["search"]["edges"][0].clone(); 226])
+                }
+                "resume_order" => {
+                    event["resumed"] = json!(false);
+                    let repeated = event.clone();
+                    invalid["history"]["nodes"][0]["resignations"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(repeated);
+                }
+                "missing_resumed" => {
+                    event.as_object_mut().unwrap().remove("resumed");
+                }
+                "old_version" => invalid["version"] = json!(2),
+                _ => unreachable!(),
+            }
+            invalids.push((mode.to_string(), invalid));
+        }
+        let mut own_win = value.clone();
+        own_win["history"]["root"]["black"] = json!([[2, 0], [2, 1], [2, 2], [2, 3]]);
+        invalids.push(("root own immediate-win veto".into(), own_win));
+        let path =
+            std::env::temp_dir().join(format!("gomoku-slice2-corrupt-{}.json", std::process::id()));
+        let before = source.export_record_json().unwrap();
+        let snapshot = source.snapshot();
+        let mut rng = StdRng::seed_from_u64(42);
+        for (name, invalid) in invalids {
+            std::fs::write(&path, invalid.to_string()).unwrap();
+            assert!(
+                crate::shell_command::execute(&mut source, Command::Load { path: path.clone() })
+                    .is_err(),
+                "{name}"
+            );
+            assert_eq!(source.export_record_json().unwrap(), before, "{name}");
+            assert_eq!(source.snapshot(), snapshot, "{name}");
+            assert_eq!(source.rng.random::<u64>(), rng.random::<u64>(), "{name}");
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn resign_historical_evaluator_and_scheduled_effective_options_need_no_live_feature() {
+        let core = real_concession(EvaluatorKind::Tactics);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        // Historical identity is independent of live seats/defaults. The
+        // baseline and tactics presets share budgets, differing in enablement.
+        value["black"] = serde_json::json!("Human");
+        value["white"] = serde_json::json!("Human");
+        let evidence = &mut value["history"]["nodes"][0]["resignations"][0]["evidence"];
+        evidence["search"]["config"]["evaluator"] = serde_json::json!("Baseline");
+        evidence["options"]["own"]["enabled"] = true.into();
+        evidence["options"]["guard"]["enabled"] = true.into();
+        evidence["search"]["config"]["temperature"] = 1.0.into();
+        evidence["options"]["temperature"] = 1.0.into();
+        evidence["search"]["config"]["noise_epsilon"] = 0.25.into();
+        evidence["options"]["noise_epsilon"] = 0.25.into();
+        assert_eq!(evidence["search"]["config"]["explicit_selection"], false);
+        let loaded = SessionCore::import_record_json(&value.to_string()).unwrap();
+        assert_eq!(
+            loaded.search_info().unwrap().config.evaluator,
+            EvaluatorKind::Baseline
+        );
+        assert_eq!(
+            loaded.resignation_events()[0]
+                .audit
+                .as_ref()
+                .unwrap()
+                .evidence
+                .options
+                .temperature,
+            1.0
+        );
+    }
+
+    #[test]
+    fn resign_record_event_tree_and_byte_limits_are_bounded() {
+        use serde_json::json;
+        let core = SessionCore::new(SessionInit::hotseat());
+        let value: serde_json::Value =
+            serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        let mut events = value.clone();
+        events["history"]["nodes"][0]["resignations"] = json!(vec![
+            json!({
+                "reason":"verified_opponent_vcf", "by":"Black", "candidates":5,
+                "resumed":true, "evidence":{"kind":"legacy_unavailable"}
+            });
+            10_001
+        ]);
+        assert!(
+            SessionCore::import_record_json(&events.to_string())
+                .err()
+                .unwrap()
+                .contains("too many resignation")
+        );
+        let mut nodes = value;
+        nodes["history"]["nodes"] = json!(vec![nodes["history"]["nodes"][0].clone(); 10_001]);
+        assert!(SessionCore::import_record_json(&nodes.to_string()).is_err());
+        assert!(
+            SessionCore::import_record_json(&" ".repeat(MAX_RECORD_BYTES + 1))
+                .err()
+                .unwrap()
+                .contains("4 MiB")
+        );
+    }
+
+    #[test]
+    fn resign_writer_uses_v3_and_restores_legacy_unavailable_concession() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: engine::Color::Black,
+                candidates: 5,
+            });
         let text = core.export_record_json().unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["version"], 2);
+        assert_eq!(value["version"], 3);
+        assert_eq!(
+            value["history"]["nodes"][0]["resignations"][0]["evidence"]["kind"],
+            "legacy_unavailable"
+        );
         let restored = SessionCore::import_record_json(&text).unwrap();
         assert_eq!(restored.snapshot(), core.snapshot());
         assert!(restored.is_finished());
@@ -222,6 +586,8 @@ mod tests {
         core.execute(Command::Back { n: 2 }).unwrap();
         let value: serde_json::Value =
             serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        let mut value = value;
+        value["version"] = 2.into();
         for (by, candidates) in [("White", 1), ("Black", 0), ("Black", 6)] {
             let mut invalid = value.clone();
             invalid["history"]["nodes"][2]["resignation"] = serde_json::json!({
@@ -238,7 +604,7 @@ mod tests {
         });
         assert!(SessionCore::import_record_json(&unknown.to_string()).is_err());
         let mut future = value.clone();
-        future["version"] = 3.into();
+        future["version"] = 4.into();
         assert!(SessionCore::import_record_json(&future.to_string()).is_err());
         let mut v1_hidden = value;
         v1_hidden["version"] = 1.into();
@@ -269,10 +635,11 @@ mod tests {
         }
         let board = Board::from_position(&black, &white, Color::Black).unwrap();
         let mut core = SessionCore::new(SessionInit::hotseat_from_opening(&board));
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::Black,
-            candidates: 1,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 1,
+            });
         let text = core.export_record_json().unwrap();
         assert!(
             SessionCore::import_record_json(&text)
@@ -280,7 +647,7 @@ mod tests {
                 .is_finished()
         );
         let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        value["history"]["nodes"][0]["resignation"]["candidates"] = 2.into();
+        value["history"]["nodes"][0]["resignations"][0]["candidates"] = 2.into();
         assert!(SessionCore::import_record_json(&value.to_string()).is_err());
         // Imported final-cell draws are terminal even though their move log is short.
         let mut draw = board;
@@ -298,12 +665,12 @@ mod tests {
         .unwrap();
         for terminal in [draw, won] {
             let mut terminal_core = SessionCore::new(SessionInit::hotseat_from_opening(&terminal));
-            terminal_core
-                .history
-                .set_resignation(crate::history::Resignation {
+            terminal_core.history.append_legacy_unavailable_resignation(
+                crate::history::Resignation {
                     by: terminal.to_move(),
                     candidates: 1,
-                });
+                },
+            );
             assert!(
                 SessionCore::import_record_json(&terminal_core.export_record_json().unwrap())
                     .is_err()
@@ -332,6 +699,7 @@ mod tests {
         core.execute(Command::Back { n: 1 }).unwrap();
         let mut value: serde_json::Value =
             serde_json::from_str(&core.export_record_json().unwrap()).unwrap();
+        value["version"] = 2.into();
         value["history"]["nodes"][1]["resignation"] = serde_json::json!({
             "reason": "verified_opponent_vcf", "by": "White", "candidates": 1
         });
@@ -354,20 +722,22 @@ mod tests {
             .unwrap();
         }
         core.execute(Command::Back { n: 2 }).unwrap();
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::White,
-            candidates: 4,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::White,
+                candidates: 4,
+            });
         core.execute(Command::Back { n: 1 }).unwrap();
         core.execute(Command::Play {
             mv: Move::new(0, 0).unwrap(),
         })
         .unwrap();
         core.execute(Command::Back { n: 1 }).unwrap();
-        core.history.set_resignation(crate::history::Resignation {
-            by: Color::Black,
-            candidates: 5,
-        });
+        core.history
+            .append_legacy_unavailable_resignation(crate::history::Resignation {
+                by: Color::Black,
+                candidates: 5,
+            });
         let text = core.export_record_json().unwrap();
         let mut restored = SessionCore::import_record_json(&text).unwrap();
         assert_eq!(restored.export_record_json().unwrap(), text);

@@ -131,6 +131,7 @@ impl Occupant {
 
 /// Search configuration for an AI seat.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AiConfig {
     /// Which evaluator drives MCTS.
     pub evaluator: EvaluatorKind,

@@ -151,6 +151,7 @@ fn ordinary_decisions_match_manual_search_stats_and_seeded_selection() {
         let decision = player.decide(&board, &options, &mut player_rng).unwrap();
 
         assert_eq!(decision.action, DecisionAction::Play(expected_move));
+        assert!(decision.resignation.is_none());
         assert!(board.is_legal(played(decision.action)));
         let stats = decision
             .search
@@ -193,6 +194,8 @@ fn unknown_resignation_preserves_exact_decision_and_rng_with_noise_sampling_and_
             let ordinary = a.decide(&board, &disabled, &mut rng_a).unwrap();
             let fallback = b.decide(&board, &enabled, &mut rng_b).unwrap();
             assert_eq!(fallback, ordinary);
+            assert!(ordinary.resignation.is_none());
+            assert!(fallback.resignation.is_none());
             assert!(matches!(fallback.action, DecisionAction::Play(_)));
             assert_eq!(rng_a.random::<u64>(), rng_b.random::<u64>());
             assert_eq!(board, original);
@@ -285,6 +288,7 @@ fn white_own_proof_bypasses_search_and_certifies_absolute_color() {
         DecisionAction::Play(Move::new(7, 7).unwrap())
     );
     assert!(decision.search.is_none());
+    assert!(decision.resignation.is_none());
     assert_eq!(
         decision.guard.as_ref().unwrap().outcome,
         GuardOutcome::ProvenWin
@@ -360,6 +364,7 @@ fn own_proof_bypasses_search_stats_and_rng() {
 
     assert_eq!(decision.action, DecisionAction::Play(certified));
     assert!(decision.search.is_none());
+    assert!(decision.resignation.is_none());
     let guard = decision.guard.as_ref().expect("play has diagnostics");
     assert_eq!(guard.outcome, GuardOutcome::ProvenWin);
     assert_eq!(guard.proposal, certified);
@@ -376,6 +381,53 @@ impl Evaluator for CountingEvaluator {
     fn evaluate(&mut self, request: EvalRequest) -> EvalResult {
         self.calls.set(self.calls.get() + 1);
         UniformEvaluator::new(0.0).evaluate(request)
+    }
+}
+
+#[test]
+fn resignation_evidence_adds_no_evaluator_calls_to_the_real_search() {
+    let mv = |r, c| Move::new(r, c).unwrap();
+    let losing = Board::from_position(
+        &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+        &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+        engine::Color::Black,
+    )
+    .unwrap();
+    for (board, should_resign) in [(losing, true), (Board::new(), false)] {
+        let options = PlayerOptions {
+            simulations: 7,
+            resign: true,
+            temperature: 0.7,
+            noise_epsilon: 0.25,
+            guard: GuardConfig::baseline(),
+            ..PlayerOptions::default()
+        };
+        let expected_calls = Rc::new(Cell::new(0));
+        let mut evaluator = CountingEvaluator {
+            calls: Rc::clone(&expected_calls),
+        };
+        let _ = mcts::search(
+            &board,
+            &mut evaluator,
+            &SearchConfig {
+                simulations: options.simulations,
+                c_puct: options.c_puct,
+            },
+        );
+        assert!(expected_calls.get() > 0);
+        let actual_calls = Rc::new(Cell::new(0));
+        let mut player = AiPlayer::new(Box::new(CountingEvaluator {
+            calls: Rc::clone(&actual_calls),
+        }));
+        let decision = player
+            .decide(&board, &options, &mut StdRng::seed_from_u64(31))
+            .unwrap();
+        assert_eq!(actual_calls.get(), expected_calls.get());
+        assert_eq!(decision.resignation.is_some(), should_resign);
+        assert_eq!(
+            matches!(decision.action, DecisionAction::Resign(_)),
+            should_resign
+        );
     }
 }
 
