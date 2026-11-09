@@ -167,6 +167,8 @@ Fixed glossary (tutorial README has the full version):
   defender block (gapped fours). Soundness gate green: 100% of emitted
   proofs verify, incl. at PROPTEST_CASES=2000; differential vs a
   depth-bounded reference adjudicator green.
+- Shortest VCF proofs: iterative deepening minimizes attacker moves under a
+  shared node budget with verified fallback; the AI own-proof path uses it.
 - Swap2 opening (slice 9): `Swap2<Placing3|FirstChoice|Placing2|
   FinalChoice>` typestate + `Board::from_position` (overlap/count
   validation, from-scratch Zobrist). Opening-built and play-built

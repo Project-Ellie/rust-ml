@@ -43,6 +43,41 @@ pub fn prove_forced_win(b: &Board, side: Color, budget: SearchBudget) -> Option<
         .map(|line| Proof { winner: side, line })
 }
 
+/// Find a certified forced win with the fewest attacker moves.
+///
+/// The ordinary prover runs first, then iterative deepening retries with one
+/// fewer attacker move until no shorter proof is found. `budget.max_nodes` is
+/// shared by the initial search and every retry. If that total budget runs
+/// out, the shortest verified proof found so far is returned. `max_depth`
+/// retains its usual meaning for the initial search: a cap counted in plies.
+/// `None` means no proof was found within budget, not that no forced win exists.
+pub fn prove_shortest_forced_win(b: &Board, side: Color, budget: SearchBudget) -> Option<Proof> {
+    if b.status() != Status::Ongoing || b.to_move() != side {
+        return None;
+    }
+    let mut b = b.clone();
+    let mut search = Search::new(budget);
+    let mut best = search
+        .solve(&mut b, side, budget.max_depth)
+        .map(|line| Proof { winner: side, line })
+        .filter(|proof| verify_line(&b, proof))?;
+
+    while best.line.len() > 1 && search.nodes_left > 0 {
+        // A line with A attacker moves has 2*A-1 plies. Removing two plies
+        // therefore caps the retry at A-1 attacker moves.
+        let max_depth = u8::try_from(best.line.len() - 2).unwrap_or(u8::MAX);
+        let Some(line) = search.solve(&mut b, side, max_depth) else {
+            break;
+        };
+        let candidate = Proof { winner: side, line };
+        if !verify_line(&b, &candidate) {
+            break;
+        }
+        best = candidate;
+    }
+    Some(best)
+}
+
 /// The soundness net. Replays `proof.line` from `b`: every move legal,
 /// alternating, forcing; at each defender turn, EVERY alternative that
 /// addresses the threat is enumerated and the attacker's continuation
@@ -312,6 +347,93 @@ mod tests {
         assert!(verify_line(&b, &proof));
     }
 
+    fn nonminimal_fixture() -> Board {
+        let mut b = Board::new();
+        let script = [
+            (7, 4),
+            (0, 0),
+            (7, 5),
+            (0, 2),
+            (7, 6),
+            (0, 4),
+            (6, 6),
+            (0, 6),
+            (8, 8),
+            (0, 8),
+            // A later-indexed one-move double threat at (11, 11).
+            (8, 11),
+            (7, 11),
+            (9, 11),
+            (11, 7),
+            (10, 11),
+            (14, 0),
+            (11, 8),
+            (14, 2),
+            (11, 9),
+            (14, 4),
+            (11, 10),
+            (14, 6),
+        ];
+        for &(r, c) in &script {
+            b.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        b
+    }
+
+    #[test]
+    fn shortest_proof_replaces_longer_depth_first_line() {
+        let b = nonminimal_fixture();
+        let budget = SearchBudget {
+            max_nodes: 50_000,
+            max_depth: 9,
+        };
+        let ordinary = prove_forced_win(&b, Color::Black, budget).unwrap();
+        assert!(ordinary.line.len() > 1);
+
+        let shortest = prove_shortest_forced_win(&b, Color::Black, budget).unwrap();
+
+        assert_eq!(shortest.line.len(), 1);
+        assert_ne!(shortest.line[0], ordinary.line[0]);
+        assert!(verify_line(&b, &shortest));
+    }
+
+    #[test]
+    fn shortest_proof_returns_verified_fallback_when_budget_is_exhausted() {
+        let b = nonminimal_fixture();
+        let generous = SearchBudget {
+            max_nodes: 50_000,
+            max_depth: 9,
+        };
+        let ordinary = prove_forced_win(&b, Color::Black, generous).unwrap();
+        assert!(ordinary.line.len() > 1);
+        let initial_nodes = (1..=generous.max_nodes)
+            .find(|&max_nodes| {
+                prove_forced_win(
+                    &b,
+                    Color::Black,
+                    SearchBudget {
+                        max_nodes,
+                        ..generous
+                    },
+                )
+                .is_some_and(|proof| proof.line == ordinary.line)
+            })
+            .unwrap();
+
+        let fallback = prove_shortest_forced_win(
+            &b,
+            Color::Black,
+            SearchBudget {
+                max_nodes: initial_nodes,
+                ..generous
+            },
+        )
+        .unwrap();
+
+        assert_eq!(fallback, ordinary);
+        assert!(verify_line(&b, &fallback));
+    }
+
     // ------------------------------------------------------------------
     // 2. Quiet position -> None.
     #[test]
@@ -335,17 +457,12 @@ mod tests {
             . . . . . . . . . . . . . . .
             ",
         );
-        assert!(
-            prove_forced_win(
-                &b,
-                Color::Black,
-                SearchBudget {
-                    max_nodes: 1000,
-                    max_depth: 5
-                }
-            )
-            .is_none()
-        );
+        let budget = SearchBudget {
+            max_nodes: 1000,
+            max_depth: 5,
+        };
+        assert!(prove_forced_win(&b, Color::Black, budget).is_none());
+        assert!(prove_shortest_forced_win(&b, Color::Black, budget).is_none());
     }
 
     // ------------------------------------------------------------------

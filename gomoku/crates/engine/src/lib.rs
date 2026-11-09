@@ -36,4 +36,4 @@ pub use moveset::{Move, MoveSet};
 pub use opening::{FinalChoice, FirstChoice, Placing2, Placing3, Swap2};
 pub use symmetry::Transform;
 pub use tactics::{double_threats, forced_blocks, immediate_wins};
-pub use tss::{Proof, SearchBudget, prove_forced_win, verify_line};
+pub use tss::{Proof, SearchBudget, prove_forced_win, prove_shortest_forced_win, verify_line};

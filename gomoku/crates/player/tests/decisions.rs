@@ -343,6 +343,66 @@ fn vcf_fixture() -> Board {
     board
 }
 
+fn nonminimal_vcf_fixture() -> Board {
+    let mut board = Board::new();
+    for (row, col) in [
+        (7, 4),
+        (0, 0),
+        (7, 5),
+        (0, 2),
+        (7, 6),
+        (0, 4),
+        (6, 6),
+        (0, 6),
+        (8, 8),
+        (0, 8),
+        (8, 11),
+        (7, 11),
+        (9, 11),
+        (11, 7),
+        (10, 11),
+        (14, 0),
+        (11, 8),
+        (14, 2),
+        (11, 9),
+        (14, 4),
+        (11, 10),
+        (14, 6),
+    ] {
+        board.play(Move::new(row, col).unwrap()).unwrap();
+    }
+    board
+}
+
+#[test]
+fn own_proof_plays_the_shortest_certified_line() {
+    let board = nonminimal_vcf_fixture();
+    let budget = engine::SearchBudget {
+        max_nodes: 50_000,
+        max_depth: 9,
+    };
+    let ordinary = engine::prove_forced_win(&board, board.to_move(), budget).unwrap();
+    let shortest = engine::prove_shortest_forced_win(&board, board.to_move(), budget).unwrap();
+    assert!(shortest.line.len() < ordinary.line.len());
+    assert_ne!(shortest.line[0], ordinary.line[0]);
+
+    let mut player = AiPlayer::new(Box::new(NeverEvaluate));
+    let options = PlayerOptions {
+        own: OwnTssConfig {
+            enabled: true,
+            budget,
+        },
+        ..PlayerOptions::default()
+    };
+
+    let decision = player
+        .decide(&board, &options, &mut StdRng::seed_from_u64(8))
+        .unwrap();
+
+    assert_eq!(decision.action, DecisionAction::Play(shortest.line[0]));
+    assert!(decision.search.is_none());
+}
+
 #[test]
 fn own_proof_bypasses_search_stats_and_rng() {
     let board = vcf_fixture();

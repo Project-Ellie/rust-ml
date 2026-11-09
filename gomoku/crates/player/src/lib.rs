@@ -17,9 +17,10 @@ pub use guard::{GuardConfig, GuardDiagnostics, GuardOutcome};
 
 /// Own-side bounded TSS probe settings for one decision.
 ///
-/// When enabled, [`AiPlayer::decide`] asks the engine for a certified forced
-/// win for the side to move before searching. The budget bounds prover work;
-/// exhausting it means unknown, never loss, and ordinary search runs.
+/// When enabled, [`AiPlayer::decide`] asks the engine for the shortest
+/// certified forced win for the side to move before searching. The total node
+/// budget also bounds minimization; exhausting it retains the shortest verified
+/// line found. No initial proof means unknown, and ordinary search runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OwnTssConfig {
     /// Whether to run the own-side proof probe before search.
@@ -250,7 +251,8 @@ impl AiPlayer {
 
     /// Decide whether to play or concede without modifying `board`.
     ///
-    /// A certified own forced win returns immediately without consuming RNG,
+    /// A certified own forced win plays the first move of the shortest verified
+    /// line found within budget and returns immediately without consuming RNG,
     /// calling the evaluator, or constructing search statistics. Otherwise
     /// the order is search, optional heuristic resignation, optional root
     /// noise, then temperature selection over the root edges (zero
@@ -286,8 +288,9 @@ impl AiPlayer {
         if options.own.enabled {
             // One direct engine probe per decision, never cached: AiPlayer
             // holds no state besides the evaluator.
-            if let Some(mv) = engine::prove_forced_win(board, board.to_move(), options.own.budget)
-                .and_then(|proof| certified_own_move(board, &proof))
+            if let Some(mv) =
+                engine::prove_shortest_forced_win(board, board.to_move(), options.own.budget)
+                    .and_then(|proof| certified_own_move(board, &proof))
             {
                 return Ok(Decision {
                     action: DecisionAction::Play(mv),
