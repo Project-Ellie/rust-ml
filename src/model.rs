@@ -25,6 +25,10 @@
 //!   -> Linear hidden->10             -> logits [B, 10]
 //! ```
 
+// Burn 0.21's Config derive triggers a nightly Clippy false positive in its
+// generated initializer, so the allowance must cover the macro expansion.
+#![allow(clippy::redundant_field_names)]
+
 use burn::{
     nn::{
         conv::{Conv2d, Conv2dConfig},

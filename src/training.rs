@@ -16,6 +16,10 @@
 //! - `training.launch(learner)` runs the whole thing and returns the trained
 //!   model plus a metrics renderer.
 
+// Burn 0.21's Config derive triggers a nightly Clippy false positive in its
+// generated initializer, so the allowance must cover the macro expansion.
+#![allow(clippy::redundant_field_names)]
+
 use crate::{
     data::{MnistBatch, MnistBatcher},
     model::{Model, ModelConfig},

@@ -51,9 +51,38 @@ pub const T4_DEFENSIVE_FORK: f32 = 8.0;
 /// Logit weight for any opponent three-maker without an opponent double-three.
 pub const T4C_DEFENSIVE: f32 = 2.0;
 
-/// Maximum possible gravity contribution after normalization.
+/// Maximum possible gravity contribution after normalization at six or more stones.
 #[allow(dead_code)]
 const T5_MAX: f32 = 1.0;
+
+/// Logit assigned to H8 on an empty board.
+///
+/// Twelve gives the center more than 99% of the softmaxed prior against
+/// 224 zero-logit alternatives.
+const OPENING_CENTER_LOGIT: f32 = 12.0;
+
+/// Policy-gravity multiplier at zero or one stone.
+///
+/// Eighty puts roughly 87% of a one-stone position's prior mass within
+/// Chebyshev distance 2 of the stone, instead of diffusing it over the board.
+const OPENING_GRAVITY_MAX_SCALE: f32 = 80.0;
+/// Stone count at which opening gravity returns to its ordinary strength.
+const OPENING_GRAVITY_END_STONES: usize = 6;
+
+/// Return the policy-only opening gravity multiplier for `stones` on board.
+///
+/// The multiplier is 80 at one stone (and on the empty board, where the
+/// separate H8 spike applies), decreases linearly to exactly 1 at six stones,
+/// and stays clamped to 1 thereafter. The value readout never applies it.
+#[must_use]
+pub fn opening_gravity_scale(stones: usize) -> f32 {
+    if stones >= OPENING_GRAVITY_END_STONES {
+        return 1.0;
+    }
+    let ramp_stones = stones.max(1);
+    let progress = (ramp_stones - 1) as f32 / (OPENING_GRAVITY_END_STONES - 1) as f32;
+    OPENING_GRAVITY_MAX_SCALE - (OPENING_GRAVITY_MAX_SCALE - 1.0) * progress
+}
 
 /// Public map-only value heuristic from the side-to-move perspective.
 ///
@@ -157,8 +186,14 @@ pub fn quiet_value(gravity: &[[f32; 15]; 15], planes: &engine::Planes) -> f32 {
 /// T3 own double threats (32), T3B live-open-three blocks (32), T4A own
 /// double-threes (16), T4B own three-makers (4), and either opponent
 /// double-three defense (8) or ordinary opponent three-maker defense (2).
-/// Every legal cell also receives gravity (at most 1); occupied or illegal
-/// cells receive `f32::NEG_INFINITY`.
+/// Every legal cell also receives gravity (at most 1 at six or more stones);
+/// occupied or illegal cells receive `f32::NEG_INFINITY`.
+///
+/// The opening policy adds a 12-logit H8 spike on an empty board. From one
+/// through five stones it multiplies gravity by [`opening_gravity_scale`],
+/// ramping from 80 down to 1 at six stones. At six stones and beyond the
+/// original gravity values are used directly, preserving their logits exactly.
+/// This scaling is policy-only; [`quiet_value`] receives the unscaled map.
 #[must_use]
 pub fn policy_logits(
     gravity: &[[f32; 15]; 15],
@@ -166,11 +201,25 @@ pub fn policy_logits(
     opp: &ThreatMaps,
     legal: &[Move],
 ) -> [f32; 225] {
+    let stone_count = 225usize.saturating_sub(legal.len());
+    let gravity_scale = opening_gravity_scale(stone_count);
     let mut logits = [f32::NEG_INFINITY; 225];
     for mv in legal {
         let r = mv.row() as usize;
         let c = mv.col() as usize;
-        let mut logit = gravity[r][c];
+        let mut logit = if stone_count == 0 {
+            if (r, c) == (7, 7) {
+                OPENING_CENTER_LOGIT
+            } else {
+                0.0
+            }
+        } else if stone_count < OPENING_GRAVITY_END_STONES {
+            gravity[r][c] * gravity_scale
+        } else {
+            // Preserve the established policy bit-for-bit once the opening
+            // ramp is over; even a redundant multiply-by-one is unnecessary.
+            gravity[r][c]
+        };
         if own.wins[r][c] > 0.0 {
             logit += T1_WIN;
         }
@@ -346,15 +395,51 @@ mod tests {
     }
 
     #[test]
-    fn logits_are_uniform_when_gravity_is_zero() {
+    fn opening_gravity_scale_relaxes_linearly_to_one_at_six_stones() {
+        assert_eq!(opening_gravity_scale(0), 80.0);
+        assert_eq!(opening_gravity_scale(1), 80.0);
+        for (stones, expected) in [(2, 64.2), (3, 48.4), (4, 32.6), (5, 16.8)] {
+            let scale = opening_gravity_scale(stones);
+            assert!(
+                (scale - expected).abs() < 1e-4,
+                "scale at {stones} stones: expected {expected}, got {scale}"
+            );
+        }
+        assert_eq!(opening_gravity_scale(6), 1.0);
+        assert_eq!(opening_gravity_scale(7), 1.0);
+        assert_eq!(opening_gravity_scale(225), 1.0);
+    }
+
+    #[test]
+    fn empty_board_logits_spike_only_at_center() {
         let gravity = [[0.0f32; 15]; 15];
         let board = Board::new();
         let legal: Vec<Move> = board.empty_moves().collect();
         let own = empty_maps();
         let opp = empty_maps();
         let logits = policy_logits(&gravity, &own, &opp, &legal);
+        let center = Move::new(7, 7).unwrap();
         for mv in &legal {
-            assert_eq!(logits[mv.index()], 0.0f32);
+            let expected = if *mv == center { 12.0 } else { 0.0 };
+            assert_eq!(logits[mv.index()], expected);
+        }
+    }
+
+    #[test]
+    fn six_stone_logits_use_original_gravity_bit_for_bit() {
+        let mut board = Board::new();
+        for (r, c) in [(7, 7), (0, 0), (7, 8), (0, 14), (8, 7), (14, 0)] {
+            board.play(Move::new(r, c).unwrap()).unwrap();
+        }
+        let planes = engine::encode(&board);
+        let gravity = gravity_map(&planes);
+        let legal: Vec<Move> = board.empty_moves().collect();
+        let logits = policy_logits(&gravity, &empty_maps(), &empty_maps(), &legal);
+
+        for mv in legal {
+            let actual = logits[mv.index()];
+            let expected = gravity[mv.row() as usize][mv.col() as usize];
+            assert_eq!(actual.to_bits(), expected.to_bits(), "at {mv:?}");
         }
     }
 
@@ -791,7 +876,9 @@ mod tests {
         let res = ev.evaluate(req);
 
         let block = Move::new(7, 6).unwrap();
-        let expected = 2.0 + gravity[7][6];
+        // Four stones are still on the opening ramp, so only the gravity
+        // component is amplified; the defensive T4C weight stays unchanged.
+        let expected = 2.0 + gravity[7][6] * opening_gravity_scale(4);
         assert_eq!(res.policy[block.index()], expected);
     }
 

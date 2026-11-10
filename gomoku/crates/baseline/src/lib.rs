@@ -3,7 +3,9 @@
 //! This crate implements the [`mcts::Evaluator`] seam with a
 //! deterministic policy that combines gravity with both sides' threat
 //! maps, including live-open-three blocks and separate opponent-fork
-//! defense. Value combines the
+//! defense. Its opening policy spikes H8 on an empty board and amplifies
+//! gravity from 80× at one stone down to ordinary strength at six stones.
+//! The opening amplification is policy-only. Value combines the
 //! existing map ladder with a bounded bonus for already formed forks.
 //! An optional quiet-position whisper applies only when that value is zero.
 
@@ -25,7 +27,10 @@ use patterns::net::ThreatNet;
 ///
 /// Combines gravity with threat-map policy tiers (wins, forced blocks,
 /// own double threats, live-open-three blocks, potential forks, threes and
-/// defensive memberships).
+/// defensive memberships). An empty board favors H8 decisively; below six
+/// stones, opening gravity is amplified to focus the prior near the fight.
+/// Opening amplification never affects value; the quiet whisper receives the
+/// original, unscaled gravity map.
 /// Value preserves the map ladder, including ±0.20 potential-fork terms,
 /// and adds a guarded ±0.30 formed-fork bonus, clamped to ±0.99.
 /// The optional quiet whisper applies only to a zero composed value.
@@ -67,9 +72,9 @@ impl BaselineEvaluator {
 ///
 /// The evaluator's policy logits over legal moves are normalized with
 /// the same masked softmax as MCTS expansion, then sorted by descending
-/// probability. Equal probabilities are ordered center-out so the empty
-/// board presents the center first. Terminal positions return an empty
-/// vector.
+/// probability. Equal probabilities are ordered center-out. The empty-board
+/// policy gives H8 at least 99% of the mass, and a one-stone position focuses
+/// decisively around that stone. Terminal positions return an empty vector.
 #[must_use]
 pub fn prior(board: &engine::Board) -> Vec<(engine::Move, f32)> {
     if board.status() != engine::Status::Ongoing {
@@ -342,13 +347,15 @@ mod tests {
     }
 
     #[test]
-    fn v0_policy_is_uniform_over_legal() {
+    fn v0_empty_board_policy_spikes_at_center() {
         let board = Board::new();
         let req = request_from_board(&board);
         let mut ev = BaselineEvaluator::new(Device::flex());
         let res = ev.evaluate(req);
+        let center = Move::new(7, 7).unwrap();
         for mv in board.empty_moves() {
-            assert_eq!(res.policy[mv.index()], 0.0f32);
+            let expected = if mv == center { 12.0 } else { 0.0 };
+            assert_eq!(res.policy[mv.index()], expected);
         }
     }
 
@@ -402,25 +409,24 @@ mod tests {
             .empty_moves()
             .map(|mv| res.policy[mv.index()])
             .fold(f32::NEG_INFINITY, f32::max);
-        assert_eq!(max_logit, 2.0f32 / 32.0f32);
+        assert_eq!(max_logit, 80.0 * 2.0f32 / 32.0f32);
 
         // Cells far from the stone (distance > 2) remain at zero.
         assert_eq!(res.policy[Move::new(0, 0).unwrap().index()], 0.0f32);
     }
 
     #[test]
-    fn v1_empty_board_is_uniform() {
+    fn v1_empty_board_retains_center_spike_with_gravity_enabled() {
         let board = Board::new();
         let req = request_from_board(&board);
         let mut ev = BaselineEvaluator::new(Device::flex());
         let res = ev.evaluate(req);
-        for mv in board.empty_moves() {
-            assert_eq!(res.policy[mv.index()], 0.0f32);
-        }
+        assert_eq!(res.policy[Move::new(7, 7).unwrap().index()], 12.0);
+        assert_eq!(res.policy[Move::new(7, 8).unwrap().index()], 0.0);
     }
 
     #[test]
-    fn v1_corner_stone_not_boosted() {
+    fn v1_corner_stone_opening_gravity_scales_without_convolution_boost() {
         let mut board = Board::new();
         board.play(Move::new(0, 0).unwrap()).unwrap();
         let req = request_from_board(&board);
@@ -431,10 +437,10 @@ mod tests {
             .empty_moves()
             .map(|mv| res.policy[mv.index()])
             .fold(f32::NEG_INFINITY, f32::max);
-        assert_eq!(max_logit, 2.0f32 / 32.0f32);
+        assert_eq!(max_logit, 80.0 * 2.0f32 / 32.0f32);
 
         let corner_sum: f32 = board.empty_moves().map(|mv| res.policy[mv.index()]).sum();
-        assert!(corner_sum < 1.0f32);
+        assert_eq!(corner_sum, 27.5f32);
     }
 
     #[test]
@@ -603,6 +609,44 @@ mod tests {
             "priors must be sorted by descending probability"
         );
         assert_eq!(priors[0].0, Move::new(7, 7).unwrap());
+        assert!(
+            priors[0].1 >= 0.99,
+            "empty-board center prior must be decisive, got {}",
+            priors[0].1
+        );
+    }
+
+    #[test]
+    fn prior_single_stone_concentrates_near_the_stone() {
+        let mut board = Board::new();
+        board.play(Move::new(7, 7).unwrap()).unwrap();
+
+        let priors = prior(&board);
+        let nearby_mass: f32 = priors
+            .iter()
+            .filter(|(mv, _)| mv.row().abs_diff(7).max(mv.col().abs_diff(7)) <= 2)
+            .map(|(_, probability)| probability)
+            .sum();
+
+        assert!(
+            nearby_mass >= 0.80,
+            "expected at least 80% of prior mass near the single stone, got {nearby_mass}"
+        );
+    }
+
+    #[test]
+    fn opening_policy_scaling_leaves_quiet_value_unchanged() {
+        let mut board = Board::new();
+        for mv in [(7, 7), (0, 0), (8, 8)] {
+            board.play(Move::new(mv.0, mv.1).unwrap()).unwrap();
+        }
+        let req = request_from_board(&board);
+        let expected = readout::quiet_value(&gravity::gravity_map(&req.planes), &req.planes);
+        assert_ne!(expected, 0.0, "the preservation check must be nonempty");
+
+        let mut ev = BaselineEvaluator::new(Device::flex());
+        let res = ev.evaluate(req);
+        assert_eq!(res.value, expected);
     }
 
     #[test]
