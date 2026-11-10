@@ -32,7 +32,16 @@ pub const T1_WIN: f32 = 128.0;
 /// Logit weight for a forced block (opponent immediate win).
 pub const T2_FORCED_BLOCK: f32 = 64.0;
 /// Logit weight for an own double threat.
+///
+/// This outranks or ties its defensive mirror: playing our own open-four
+/// maker wins before the opponent's live open three matters.
 pub const T3_DOUBLE_THREAT: f32 = 32.0;
+/// T3B: block the opponent's live open three (cells where the opponent
+/// would create a double threat). The defensive mirror of T3.
+///
+/// The exact T3 mirror weight outranks T4A/T4B/T4C because an open three
+/// is forcing.
+pub const T3B_DEFENSIVE_DOUBLE_THREAT: f32 = 32.0;
 /// Logit weight for an own double-three fork.
 pub const T4A_DOUBLE_THREE: f32 = 16.0;
 /// Logit weight for any own three-maker.
@@ -144,8 +153,12 @@ pub fn quiet_value(gravity: &[[f32; 15]; 15], planes: &engine::Planes) -> f32 {
 
 /// Build a 225-vector of policy logits from threat maps and gravity.
 ///
-/// Tiers are applied by binary membership; occupied or illegal cells
-/// receive `f32::NEG_INFINITY`.
+/// Additive binary tiers are T1 own wins (128), T2 forced blocks (64),
+/// T3 own double threats (32), T3B live-open-three blocks (32), T4A own
+/// double-threes (16), T4B own three-makers (4), and either opponent
+/// double-three defense (8) or ordinary opponent three-maker defense (2).
+/// Every legal cell also receives gravity (at most 1); occupied or illegal
+/// cells receive `f32::NEG_INFINITY`.
 #[must_use]
 pub fn policy_logits(
     gravity: &[[f32; 15]; 15],
@@ -166,6 +179,9 @@ pub fn policy_logits(
         }
         if own.double_threats[r][c] > 0.0 {
             logit += T3_DOUBLE_THREAT;
+        }
+        if opp.double_threats[r][c] > 0.0 {
+            logit += T3B_DEFENSIVE_DOUBLE_THREAT;
         }
         if own.double_threes[r][c] > 0.0 {
             logit += T4A_DOUBLE_THREE;
@@ -234,6 +250,17 @@ mod tests {
     }
 
     #[test]
+    fn policy_opponent_double_threat_has_weight_32_plus_gravity() {
+        let mut opp = empty_maps();
+        opp.double_threats[7][7] = 4.0;
+        let mv = Move::new(7, 7).unwrap();
+        let mut gravity = [[0.0; 15]; 15];
+        gravity[7][7] = 0.25;
+        let logits = policy_logits(&gravity, &empty_maps(), &opp, &[mv]);
+        assert_eq!(logits[mv.index()], 32.25);
+    }
+
+    #[test]
     fn policy_own_fork_stacks_with_binary_own_three_for_20() {
         let mut own = empty_maps();
         own.double_threes[7][7] = 3.0;
@@ -285,9 +312,9 @@ mod tests {
     #[test]
     fn policy_memberships_stack_across_sides_and_with_gravity() {
         for (defensive_fork, urgent, base) in [
-            (false, false, 22.0),
-            (true, false, 28.0),
-            (true, true, 252.0),
+            (false, false, 54.0),
+            (true, false, 60.0),
+            (true, true, 284.0),
         ] {
             let mut own = empty_maps();
             let mut opp = empty_maps();
@@ -306,7 +333,7 @@ mod tests {
                 opp.wins[7][7] = 2.0;
                 own.double_threats[7][7] = 2.0;
             }
-            // Opponent double-threat makers still contribute no policy tier.
+            // Opponent double-threat makers add the defensive T3B mirror.
             opp.double_threats[7][7] = 4.0;
             let mv = Move::new(7, 7).unwrap();
             for g in [0.0, 1.0] {
@@ -352,7 +379,7 @@ mod tests {
 
     #[test]
     fn domination_invariant_holds() {
-        // Conservatively combine every lower membership, even when real
+        // Conservatively combine every T4/gravity membership, even when real
         // geometry may not permit it. Defense contributes max(8, 2), not 10.
         for (tier, (urgent_weight, lower_weight)) in [(32.0, 29.0), (64.0, 61.0), (128.0, 125.0)]
             .into_iter()
@@ -847,8 +874,12 @@ mod tests {
             T4A_DOUBLE_THREE + T4B_THREE + T4_DEFENSIVE_FORK.max(T4C_DEFENSIVE) + T5_MAX;
         assert_eq!(lower_stack, 29.0);
         assert!(T3_DOUBLE_THREAT > lower_stack);
+        assert_eq!(T3B_DEFENSIVE_DOUBLE_THREAT, T3_DOUBLE_THREAT);
+        assert!(T3B_DEFENSIVE_DOUBLE_THREAT > lower_stack);
         assert!(T2_FORCED_BLOCK > T3_DOUBLE_THREAT + lower_stack);
+        assert!(T2_FORCED_BLOCK > T3B_DEFENSIVE_DOUBLE_THREAT + lower_stack);
         assert!(T1_WIN > T2_FORCED_BLOCK + T3_DOUBLE_THREAT + lower_stack);
+        assert!(T1_WIN > T2_FORCED_BLOCK + T3B_DEFENSIVE_DOUBLE_THREAT + lower_stack);
     }
 
     #[test]

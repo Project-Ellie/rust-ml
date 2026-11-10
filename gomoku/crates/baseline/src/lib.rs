@@ -2,7 +2,8 @@
 //!
 //! This crate implements the [`mcts::Evaluator`] seam with a
 //! deterministic policy that combines gravity with both sides' threat
-//! maps, including separate opponent-fork defense. Value combines the
+//! maps, including live-open-three blocks and separate opponent-fork
+//! defense. Value combines the
 //! existing map ladder with a bounded bonus for already formed forks.
 //! An optional quiet-position whisper applies only when that value is zero.
 
@@ -23,7 +24,8 @@ use patterns::net::ThreatNet;
 /// The baseline evaluator.
 ///
 /// Combines gravity with threat-map policy tiers (wins, forced blocks,
-/// double threats, potential forks, threes and defensive memberships).
+/// own double threats, live-open-three blocks, potential forks, threes and
+/// defensive memberships).
 /// Value preserves the map ladder, including ±0.20 potential-fork terms,
 /// and adds a guarded ±0.30 formed-fork bonus, clamped to ±0.99.
 /// The optional quiet whisper applies only to a zero composed value.
@@ -493,9 +495,12 @@ mod tests {
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
             . . . . . . . . . . . . . . .
-            X . X . X . X . . . . . . . .
+            X . . . X . . . X . . . X . .
             ",
         );
+        // White's open four makes almost every non-winning White cell a
+        // double-threat maker. Scattered Black fillers keep this focused
+        // on T2 rather than a T3+T3B tie decided by gravity.
         let req = request_from_board(&board);
         let mut ev = BaselineEvaluator::new(Device::flex());
         let res = ev.evaluate(req.clone());
@@ -623,6 +628,29 @@ mod tests {
 
         assert_eq!(priors[0].0, winning_move);
         assert!(priors[0].1 > priors[1].1);
+    }
+
+    #[test]
+    fn prior_live_open_three_blocks_are_top_two() {
+        let board = position(
+            &[(6, 6), (7, 7), (7, 8), (6, 10)],
+            &[(6, 8), (8, 8), (7, 9), (8, 10)],
+            Color::Black,
+        );
+
+        let priors = prior(&board);
+        let top_two = [priors[0].0, priors[1].0];
+
+        assert!(
+            top_two.contains(&Move::new(5, 7).unwrap()),
+            "H6 must be a top-two block; prior leaders: {:?}",
+            &priors[..4]
+        );
+        assert!(
+            top_two.contains(&Move::new(9, 11).unwrap()),
+            "L10 must be a top-two block; prior leaders: {:?}",
+            &priors[..4]
+        );
     }
 
     #[test]
