@@ -61,6 +61,43 @@ impl BaselineEvaluator {
     }
 }
 
+/// Compute the baseline's prior policy for `board` without any search.
+///
+/// The evaluator's policy logits over legal moves are normalized with
+/// the same masked softmax as MCTS expansion, then sorted by descending
+/// probability. Equal probabilities are ordered center-out so the empty
+/// board presents the center first. Terminal positions return an empty
+/// vector.
+#[must_use]
+pub fn prior(board: &engine::Board) -> Vec<(engine::Move, f32)> {
+    if board.status() != engine::Status::Ongoing {
+        return Vec::new();
+    }
+
+    let legal: Vec<_> = board.empty_moves().collect();
+    if legal.is_empty() {
+        return Vec::new();
+    }
+
+    let mut evaluator = BaselineEvaluator::new(Device::flex());
+    let result = evaluator.evaluate(EvalRequest {
+        planes: engine::encode(board),
+        legal: legal.clone(),
+    });
+    let mut priors = mcts::masked_softmax(&result.policy, &legal);
+    let center_distance = |mv: engine::Move| {
+        let row = mv.row().abs_diff(7);
+        let col = mv.col().abs_diff(7);
+        row * row + col * col
+    };
+    priors.sort_by(|(a_move, a_probability), (b_move, b_probability)| {
+        b_probability
+            .total_cmp(a_probability)
+            .then_with(|| center_distance(*a_move).cmp(&center_distance(*b_move)))
+    });
+    priors
+}
+
 impl Evaluator for BaselineEvaluator {
     fn evaluate(&mut self, req: EvalRequest) -> EvalResult {
         let board = adapter::reconstruct_board(&req.planes, &req.legal);
@@ -547,5 +584,89 @@ mod tests {
         let mut ev = BaselineEvaluator::new(Device::flex()).without_quiet_value();
         let res = ev.evaluate(req);
         assert_eq!(res.value, 0.0f32);
+    }
+
+    #[test]
+    fn prior_empty_board_is_normalized_sorted_and_centered() {
+        let priors = prior(&Board::new());
+
+        assert_eq!(priors.len(), 225);
+        let sum: f32 = priors.iter().map(|&(_, probability)| probability).sum();
+        assert!((sum - 1.0).abs() < 1e-5, "sum = {sum}");
+        assert!(
+            priors.windows(2).all(|pair| pair[0].1 >= pair[1].1),
+            "priors must be sorted by descending probability"
+        );
+        assert_eq!(priors[0].0, Move::new(7, 7).unwrap());
+    }
+
+    #[test]
+    fn prior_immediate_win_is_top() {
+        let mut board = Board::new();
+        let script = [
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 6),
+            (0, 4),
+            (7, 7),
+            (0, 6),
+        ];
+        for &(row, col) in &script {
+            board.play(Move::new(row, col).unwrap()).unwrap();
+        }
+        let winning_move = Move::new(7, 5).unwrap();
+        assert!(engine::immediate_wins(&board, board.to_move()).contains(winning_move));
+
+        let priors = prior(&board);
+
+        assert_eq!(priors[0].0, winning_move);
+        assert!(priors[0].1 > priors[1].1);
+    }
+
+    #[test]
+    fn prior_terminal_positions_are_empty() {
+        let mut won = Board::new();
+        let script = [
+            (7, 3),
+            (0, 0),
+            (7, 4),
+            (0, 2),
+            (7, 5),
+            (0, 4),
+            (7, 6),
+            (0, 6),
+            (7, 7),
+        ];
+        for &(row, col) in &script {
+            won.play(Move::new(row, col).unwrap()).unwrap();
+        }
+        assert_eq!(won.status(), engine::Status::Won(Color::Black));
+        assert!(prior(&won).is_empty());
+
+        let mut draw = Board::new();
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        for row in 0..15u8 {
+            for col in 0..15u8 {
+                let stripe = (col % 4) < 2;
+                let is_black = stripe != (row % 2 == 1);
+                let mv = Move::new(row, col).unwrap();
+                if is_black {
+                    black.push(mv);
+                } else {
+                    white.push(mv);
+                }
+            }
+        }
+        for index in 0..112 {
+            draw.play(black[index]).unwrap();
+            draw.play(white[index]).unwrap();
+        }
+        draw.play(black[112]).unwrap();
+        assert_eq!(draw.status(), engine::Status::Draw);
+        assert_eq!(draw.empty_moves().count(), 0);
+        assert!(prior(&draw).is_empty());
     }
 }
