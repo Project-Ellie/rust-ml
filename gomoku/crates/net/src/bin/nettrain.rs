@@ -21,6 +21,7 @@ use rand::rngs::StdRng;
 
 use net::checkpoint::{RunJournal, save_checkpoint};
 use net::network::{Model, ModelConfig};
+use net::report::StopReason;
 use net::train::{EvalMetrics, StepMetrics, TrainConfig, train};
 use train::collect::{Quotas, collect};
 use train::dataset::read_dataset;
@@ -109,6 +110,7 @@ fn run(args: Args) -> Result<(), String> {
     let (model, step_metrics, eval_metrics) = train(
         model,
         &args.train_config,
+        &args.config,
         train_samples,
         holdout_samples,
         &device,
@@ -120,6 +122,7 @@ fn run(args: Args) -> Result<(), String> {
         args.train_config,
         step_metrics.last().copied(),
         eval_metrics.last().copied(),
+        StopReason::Completed,
     );
 
     save_checkpoint(&model, &journal, &args.out_dir)

@@ -11,4 +11,5 @@ pub mod checkpoint;
 pub mod loss;
 pub mod network;
 pub mod planes;
+pub mod report;
 pub mod train;

@@ -109,6 +109,7 @@ mod tests {
             net::train::TrainConfig::tiny(),
             None,
             None,
+            net::report::StopReason::Completed,
         );
         net::checkpoint::save_checkpoint(&model, &journal, dir).unwrap();
     }

@@ -41,6 +41,24 @@ pub fn compute_loss(input: LossInput) -> Tensor<1> {
     policy + value
 }
 
+/// Compute combined policy + value loss, returning both the tensor and
+/// the scalar decomposition.
+///
+/// The returned tensor is exactly `policy + value` and remains attached
+/// to the computation graph so `.backward()` trains both heads. The
+/// scalars are detached copies for logging.
+pub fn compute_loss_split(input: LossInput) -> (Tensor<1>, LossOutput) {
+    let policy = policy_loss(input.policy_logits, input.policy_target);
+    let value = value_loss(input.value_pred, input.value_target);
+    let total = policy.clone() + value.clone();
+    let output = LossOutput {
+        total: total.clone().into_scalar(),
+        policy: policy.into_scalar(),
+        value: value.into_scalar(),
+    };
+    (total, output)
+}
+
 /// Soft-target cross entropy.
 fn policy_loss(logits: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     let log_probs = log_softmax(logits, 1);

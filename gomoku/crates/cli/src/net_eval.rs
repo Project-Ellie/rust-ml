@@ -95,6 +95,7 @@ mod tests {
     use mcts::Evaluator as _;
     use net::checkpoint::{RunJournal, save_checkpoint};
     use net::network::ModelConfig;
+    use net::report::StopReason;
     use net::train::TrainConfig;
     use std::path::PathBuf;
 
@@ -103,7 +104,14 @@ mod tests {
         let device = Device::flex();
         let config = ModelConfig::tiny();
         let model: Model = config.init(&device);
-        let journal = RunJournal::new(0, config, TrainConfig::tiny(), None, None);
+        let journal = RunJournal::new(
+            0,
+            config,
+            TrainConfig::tiny(),
+            None,
+            None,
+            StopReason::Completed,
+        );
         save_checkpoint(&model, &journal, dir).unwrap();
     }
 

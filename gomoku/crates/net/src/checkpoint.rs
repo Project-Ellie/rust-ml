@@ -16,6 +16,7 @@ use burn::tensor::Device;
 use serde::{Deserialize, Serialize};
 
 use crate::network::{Model, ModelConfig};
+use crate::report::StopReason;
 use crate::train::{EvalMetrics, StepMetrics, TrainConfig};
 
 /// Errors that can occur when saving or loading checkpoints.
@@ -45,6 +46,9 @@ pub struct RunJournal {
     pub final_step_metrics: Option<StepMetrics>,
     /// Final holdout metrics, if available.
     pub final_eval_metrics: Option<EvalMetrics>,
+    /// Reason the run stopped.
+    #[serde(default)]
+    pub stop_reason: StopReason,
 }
 
 impl RunJournal {
@@ -55,6 +59,7 @@ impl RunJournal {
         train_config: TrainConfig,
         final_step_metrics: Option<StepMetrics>,
         final_eval_metrics: Option<EvalMetrics>,
+        stop_reason: StopReason,
     ) -> Self {
         Self {
             seed,
@@ -62,6 +67,7 @@ impl RunJournal {
             train_config,
             final_step_metrics,
             final_eval_metrics,
+            stop_reason,
         }
     }
 }
@@ -167,6 +173,8 @@ mod tests {
             Some(StepMetrics {
                 step: 10,
                 loss: 1.23,
+                policy_loss: 0.75,
+                value_loss: 0.48,
                 lr: 1e-4,
             }),
             Some(EvalMetrics {
@@ -175,6 +183,7 @@ mod tests {
                 policy_top1_accuracy: 0.8,
                 value_sign_accuracy: 0.85,
             }),
+            StopReason::Completed,
         );
 
         save_journal(&journal, &dir).unwrap();
@@ -192,12 +201,91 @@ mod tests {
 
         let config = ModelConfig::tiny();
         let model: Model = config.init(&device);
-        let journal = RunJournal::new(7, config, TrainConfig::tiny(), None, None);
+        let journal = RunJournal::new(
+            7,
+            config,
+            TrainConfig::tiny(),
+            None,
+            None,
+            StopReason::Completed,
+        );
 
         save_checkpoint(&model, &journal, &dir).unwrap();
 
         assert!(dir.join("model.mpk").exists());
         assert!(dir.join("run.json").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn journal_loads_missing_new_fields_with_defaults() {
+        // JSON produced before stop_reason and loss decomposition existed.
+        let old_json = r#"{
+  "seed": 7,
+  "model_config": {
+    "channels": 8,
+    "num_blocks": 1
+  },
+  "train_config": {
+    "steps": 50,
+    "batch_size": 16,
+    "eval_interval": 0,
+    "seed": 0,
+    "lr_warmup_steps": 5,
+    "lr_max": 0.001,
+    "lr_min": 0.00001,
+    "lr_cosine_steps": 45,
+    "weight_decay": 0.0001
+  },
+  "final_step_metrics": {
+    "step": 10,
+    "loss": 1.23,
+    "lr": 0.0001
+  },
+  "final_eval_metrics": null
+}"#;
+
+        let loaded: RunJournal = serde_json::from_str(old_json).unwrap();
+        assert_eq!(loaded.stop_reason, StopReason::Completed);
+        let step = loaded.final_step_metrics.unwrap();
+        assert_eq!(step.policy_loss, 0.0);
+        assert_eq!(step.value_loss, 0.0);
+    }
+
+    #[test]
+    fn journal_roundtrips_new_fields() {
+        let dir = temp_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let journal = RunJournal::new(
+            42,
+            ModelConfig::tiny(),
+            TrainConfig::tiny(),
+            Some(StepMetrics {
+                step: 10,
+                loss: 1.23,
+                policy_loss: 0.75,
+                value_loss: 0.48,
+                lr: 1e-4,
+            }),
+            Some(EvalMetrics {
+                step: 10,
+                loss: 1.45,
+                policy_top1_accuracy: 0.8,
+                value_sign_accuracy: 0.85,
+            }),
+            StopReason::StopRequested,
+        );
+
+        save_journal(&journal, &dir).unwrap();
+        let loaded = load_journal(&dir).unwrap();
+        assert_eq!(journal, loaded);
+        assert_eq!(loaded.stop_reason, StopReason::StopRequested);
+        let step = loaded.final_step_metrics.unwrap();
+        assert_eq!(step.policy_loss, 0.75);
+        assert_eq!(step.value_loss, 0.48);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
