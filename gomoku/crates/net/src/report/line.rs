@@ -316,6 +316,7 @@ mod tests {
             device_name: "test".to_string(),
             train_samples: 1,
             holdout_samples: 1,
+            started_at: "2026-11-11T20:41:07".to_string(),
         }
     }
 

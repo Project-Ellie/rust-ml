@@ -26,7 +26,7 @@ use net::network::{Model, ModelConfig};
 use net::report::jsonl::JsonlReporter;
 use net::report::line::{LineReporter, RealClock};
 use net::report::probe::select_probes;
-use net::report::{CompositeReporter, Reporter, RunInfo, StopReason};
+use net::report::{CompositeReporter, Reporter, RunInfo, StopReason, format_system_time};
 use net::train::{EvalMetrics, StepMetrics, TrainConfig, train_with_reporter};
 use train::collect::{Quotas, collect};
 use train::dataset::read_dataset;
@@ -141,6 +141,7 @@ fn run(args: Args) -> Result<(), String> {
         device_name: format!("{device:?}"),
         train_samples: train_samples.len(),
         holdout_samples: holdout_samples.len(),
+        started_at: format_system_time(std::time::SystemTime::now()),
     };
 
     let metrics_path = args.out_dir.join("metrics.jsonl");

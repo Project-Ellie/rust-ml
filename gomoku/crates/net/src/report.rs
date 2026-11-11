@@ -8,6 +8,7 @@
 use crate::network::ModelConfig;
 use crate::train::{EvalMetrics, StepMetrics, TrainConfig};
 
+pub mod board;
 pub mod jsonl;
 pub mod line;
 pub mod probe;
@@ -38,6 +39,69 @@ pub struct RunInfo {
     pub train_samples: usize,
     /// Number of holdout samples.
     pub holdout_samples: usize,
+    /// Run start timestamp formatted as `YYYY-MM-DDTHH:MM:SS`.
+    pub started_at: String,
+}
+
+/// Format a [`std::time::SystemTime`] as `YYYY-MM-DDTHH:MM:SS` in UTC.
+///
+/// This is a small, dependency-free formatter for the run-id header.
+/// It handles leap years correctly through 2099 and saturates dates
+/// outside that range rather than panicking.
+pub fn format_system_time(t: std::time::SystemTime) -> String {
+    let dur = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(std::time::Duration::ZERO);
+    let secs = dur.as_secs();
+
+    // Days since 1970-01-01.
+    let days = secs / 86_400;
+    let mut year = 1970u64;
+    let mut remaining_days = days;
+    loop {
+        let year_days = if is_leap_year(year) { 366 } else { 365 };
+        if remaining_days < year_days {
+            break;
+        }
+        remaining_days -= year_days;
+        year += 1;
+        if year > 2099 {
+            // Saturate to avoid overflow in pathological inputs.
+            year = 2099;
+            remaining_days = if is_leap_year(year) { 365 } else { 364 };
+            break;
+        }
+    }
+
+    let month_lengths = if is_leap_year(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1u64;
+    let mut day_in_month = remaining_days;
+    for (i, &len) in month_lengths.iter().enumerate() {
+        if day_in_month < len {
+            month = (i as u64) + 1;
+            day_in_month += 1; // 1-based
+            break;
+        }
+        day_in_month -= len;
+        if i == 11 {
+            month = 12;
+            day_in_month = len;
+        }
+    }
+
+    let hh = (secs % 86_400) / 3600;
+    let mm = (secs % 3600) / 60;
+    let ss = secs % 60;
+
+    format!("{year:04}-{month:02}-{day_in_month:02}T{hh:02}:{mm:02}:{ss:02}")
+}
+
+fn is_leap_year(year: u64) -> bool {
+    year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
 /// Holdout evaluation report.

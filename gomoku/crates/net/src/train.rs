@@ -26,6 +26,7 @@ use crate::network::{Model, ModelConfig};
 use crate::report::probe::{ProbePosition, ProbeResult};
 use crate::report::{
     EvalReport, FinishInfo, NullReporter, Reporter, RunInfo, StopReason, TrainEvent,
+    format_system_time,
 };
 
 /// Training-loop hyperparameters.
@@ -131,6 +132,7 @@ pub fn train(
         device_name: format!("{device:?}"),
         train_samples: train_samples.len(),
         holdout_samples: holdout_samples.len(),
+        started_at: format_system_time(std::time::SystemTime::now()),
     };
     train_with_reporter(
         model,
@@ -351,14 +353,14 @@ fn evaluate_probes(
     model: &Model,
     probes: &[ProbePosition],
     step: usize,
-    _device: &Device,
+    device: &Device,
 ) -> Vec<ProbeResult> {
     let probe_model = model.valid();
     let probe_device = probe_model
         .devices()
         .into_iter()
         .next()
-        .unwrap_or_else(|| _device.clone());
+        .unwrap_or_else(|| device.clone());
     let batcher = NetBatcher::holdout();
 
     probes
@@ -374,7 +376,7 @@ fn evaluate_probes(
             let top1_idx = policy
                 .iter()
                 .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .max_by(|(_, a), (_, b)| a.total_cmp(b))
                 .map(|(i, _)| i)
                 .expect("policy vector has 225 entries");
             let top1 = engine::Move::new((top1_idx / 15) as u8, (top1_idx % 15) as u8)
@@ -421,6 +423,23 @@ mod tests {
             to_move: engine::Color::White,
             policy,
             value,
+        }
+    }
+
+    fn test_run_info(
+        model_config: ModelConfig,
+        train_config: TrainConfig,
+        device_name: String,
+        train_samples: usize,
+        holdout_samples: usize,
+    ) -> RunInfo {
+        RunInfo {
+            model_config,
+            train_config,
+            device_name,
+            train_samples,
+            holdout_samples,
+            started_at: "2026-11-11T20:41:07".to_string(),
         }
     }
 
@@ -569,13 +588,13 @@ mod tests {
         let model_config = crate::network::ModelConfig::tiny();
         let model: Model = model_config.init(&device);
         let mut reporter = crate::report::RecordingReporter::new();
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: train_samples.len(),
-            holdout_samples: holdout_samples.len(),
-        };
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
 
         let _ = train_with_reporter(
             model,
@@ -665,13 +684,13 @@ mod tests {
         );
 
         let base_model: Model = model_config.init(&device);
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: train_samples.len(),
-            holdout_samples: holdout_samples.len(),
-        };
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
 
         let mut reporter_a = crate::report::RecordingReporter::new();
         let mut reporter_b = crate::report::RecordingReporter::new();
@@ -759,13 +778,13 @@ mod tests {
         // Start from the same model state for both runs. This isolates
         // training-loop determinism from model-init backend quirks.
         let base_model: Model = model_config.init(&device);
-        let run_info = RunInfo {
-            model_config: model_config.clone(),
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: train_samples.len(),
-            holdout_samples: holdout_samples.len(),
-        };
+        let run_info = test_run_info(
+            model_config.clone(),
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
 
         let (_, metrics_null, _) = train(
             base_model.clone(),
@@ -893,13 +912,13 @@ mod tests {
             events: Vec::new(),
             threshold: 3, // Started + 2 Step -> stop before step 3
         };
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: train_samples.len(),
-            holdout_samples: holdout_samples.len(),
-        };
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
 
         let (_, metrics, _) = train_with_reporter(
             model,
@@ -1000,13 +1019,13 @@ mod tests {
         let model_config = crate::network::ModelConfig::tiny();
         let model: Model = model_config.init(&device);
         let mut reporter = crate::report::RecordingReporter::new();
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: train_samples.len(),
-            holdout_samples: holdout_samples.len(),
-        };
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
 
         let _ = train_with_reporter(
             model,
@@ -1071,13 +1090,13 @@ mod tests {
         let model_config = crate::network::ModelConfig::tiny();
         let model: Model = model_config.init(&device);
         let mut reporter = crate::report::RecordingReporter::new();
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: samples.len(),
-            holdout_samples: 0,
-        };
+            config,
+            format!("{device:?}"),
+            samples.len(),
+            0,
+        );
 
         let _ = train_with_reporter(
             model,
@@ -1130,13 +1149,13 @@ mod tests {
         let model_config = crate::network::ModelConfig::tiny();
         let model: Model = model_config.init(&device);
         let mut reporter = crate::report::RecordingReporter::new();
-        let run_info = RunInfo {
+        let run_info = test_run_info(
             model_config,
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: samples.len(),
-            holdout_samples: 0,
-        };
+            config,
+            format!("{device:?}"),
+            samples.len(),
+            0,
+        );
 
         let _ = train_with_reporter(
             model,
@@ -1200,13 +1219,13 @@ mod tests {
         );
 
         let base_model: Model = model_config.init(&device);
-        let run_info = RunInfo {
-            model_config: model_config.clone(),
-            train_config: config,
-            device_name: format!("{device:?}"),
-            train_samples: samples.len(),
-            holdout_samples: 0,
-        };
+        let run_info = test_run_info(
+            model_config.clone(),
+            config,
+            format!("{device:?}"),
+            samples.len(),
+            0,
+        );
 
         let (_, metrics_without, _) = train_with_reporter(
             base_model.clone(),
