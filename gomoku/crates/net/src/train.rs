@@ -6,7 +6,9 @@
 //! checkpointing.
 
 use burn::data::dataloader::DataLoaderBuilder;
+use burn::data::dataloader::batcher::Batcher;
 use burn::data::dataset::InMemDataset;
+use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::optim::lr_scheduler::composed::ComposedLrSchedulerConfig;
 use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
@@ -16,9 +18,12 @@ use burn::optim::{GradientsParams, ModuleOptimizer};
 use burn::tensor::Device;
 use train::Sample;
 
+use burn::tensor::activation::softmax;
+
 use crate::batcher::{NetBatch, NetBatcher};
 use crate::loss::{self, LossInput};
 use crate::network::{Model, ModelConfig};
+use crate::report::probe::{ProbePosition, ProbeResult};
 use crate::report::{
     EvalReport, FinishInfo, NullReporter, Reporter, RunInfo, StopReason, TrainEvent,
 };
@@ -134,6 +139,7 @@ pub fn train(
         holdout_samples,
         device,
         run_info,
+        &[],
         &mut NullReporter,
     )
 }
@@ -145,6 +151,10 @@ pub fn train(
 /// and [`TrainEvent::Finished`] once at the end. The loop checks
 /// [`Reporter::stop_requested`] between steps and stops early if the
 /// reporter requests it.
+// The argument count is intentionally high: the function is the main
+// entry point and probes are an optional add-on. A builder or options
+// struct would be overkill for the current call sites.
+#[allow(clippy::too_many_arguments)]
 pub fn train_with_reporter(
     mut model: Model,
     config: &TrainConfig,
@@ -152,6 +162,7 @@ pub fn train_with_reporter(
     holdout_samples: Vec<Sample>,
     device: &Device,
     run_info: RunInfo,
+    probes: &[ProbePosition],
     reporter: &mut dyn Reporter,
 ) -> (Model, Vec<StepMetrics>, Vec<EvalMetrics>) {
     device.seed(config.seed);
@@ -222,8 +233,14 @@ pub fn train_with_reporter(
         if config.eval_interval > 0 && step % config.eval_interval == 0 {
             let eval = evaluate(&model, &holdout_loader, device);
             let eval_metrics_entry = EvalMetrics { step, ..eval };
+            let probe_results = if probes.is_empty() {
+                Vec::new()
+            } else {
+                evaluate_probes(&model, probes, step, device)
+            };
             reporter.on_event(&TrainEvent::Eval(EvalReport {
                 metrics: eval_metrics_entry,
+                probes: probe_results,
             }));
             eval_metrics.push(eval_metrics_entry);
         }
@@ -326,6 +343,56 @@ fn evaluate(
     }
 }
 
+/// Run one detached forward pass per probe and package the results.
+///
+/// The model is put into validation mode so BatchNorm running statistics
+/// are not updated and the training trajectory is unaffected (R6).
+fn evaluate_probes(
+    model: &Model,
+    probes: &[ProbePosition],
+    step: usize,
+    _device: &Device,
+) -> Vec<ProbeResult> {
+    let probe_model = model.valid();
+    let probe_device = probe_model
+        .devices()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| _device.clone());
+    let batcher = NetBatcher::holdout();
+
+    probes
+        .iter()
+        .map(|probe| {
+            let batch = batcher.batch(vec![probe.sample.clone()], &probe_device);
+            let output = probe_model.forward(batch.input);
+            let policy = softmax(output.policy, 1);
+            let policy: Vec<f32> = policy.into_data().try_to_vec::<f32>().unwrap();
+            let values: Vec<f32> = output.value.into_data().try_to_vec::<f32>().unwrap();
+            let value = values[0];
+
+            let top1_idx = policy
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(i, _)| i)
+                .expect("policy vector has 225 entries");
+            let top1 = engine::Move::new((top1_idx / 15) as u8, (top1_idx % 15) as u8)
+                .expect("top-1 index maps to a board cell");
+            let correct = top1 == probe.expected;
+
+            ProbeResult {
+                step,
+                class: probe.class,
+                policy,
+                top1,
+                value,
+                correct,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,6 +403,8 @@ mod tests {
     use rand::rngs::StdRng;
     use train::Sample;
     use train::collect::{Quotas, collect};
+
+    use crate::report::probe::select_probes;
 
     fn mv(r: u8, c: u8) -> Move {
         Move::new(r, c).unwrap()
@@ -515,6 +584,7 @@ mod tests {
             holdout_samples,
             &device,
             run_info,
+            &[],
             &mut reporter,
         );
 
@@ -613,6 +683,7 @@ mod tests {
             holdout_samples.clone(),
             &device,
             run_info.clone(),
+            &[],
             &mut reporter_a,
         );
         let (_, metrics_b, _) = train_with_reporter(
@@ -622,6 +693,7 @@ mod tests {
             holdout_samples,
             &device,
             run_info,
+            &[],
             &mut reporter_b,
         );
 
@@ -712,6 +784,7 @@ mod tests {
             holdout_samples,
             &device,
             run_info,
+            &[],
             &mut reporter,
         );
 
@@ -835,6 +908,7 @@ mod tests {
             holdout_samples,
             &device,
             run_info,
+            &[],
             &mut reporter,
         );
 
@@ -892,5 +966,274 @@ mod tests {
                 m.value_loss
             );
         }
+    }
+
+    #[test]
+    fn eval_report_carries_probe_results() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+        let probes = select_probes(&samples, 17);
+        assert!(!probes.is_empty(), "test dataset must yield probes");
+
+        let train_samples = samples.clone();
+        let holdout_samples = samples;
+
+        let config = TrainConfig {
+            steps: 10,
+            batch_size: 4,
+            eval_interval: 3,
+            seed: 1,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 8,
+            weight_decay: 1e-4,
+        };
+
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let mut reporter = crate::report::RecordingReporter::new();
+        let run_info = RunInfo {
+            model_config,
+            train_config: config,
+            device_name: format!("{device:?}"),
+            train_samples: train_samples.len(),
+            holdout_samples: holdout_samples.len(),
+        };
+
+        let _ = train_with_reporter(
+            model,
+            &config,
+            train_samples,
+            holdout_samples,
+            &device,
+            run_info,
+            &probes,
+            &mut reporter,
+        );
+
+        let eval_events: Vec<_> = reporter
+            .events()
+            .iter()
+            .filter(|e| matches!(e, TrainEvent::Eval(_)))
+            .collect();
+        assert!(!eval_events.is_empty(), "expected eval events");
+        for event in &eval_events {
+            let TrainEvent::Eval(report) = event else {
+                unreachable!();
+            };
+            assert_eq!(
+                report.probes.len(),
+                probes.len(),
+                "each eval must carry one result per probe"
+            );
+            for (result, probe) in report.probes.iter().zip(probes.iter()) {
+                assert_eq!(result.class, probe.class);
+                assert_eq!(result.policy.len(), 225, "policy must cover the board");
+                let sum: f32 = result.policy.iter().sum();
+                assert!((sum - 1.0).abs() < 1e-4, "policy must sum to 1, got {sum}");
+            }
+        }
+    }
+
+    #[test]
+    fn probe_top1_is_a_board_move() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+        let probes = select_probes(&samples, 17);
+
+        let config = TrainConfig {
+            steps: 6,
+            batch_size: 4,
+            eval_interval: 3,
+            seed: 1,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 4,
+            weight_decay: 1e-4,
+        };
+
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let mut reporter = crate::report::RecordingReporter::new();
+        let run_info = RunInfo {
+            model_config,
+            train_config: config,
+            device_name: format!("{device:?}"),
+            train_samples: samples.len(),
+            holdout_samples: 0,
+        };
+
+        let _ = train_with_reporter(
+            model,
+            &config,
+            samples.clone(),
+            Vec::new(),
+            &device,
+            run_info,
+            &probes,
+            &mut reporter,
+        );
+
+        for event in reporter.events() {
+            if let TrainEvent::Eval(report) = event {
+                for probe_result in &report.probes {
+                    let _ = probe_result.top1;
+                    assert!(
+                        probe_result.top1.row() < 15 && probe_result.top1.col() < 15,
+                        "top1 must be a board cell"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_probes_leave_eval_report_empty() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+
+        let config = TrainConfig {
+            steps: 6,
+            batch_size: 4,
+            eval_interval: 3,
+            seed: 1,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 4,
+            weight_decay: 1e-4,
+        };
+
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let mut reporter = crate::report::RecordingReporter::new();
+        let run_info = RunInfo {
+            model_config,
+            train_config: config,
+            device_name: format!("{device:?}"),
+            train_samples: samples.len(),
+            holdout_samples: 0,
+        };
+
+        let _ = train_with_reporter(
+            model,
+            &config,
+            samples.clone(),
+            Vec::new(),
+            &device,
+            run_info,
+            &[],
+            &mut reporter,
+        );
+
+        for event in reporter.events() {
+            if let TrainEvent::Eval(report) = event {
+                assert!(
+                    report.probes.is_empty(),
+                    "empty probes must produce empty probe results"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn probes_do_not_change_loss_trajectory() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 4,
+                block: 4,
+                quiet: 8,
+            },
+        );
+        let probes = select_probes(&samples, 17);
+        assert!(!probes.is_empty(), "test dataset must yield probes");
+
+        let config = TrainConfig {
+            steps: 12,
+            batch_size: 4,
+            eval_interval: 4,
+            seed: 3,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 10,
+            weight_decay: 1e-4,
+        };
+
+        let model_config = crate::network::ModelConfig::tiny();
+
+        // Warm up the backend so any lazy compilation / kernel selection
+        // happens before the reproducibility comparison.
+        let warm_model: Model = model_config.init(&device);
+        let _ = train(
+            warm_model,
+            &config,
+            &model_config,
+            samples.clone(),
+            Vec::new(),
+            &device,
+        );
+
+        let base_model: Model = model_config.init(&device);
+        let run_info = RunInfo {
+            model_config: model_config.clone(),
+            train_config: config,
+            device_name: format!("{device:?}"),
+            train_samples: samples.len(),
+            holdout_samples: 0,
+        };
+
+        let (_, metrics_without, _) = train_with_reporter(
+            base_model.clone(),
+            &config,
+            samples.clone(),
+            Vec::new(),
+            &device,
+            run_info.clone(),
+            &[],
+            &mut crate::report::NullReporter,
+        );
+
+        let (_, metrics_with, _) = train_with_reporter(
+            base_model,
+            &config,
+            samples,
+            Vec::new(),
+            &device,
+            run_info,
+            &probes,
+            &mut crate::report::NullReporter,
+        );
+
+        assert_eq!(
+            metrics_without.iter().map(|m| m.loss).collect::<Vec<_>>(),
+            metrics_with.iter().map(|m| m.loss).collect::<Vec<_>>(),
+            "probes must not change the loss trajectory"
+        );
     }
 }

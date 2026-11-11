@@ -139,6 +139,7 @@ mod tests {
                 policy_top1_accuracy: 0.5,
                 value_sign_accuracy: 0.6,
             },
+            probes: Vec::new(),
         }
     }
 
@@ -213,5 +214,43 @@ mod tests {
             writer.flushes, 3,
             "expected flushes on Started, Eval, Finished"
         );
+    }
+
+    #[test]
+    fn eval_event_with_probes_roundtrips() {
+        use crate::report::probe::{ProbeClass, ProbeResult};
+        use engine::Move;
+
+        let report = EvalReport {
+            metrics: EvalMetrics {
+                step: 8,
+                loss: 0.4,
+                policy_top1_accuracy: 0.5,
+                value_sign_accuracy: 0.6,
+            },
+            probes: vec![ProbeResult {
+                step: 8,
+                class: ProbeClass::Win,
+                policy: vec![0.0f32; 225],
+                top1: Move::new(7, 7).unwrap(),
+                value: 0.95,
+                correct: true,
+            }],
+        };
+
+        let mut reporter = JsonlReporter::new(Vec::new());
+        reporter.on_event(&TrainEvent::Eval(report.clone()));
+        reporter.on_event(&TrainEvent::Finished(FinishInfo {
+            stop_reason: StopReason::Completed,
+        }));
+
+        assert!(reporter.last_error().is_none());
+        let inner = reporter.writer.into_inner().unwrap();
+        let text = String::from_utf8(inner).unwrap();
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines.len(), 2);
+
+        let decoded: TrainEvent = serde_json::from_str(lines[0]).expect("valid TrainEvent");
+        assert_eq!(decoded, TrainEvent::Eval(report));
     }
 }

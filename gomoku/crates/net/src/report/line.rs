@@ -337,6 +337,7 @@ mod tests {
                 policy_top1_accuracy: 0.42,
                 value_sign_accuracy: 0.78,
             },
+            probes: Vec::new(),
         }
     }
 

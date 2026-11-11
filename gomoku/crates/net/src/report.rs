@@ -10,6 +10,7 @@ use crate::train::{EvalMetrics, StepMetrics, TrainConfig};
 
 pub mod jsonl;
 pub mod line;
+pub mod probe;
 
 /// One thing that happened during training.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -40,10 +41,14 @@ pub struct RunInfo {
 }
 
 /// Holdout evaluation report.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvalReport {
     /// Holdout evaluation metrics.
     pub metrics: EvalMetrics,
+    /// Per-probe forward-pass results.
+    ///
+    /// Empty when the run has no probe boards.
+    pub probes: Vec<probe::ProbeResult>,
 }
 
 /// Information about how the training loop finished.

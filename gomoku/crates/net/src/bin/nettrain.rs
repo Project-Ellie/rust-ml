@@ -25,6 +25,7 @@ use net::checkpoint::{RunJournal, save_checkpoint};
 use net::network::{Model, ModelConfig};
 use net::report::jsonl::JsonlReporter;
 use net::report::line::{LineReporter, RealClock};
+use net::report::probe::select_probes;
 use net::report::{CompositeReporter, Reporter, RunInfo, StopReason};
 use net::train::{EvalMetrics, StepMetrics, TrainConfig, train_with_reporter};
 use train::collect::{Quotas, collect};
@@ -131,6 +132,9 @@ fn run(args: Args) -> Result<(), String> {
         holdout_samples.len()
     );
 
+    let probes = select_probes(&holdout_samples, args.train_config.seed);
+    eprintln!("Probes: {}", probes.len());
+
     let run_info = RunInfo {
         model_config: args.config.clone(),
         train_config: args.train_config,
@@ -181,6 +185,7 @@ fn run(args: Args) -> Result<(), String> {
         holdout_samples,
         &device,
         run_info,
+        &probes,
         &mut composite,
     );
 
