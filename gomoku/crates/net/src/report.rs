@@ -8,6 +8,9 @@
 use crate::network::ModelConfig;
 use crate::train::{EvalMetrics, StepMetrics, TrainConfig};
 
+pub mod jsonl;
+pub mod line;
+
 /// One thing that happened during training.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TrainEvent {
@@ -101,5 +104,50 @@ impl RecordingReporter {
 impl Reporter for RecordingReporter {
     fn on_event(&mut self, event: &TrainEvent) {
         self.0.push(event.clone());
+    }
+}
+
+/// A reporter that fans events out to a collection of inner reporters.
+///
+/// This is the composition root used by `nettrain` to wire the durable
+/// JSONL reporter and the display reporter together. `stop_requested`
+/// returns `true` if any inner reporter requests a stop.
+pub struct CompositeReporter<'a>(pub Vec<&'a mut dyn Reporter>);
+
+impl std::fmt::Debug for CompositeReporter<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompositeReporter")
+            .field("reporters", &self.0.len())
+            .finish()
+    }
+}
+
+impl<'a> CompositeReporter<'a> {
+    /// Create an empty composite reporter.
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    /// Add a reporter to the fan-out.
+    pub fn push(&mut self, reporter: &'a mut dyn Reporter) {
+        self.0.push(reporter);
+    }
+}
+
+impl Default for CompositeReporter<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Reporter for CompositeReporter<'_> {
+    fn on_event(&mut self, event: &TrainEvent) {
+        for reporter in &mut self.0 {
+            reporter.on_event(event);
+        }
+    }
+
+    fn stop_requested(&self) -> bool {
+        self.0.iter().any(|reporter| reporter.stop_requested())
     }
 }

@@ -120,6 +120,9 @@ pub fn save_checkpoint(
 mod tests {
     use super::*;
     use burn::tensor::Device;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_dir() -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -127,7 +130,8 @@ mod tests {
             .unwrap()
             .as_nanos();
         let pid = std::process::id();
-        std::env::temp_dir().join(format!("net-checkpoint-{pid}-{nanos}.tmp"))
+        let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("net-checkpoint-{pid}-{counter}-{nanos}.tmp"))
     }
 
     #[test]

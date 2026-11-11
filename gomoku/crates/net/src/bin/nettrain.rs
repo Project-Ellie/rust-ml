@@ -6,12 +6,14 @@
 //! nettrain --out <DIR> [--data <DIR>] [--config tiny|mid|default]
 //!          [--device flex|wgpu|metal] [--seed <u64>] [--steps <n>]
 //!          [--batch-size <n>] [--eval-interval <n>] [--lr-max <f>]
+//!          [--progress auto|tui|line|off]
 //! ```
 //!
 //! If `--data` is omitted, a tiny synthetic dataset is generated in-memory
 //! for a quick smoke run.
 
 use std::env;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
 
@@ -21,8 +23,10 @@ use rand::rngs::StdRng;
 
 use net::checkpoint::{RunJournal, save_checkpoint};
 use net::network::{Model, ModelConfig};
-use net::report::StopReason;
-use net::train::{EvalMetrics, StepMetrics, TrainConfig, train};
+use net::report::jsonl::JsonlReporter;
+use net::report::line::{LineReporter, RealClock};
+use net::report::{CompositeReporter, Reporter, RunInfo, StopReason};
+use net::train::{EvalMetrics, StepMetrics, TrainConfig, train_with_reporter};
 use train::collect::{Quotas, collect};
 use train::dataset::read_dataset;
 use train::split::is_holdout;
@@ -42,6 +46,20 @@ enum DeviceChoice {
     Metal,
 }
 
+/// How to report progress during training.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Progress {
+    /// Pick line or tui based on whether stderr is a terminal.
+    #[default]
+    Auto,
+    /// Full-screen terminal monitor (not yet implemented).
+    Tui,
+    /// Timestamped lines on stderr.
+    Line,
+    /// Silent; the JSONL stream is still written.
+    Off,
+}
+
 /// Parsed command-line arguments.
 #[derive(Debug)]
 struct Args {
@@ -55,6 +73,8 @@ struct Args {
     train_config: TrainConfig,
     /// Compute device.
     device: DeviceChoice,
+    /// Progress display mode.
+    progress: Progress,
 }
 
 fn main() {
@@ -65,7 +85,7 @@ fn main() {
             eprintln!(
                 "Usage: nettrain --out <DIR> [--data <DIR>] [--config tiny|mid|default]\n\
                  [--device flex|wgpu|metal] [--seed <u64>] [--steps <n>] [--batch-size <n>]\n\
-                 [--eval-interval <n>] [--lr-max <f>]\n\
+                 [--eval-interval <n>] [--lr-max <f>] [--progress auto|tui|line|off]\n\
                  Use `--flag value` only; `--flag=value` is not supported."
             );
             process::exit(2);
@@ -79,6 +99,11 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<(), String> {
+    // The metrics stream is written during training, so the output
+    // directory must exist before the loop starts.
+    std::fs::create_dir_all(&args.out_dir)
+        .map_err(|e| format!("failed to create output directory: {e}"))?;
+
     // Training needs gradient tracking: an autodiff device (docs/11 trap).
     let device = match args.device {
         DeviceChoice::Flex => Device::flex().autodiff(),
@@ -106,15 +131,75 @@ fn run(args: Args) -> Result<(), String> {
         holdout_samples.len()
     );
 
+    let run_info = RunInfo {
+        model_config: args.config.clone(),
+        train_config: args.train_config,
+        device_name: format!("{device:?}"),
+        train_samples: train_samples.len(),
+        holdout_samples: holdout_samples.len(),
+    };
+
+    let metrics_path = args.out_dir.join("metrics.jsonl");
+    let mut jsonl_reporter = JsonlReporter::create(&metrics_path).map_err(|e| {
+        format!(
+            "failed to create metrics file {}: {e}",
+            metrics_path.display()
+        )
+    })?;
+
+    let stderr_is_terminal = std::io::stderr().is_terminal();
+    let progress_choice = match args.progress {
+        Progress::Auto => {
+            // TODO(slice 3): choose Board when stderr_is_terminal is true,
+            // otherwise Line. The terminal probe is intentionally kept alive
+            // even though both cases currently resolve to Line.
+            let _ = stderr_is_terminal;
+            Progress::Line
+        }
+        Progress::Tui => {
+            return Err("tui progress not yet available; use auto, line, or off".to_string());
+        }
+        other => other,
+    };
+
+    let mut line_reporter: Option<Box<dyn Reporter>> = match progress_choice {
+        Progress::Line => Some(Box::new(LineReporter::new(std::io::stderr(), RealClock))),
+        _ => None,
+    };
+
+    let mut composite = CompositeReporter::new();
+    composite.push(&mut jsonl_reporter);
+    if let Some(line) = line_reporter.as_mut() {
+        composite.push(line.as_mut());
+    }
+
     let model: Model = args.config.init(&device);
-    let (model, step_metrics, eval_metrics) = train(
+    let (model, step_metrics, eval_metrics) = train_with_reporter(
         model,
         &args.train_config,
-        &args.config,
         train_samples,
         holdout_samples,
         &device,
+        run_info,
+        &mut composite,
     );
+
+    let stop_reason = if composite.stop_requested() {
+        StopReason::StopRequested
+    } else {
+        StopReason::Completed
+    };
+
+    // Release composite's mutable borrow of jsonl_reporter so we can
+    // inspect any metrics-stream error after the loop.
+    drop(composite);
+
+    // metrics.jsonl is the durable evidence trail (design §9). If writing it
+    // failed, the run's evidence is compromised, but the trained weights are
+    // still valuable. Warn loudly and continue so the checkpoint is saved.
+    if let Some(e) = jsonl_reporter.last_error() {
+        eprintln!("nettrain warning: metrics.jsonl write failed: {e}");
+    }
 
     let journal = RunJournal::new(
         args.train_config.seed,
@@ -122,7 +207,7 @@ fn run(args: Args) -> Result<(), String> {
         args.train_config,
         step_metrics.last().copied(),
         eval_metrics.last().copied(),
-        StopReason::Completed,
+        stop_reason,
     );
 
     save_checkpoint(&model, &journal, &args.out_dir)
@@ -236,6 +321,7 @@ where
     let mut eval_interval: Option<usize> = Some(0);
     let mut lr_max: Option<f64> = None;
     let mut device = DeviceChoice::Flex;
+    let mut progress = Progress::Auto;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -322,6 +408,22 @@ where
                     }
                 };
             }
+            "--progress" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--progress requires a value".to_string())?;
+                progress = match value.as_str() {
+                    "auto" => Progress::Auto,
+                    "tui" => Progress::Tui,
+                    "line" => Progress::Line,
+                    "off" => Progress::Off,
+                    other => {
+                        return Err(format!(
+                            "unknown progress '{other}'; use auto, tui, line, or off"
+                        ));
+                    }
+                };
+            }
             other => return Err(format!("unknown flag: {other}")),
         }
     }
@@ -363,6 +465,7 @@ where
             dataloader_workers: 8,
         },
         device,
+        progress,
     })
 }
 
@@ -475,5 +578,49 @@ mod tests {
             .into_iter(),
         );
         assert_eq!(metal.unwrap().device, DeviceChoice::Metal);
+    }
+
+    #[test]
+    fn parse_args_progress_defaults_to_auto() {
+        let args =
+            parse_args(vec!["--out".to_string(), "/tmp/net".to_string()].into_iter()).unwrap();
+        assert_eq!(args.progress, Progress::Auto);
+    }
+
+    #[test]
+    fn parse_args_progress_roundtrip() {
+        for (value, expected) in [
+            ("auto", Progress::Auto),
+            ("tui", Progress::Tui),
+            ("line", Progress::Line),
+            ("off", Progress::Off),
+        ] {
+            let args = parse_args(
+                vec![
+                    "--out".to_string(),
+                    "/tmp/net".to_string(),
+                    "--progress".to_string(),
+                    value.to_string(),
+                ]
+                .into_iter(),
+            )
+            .unwrap();
+            assert_eq!(args.progress, expected, "progress={value}");
+        }
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_progress() {
+        let result = parse_args(
+            vec![
+                "--out".to_string(),
+                "/tmp/net".to_string(),
+                "--progress".to_string(),
+                "fancy".to_string(),
+            ]
+            .into_iter(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown progress"));
     }
 }
