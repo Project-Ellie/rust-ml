@@ -49,6 +49,35 @@ checkpoint. The project therefore mandates `DefaultRecorder` for all
 model records. The f16 trap is named explicitly in
 [docs/11-pitfalls.md](../../11-pitfalls.md).
 
+## Reality check (2026-11-11): the shipped checkpoint and event schema
+
+The library contract in this chapter is unchanged: `save_checkpoint`
+writes `model.mpk` and `run.json`. The shipped `nettrain` binary adds a
+third artifact, `metrics.jsonl`, before training starts. A successful run
+directory therefore contains all three files.
+
+The shipped schema goes beyond the chapter in three ways:
+
+* `TrainConfig` gained `dataloader_workers`. `nettrain` defaults this
+  field to `8`; `TrainConfig::tiny()` uses `0`. Workers above zero overlap
+  batch preparation with compute, but their augmentation order depends on
+  scheduling. Use `0` when a seeded run must be byte-reproducible.
+* `StepMetrics` records `policy_loss` and `value_loss` alongside the
+  combined `loss`. The two fields expose the policy cross-entropy and
+  value mean-squared-error terms used to form that combined loss.
+* `RunJournal` gained `stop_reason`, with variants `Completed` and
+  `StopRequested`. `train_with_reporter` returns the same reason that it
+  emits in the actual `TrainEvent::Finished` event, and `nettrain` stores
+  that returned reason in the journal. It does not infer the reason from a
+  stop flag after training.
+
+`metrics.jsonl` is the durable `TrainEvent` stream. It writes one JSON
+object per line for `Started`, `Step`, `Eval`, and `Finished`. The
+`Started` record includes `RunInfo.started_at`, a wall-clock timestamp, so
+two otherwise identical streams need not be byte-identical. For a
+determinism check, compare the ordered `Step` records instead. The
+`started_at` field is not part of `run.json`.
+
 ## Intention
 
 1. Create `gomoku/crates/net/src/checkpoint.rs` and register

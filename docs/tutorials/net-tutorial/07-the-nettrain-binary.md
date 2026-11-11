@@ -37,6 +37,71 @@ configuration so casual runs finish in seconds. The design spec
 captures this as invention I7 (test-scale config) and mirrors the CLI
 pattern already established in the datagen tutorial.
 
+## Reality check (2026-11-11): the shipped binary
+
+The parser and exit-code contract below remains the learning path. The
+shipped binary adds device selection, schedule control, durable event
+reporting, and terminal monitoring.
+
+### Additional flags and defaults
+
+* `--device flex|wgpu|metal` selects the training device. The default is
+  `flex`. Both `wgpu` and `metal` require the `gpu` cargo feature.
+  Training on either GPU path is not parity-verified against Flex. Treat
+  those runs as experiments, not accepted candidates.
+* `--lr-max <f>` overrides the peak learning rate. The `nettrain` schedule
+  defaults to linear warmup followed by cosine decay from `3e-4` to
+  `3e-6`.
+* `--progress auto|tui|line|off` selects the optional display. The default
+  is `auto`: use the TUI when `stderr` is a terminal and the default-on
+  `tui` feature is compiled in; otherwise use the line reporter. `off`
+  disables only that display. Startup diagnostics and the final `stdout`
+  report still appear, and `metrics.jsonl` is written in every mode.
+* `--dataloader-workers <n>` sets `TrainConfig.dataloader_workers`. Its
+  CLI default is `8`. Use `0` for byte-reproducible seeded runs; a
+  positive worker count makes augmentation order scheduling-dependent.
+
+### Reporter composition and probes
+
+`run` calls `train_with_reporter` with a `CompositeReporter`. The durable
+`JsonlReporter` is always present. The selected TUI or line display is an
+additional reporter, not a replacement for the JSONL stream.
+
+At startup, `select_probes` chooses up to three fixed holdout positions:
+one `Win`, one `Block`, and one `Quiet`, in that order when all classes
+are present. The run seed determines the selection. Every holdout
+evaluation logs each probe's full 225-cell softmax policy and value in
+the `Eval` event. These probes are diagnostics, not acceptance metrics.
+
+The TUI accepts three keys:
+
+* `q` requests a graceful stop between steps. The binary still saves the
+  checkpoint and journal, with `stop_reason` set to `StopRequested`.
+* `l` toggles the sparkline between logarithmic and linear scale.
+* `p` toggles the probe panel.
+
+### Boundary validation and the tests that landed
+
+`load_or_generate_data` rejects `--batch-size 0` with `batch size must be
+greater than zero`. It also rejects an all-holdout dataset with `training
+partition is empty; provide at least one non-holdout sample`.
+
+The planned `tests/nettrain_smoke.rs` did not land. There is no
+process-spawning binary smoke test in `crates/net/tests`. The shipped
+coverage is instead:
+
+* `tests/board_golden.rs` contains three golden-frame tests for the
+  `BoardReporter`: an early run, a mid-run frame with probes, and a
+  monochrome frame. These tests exercise rendering, not the binary
+  process.
+* Unit tests inside `src/bin/nettrain.rs` cover required and default
+  arguments, config rejection, value roundtrips, device and progress
+  parsing, the empty-training-partition error, and the zero-batch-size
+  error.
+* Unit tests in the library modules cover event ordering, JSONL
+  serialization, line output, TUI keys, graceful stops, and checkpoint
+  roundtrips.
+
 ## Intention
 
 1. Create `gomoku/crates/net/src/bin/nettrain.rs`.

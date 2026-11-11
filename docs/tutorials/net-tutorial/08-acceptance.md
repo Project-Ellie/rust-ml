@@ -210,30 +210,110 @@ steps, too small a batch size, or a dataset that does not match the
 expected class distribution. Diagnose with the `run.json` journal and
 the `datagen` stats report before changing the bar.
 
+### Reality check (2026-11-11): the gate 4 metric and evaluation mode
+
+The shipped `EvalMetrics` adds the two fields that gate 4 needs:
+
+* `win_block_policy_top1_accuracy` is an `Option<f32>`. It is `None`
+  (`null` in JSON) when the holdout has no Win or Block samples.
+* `win_block_policy_samples` counts the tactical samples behind that
+  accuracy.
+
+Evaluation filters the holdout to Win and Block samples and makes a
+second pass over them. This pass is unshuffled and uses the canonical
+`NetBatcher::holdout()` orientation. Both holdout passes run under
+`model.valid()`.
+
+Policy correctness accepts any move with maximal positive target mass.
+This matters when several winning or blocking moves share the target
+maximum. Value-sign accuracy is a true three-way comparison: negative,
+zero, and positive are distinct classes.
+
+The new fields appear in every `Eval` record in `metrics.jsonl`, in the
+final metrics in `run.json`, in the final `stdout` report, and in the line
+reporter. Use `win_block_policy_top1_accuracy`, not the all-class
+`policy_top1_accuracy`, for the 80% tactical-policy gate.
+
+Holdout evaluation did not always use inference mode. Runs made before
+the `model.valid()` fix used training-statistics forwards. Their old
+value-sign calculation also folded zero and negative predictions into one
+class, which could inflate the reported value-sign accuracy. This
+includes the earlier `data/check-points/v0` run. Those metrics are
+historical diagnostics, **not acceptance evidence**.
+
 ### Determinism ritual
 
-Run two short trainings with the same seed and compare the reported
-loss trajectories:
+Run two short trainings with the same seed, the Flex device, no
+dataloader workers, and no optional display:
 
 ```bash
 rm -rf /tmp/net-det-a /tmp/net-det-b
 cargo run --release -p net --bin nettrain -- \
-    --out /tmp/net-det-a --config tiny --seed 123 --steps 50 --batch-size 16 >/tmp/net-det-a.log 2>&1
+    --out /tmp/net-det-a --config tiny --seed 123 --steps 50 --batch-size 16 \
+    --device flex --dataloader-workers 0 --progress off
 cargo run --release -p net --bin nettrain -- \
-    --out /tmp/net-det-b --config tiny --seed 123 --steps 50 --batch-size 16 >/tmp/net-det-b.log 2>&1
+    --out /tmp/net-det-b --config tiny --seed 123 --steps 50 --batch-size 16 \
+    --device flex --dataloader-workers 0 --progress off
 ```
 
-Then compare the loss lines:
+Compare the ordered `Step` records, preserving their original JSON lines:
 
 ```bash
-grep "Train loss" /tmp/net-det-a.log /tmp/net-det-b.log
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+def step_records(path):
+    records = []
+    for line in Path(path).read_bytes().splitlines():
+        if "Step" in json.loads(line):
+            records.append(line)
+    return records
+
+a = step_records("/tmp/net-det-a/metrics.jsonl")
+b = step_records("/tmp/net-det-b/metrics.jsonl")
+assert len(a) == len(b) == 50
+assert a == b, "Step records differ"
+print("50/50 Step records are byte-identical")
+PY
+cmp /tmp/net-det-a/run.json /tmp/net-det-b/run.json
 ```
 
-A successful ritual shows identical initial and final losses in both
-runs. The `run.json` journals should also be byte-identical in their
-seed, config, and metrics fields.
+Do not substitute `grep "Train loss"`: the final summary contains only
+the first and last training losses, and the line reporter now has a
+different, throttled per-step format. Do not compare the complete JSONL
+files either. `Started.started_at` is a wall-clock timestamp and can
+differ between runs. It is not a field in `run.json`; the journals should
+be byte-identical.
+
+**[measured 2026-11-11, revision `8361ae3`]** The ritual passed on this
+revision: 50/50 ordered `Step` records were byte-identical. The first
+step loss was `5.899358`; the step 50 loss was `5.979966`. The two
+`run.json` journals were byte-identical. The JSONL timestamp was excluded
+from the comparison.
+
+### Full-scale acceptance run (pending)
+
+The full-scale run uses this exact command:
+
+```bash
+nettrain --data data/synthetic/v0 --out data/check-points/phase0-default --config default --seed 42 --steps 20000 --batch-size 1024 --eval-interval 1000 --device metal --progress off
+```
+
+Metal training numerics are experimental and are not parity-verified
+against Flex. This is an experimental run, not backend-parity evidence.
+
+**Gate 4 result: pending.** Record the final
+`win_block_policy_top1_accuracy`, `win_block_policy_samples`, and
+`value_sign_accuracy` here when the run completes. No acceptance result
+is claimed yet.
 
 ### Reduced-scale verification evidence
+
+> **Historical evidence [measured].** This table predates the fast
+> device/dataloader path and the 2026-11-11 metric and inference-mode
+> fixes. Its holdout rows use the superseded evaluation and value-sign
+> semantics. Keep them as historical output, not as acceptance evidence.
 
 The reference implementation was verified at reduced scale with:
 
@@ -272,8 +352,9 @@ have finished the chapter and want to compare.
 2. **Green:** Add the missing module-level doc comments and re-run
    `cargo check -p net` until it is clean.
 3. **Smoke:** Run the determinism ritual with `--config tiny --steps
-   50 --seed 123` twice into two temp dirs and compare the final loss
-   lines.
+   50 --seed 123 --device flex --dataloader-workers 0 --progress off`
+   twice into two temp dirs and compare the ordered `Step` records in
+   `metrics.jsonl`.
 4. **Refactor:** Run `cargo clippy --all-targets -- -D warnings` and
    `cargo fmt --all -- --check` from `gomoku/`. Fix any warnings or
    formatting issues.
