@@ -67,9 +67,10 @@ Dirichlet policy, tactics-shaped mock evaluator) with tactical +
 and convolutions tutorials written and verified end-to-end
 (`docs/tutorials/datagen-tutorial/`, `docs/tutorials/convolutions-tutorial/`);
 the `train` and `patterns` crates land on `main` as the owner works
-the chapters. Tutorial queue (locked 2026-11-08): net tutorial →
-mentor-datagen tutorial (baseline-vs-baseline game records;
-`docs/specs/2026-11-08-mentor-datagen-design.md`; ch. 14 decision D6)
+the chapters. Tutorial queue (locked 2026-11-08, amended 2026-11-11):
+net tutorial DONE → selfplay-corpora tutorial (strength-graded
+baseline-vs-baseline game records;
+`docs/specs/2026-11-11-selfplay-corpora-design.md`; ch. 14 decision D6)
 → client model-integration tutorial. Details and verification commands:
 [docs/WARM-UP.md](docs/WARM-UP.md#current-status-verified-2026-09-28--update-this-section-as-work-lands).
 Keep that section current as work lands.

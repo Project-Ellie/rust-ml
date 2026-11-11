@@ -166,8 +166,8 @@ tactics module (win-in-1, forced block, win-in-2 detection — pure bit
 operations, no mentor network). It gives the learning curve a head
 start, doubles as the mock evaluator for the MCTS milestone, and
 generates milestone 3's synthetic attack/defense set: AlphaGomoku's
-curriculum idea, with a mentor that is a few dozen lines of bit math we
-would build anyway for testing.
+curriculum idea, using a few dozen lines of bit math we would build
+anyway for testing.
 
 ---
 
@@ -635,15 +635,15 @@ GPU-bound, not CPU-bound) and buys flexibility: change the plane encoding
 valid. This is the batcher discipline from tutorial chapter 5 applied at
 system scale: store raw, encode at the boundary.
 
-**Amendment 2026-11-08 (game-record content).** The stored game
-carries per-ply records — the move played, the sparse visit
-distribution (the π target), a sparse top-k prior, and the root-value
-estimate — plus the outcome and configuration/provenance header:
-~1–3 KB per game. The "~60 bytes" figure above describes the
-movelist+outcome header alone; without the visit distributions the
-policy target would degenerate to the played move (behavior cloning,
-not AlphaZero). Format and rationale:
-[docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md)
+**Amendment 2026-11-08, reference updated 2026-11-11 (game-record
+content).** The stored game carries per-ply records — the move played,
+the sparse visit distribution (the π target), a sparse top-k prior, and
+the root-value estimate — plus the outcome and
+configuration/provenance header: ~1–3 KB per game. The "~60 bytes"
+figure above describes the movelist+outcome header alone; without the
+visit distributions the policy target would degenerate to the played
+move (behavior cloning, not AlphaZero). Format and rationale:
+[docs/specs/2026-11-11-selfplay-corpora-design.md](specs/2026-11-11-selfplay-corpora-design.md)
 §3.2.
 
 Concurrency: appends come from 14 workers, sampling from 1 trainer. A
@@ -874,8 +874,8 @@ Estimated effort assumes focused evenings, not DeepMind clusters.
 |---|---|---|
 | 1 | `engine` + tests | property tests green; perft-style move counts match reference for 10k random games; TSS soundness gate (§12 item 3) at 100%; `cargo bench` win-detection ≥ 50M checks/s |
 | 2 | `mcts` + mock evaluator | solves tactical suite; plays legal full games vs. uniform-random evaluator without crashing (1000 games) |
-| 3 | `net` + `train` on synthetic data (+ phase-0 mentor self-play records and external supplements per [ch. 14](14-openings-and-supervised-curriculum.md) decisions D2/D3/D6) | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
-| 4 | TSS oracle + anchor set | soundness gate (§12 item 3) green; ≥10k machine-verified forced-win puzzles from random-play, Swap2, and certified mentor-suffix roots; a net trained with a small anchor fraction solves >95% of held-out proven puzzles without regressing the milestone-3 synthetic benchmark |
+| 3 | `net` + `train` on synthetic data (+ strength-graded baseline self-play corpora per the [self-play-corpora design](specs/2026-11-11-selfplay-corpora-design.md) and external supplements per [ch. 14](14-openings-and-supervised-curriculum.md) decisions D2/D3/D6) | overfit test passes; learns the tactics-generated synthetic attack/defense set (>90% top-1 on held-out synthetic threats) — proves the whole Burn path before self-play exists |
+| 4 | TSS oracle + anchor set | soundness gate (§12 item 3) green; ≥10k machine-verified forced-win puzzles from random-play, Swap2, and certified baseline-self-play suffix roots; a net trained with a small anchor fraction solves >95% of held-out proven puzzles without regressing the milestone-3 synthetic benchmark |
 | 5 | `selfplay` + evaluator service (Swap2 opening procedure per [ch. 14](14-openings-and-supervised-curriculum.md) decision D1) | 14 workers, queue depth stable, ≥400 games/hour measured (recalibrate chapter 9) |
 | 6 | **The loop, v1**: `gomoku run` phased | 10 iterations complete unattended; arena Elo of iteration *k* vs. iteration 0 is strictly, monotonically-ish increasing; first agent that beats raw-MCTS-only (>90% over 200 games) |
 | 7 | Hardening | 7-day continuous run without intervention; crash-recovery from journal verified by kill -9 drill |
@@ -889,8 +889,8 @@ weak prior makes MCTS blunder. The anchor set is *permanent*: it lives
 outside the replay window (no eviction), contributes a small
 [experiment] fraction of every batch from milestone 4 onward, and is
 regenerated as self-play improves — puzzle roots come from random play,
-Swap2 openings, and certified mentor-game suffixes at first, from real
-self-play games later, so the set
+Swap2 openings, and certified baseline-game suffixes at first, from
+candidate self-play games later, so the set
 tracks the distribution the agent actually visits. Two guards keep it
 honest: **soundness over completeness** (only machine-verified lines
 become labels — §12 item 3), and a *small* fraction, because forcing

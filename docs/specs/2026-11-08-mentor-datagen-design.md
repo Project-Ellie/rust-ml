@@ -1,5 +1,14 @@
 # Mentor datagen design — baseline-vs-baseline game records
 
+> **SUPERSEDED 2026-11-11** by
+> [2026-11-11-selfplay-corpora-design.md](2026-11-11-selfplay-corpora-design.md).
+> The owner redirected the track from mentor-imitation to
+> strength-graded baseline-vs-baseline corpora feeding the AlphaZero
+> loop directly. This document's technical core (record format,
+> diversity mechanics, determinism discipline) was adopted there; its
+> mentor framing, sequencing (M6), and tactics-mock gate (§5 gate 5)
+> are retired. Kept for provenance.
+
 **Status:** Approved 2026-11-08 (owner decisions from design
 discussion; see §2). **Audience:** the tutorial authors. This spec is
 the design authority for the mentor-datagen tutorial track. Locked

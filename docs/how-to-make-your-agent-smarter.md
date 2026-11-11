@@ -138,7 +138,7 @@ are not a substitute for the milestone's own acceptance test.
 |---|---|---|---|
 | 1 | `engine` crate: rules, bitboard Board, win detection, Zobrist keys, D4 symmetry (the 8 board symmetries) + encoding, tactics module, TSS prover, Swap2 typestate, benchmarks | property tests vs the naive oracle; 10k-game differential; TSS soundness gate at 100 %; win detection ≥ 50 M checks/s | **complete** |
 | 2 | `mcts` crate: PUCT search behind the `Evaluator` trait; temperature + Dirichlet policy | solves the tactical suite (win-in-1 at 50 simulations); 1000 legal games vs a uniform evaluator | **complete** |
-| 3 | `train` crate (synthetic data) + `net` crate (network + `nettrain`) + mentor self-play records (chapter 14 decision D6) | single-batch overfit test passes; >90 % top-1 on held-out synthetic threats | **in progress**: `train` + `datagen` complete and verified (50k samples in 45 s debug, 13 shards / 41 MB, 9.84 % holdout, byte-identical regeneration); `net` pending; mentor datagen specified ([spec](specs/2026-11-08-mentor-datagen-design.md)), tutorial queued after the net tutorial |
+| 3 | `train` crate (synthetic data) + `net` crate (network + `nettrain`) + strength-graded baseline self-play corpora (chapter 14 decision D6) | single-batch overfit test passes; >90 % top-1 on held-out synthetic threats | **in progress**: `train` + `datagen` complete and verified (50k samples in 45 s debug, 13 shards / 41 MB, 9.84 % holdout, byte-identical regeneration); `net` pending; self-play corpora specified ([spec](specs/2026-11-11-selfplay-corpora-design.md)), tutorial next |
 | 4 | TSS anchor set | ≥10k machine-verified forced-win puzzles; a net trained with a small anchor fraction solves >95 % of held-out proven puzzles without regressing the milestone-3 benchmark | planned |
 | 5 | `selfplay` crate + evaluator service | 14 workers, stable queue depth, ≥400 games/hour measured | planned |
 | 6 | The phased loop: `gomoku run` | 10 unattended iterations; arena Elo increasing over iterations; first agent beating raw-MCTS-only >90 % over 200 games | planned |
@@ -323,7 +323,7 @@ Training signals ordered by noise, from cleanest to noisiest (chapter
 ```text
 cleanest   1. solver-verified labels      exact, narrow slice of position space
            2. synthetic tactical data     rules-true by construction (datagen)
-           3. strong-engine game records  strong, occasionally wrong
+           3. engine + self-play corpora strong, occasionally wrong
 noisiest   4. self-play bootstrap         noisy early, exact eventually
 ```
 
@@ -336,13 +336,13 @@ the gate is green.
 
 The untrained network trains on the synthetic tactical dataset of
 §3.2, joined by two further supervised sources (chapter 14, decisions
-D2 and D6): **mentor records** — baseline-vs-baseline self-play games,
-stored as games with per-ply visit-distribution targets (π) and real
-outcomes (z), which fix the synthetic set's main gap (its quiet
-positions come from random playouts and all carry value target 0) —
-and the verified external game-record supplements, retained as a
-counterweight to mentor bias. Purpose: before any self-play game
-exists, the network learns
+D2 and D6): **self-play corpora** — strength-graded baseline-vs-baseline
+games at declared simulation budgets, stored as games with per-ply
+visit-distribution targets (π) and real outcomes (z), which fix the
+synthetic set's main gap (its quiet positions come from random playouts
+and all carry value target 0) — and the verified external game-record
+supplements, retained as a counterweight to baseline bias. Purpose:
+before the candidate network generates its own self-play games, it learns
 what a five, a four, and a threat look like, so that early MCTS is
 guided by a usable prior rather than by noise.
 
@@ -367,7 +367,8 @@ the replay buffer, is never evicted, contributes a small
 regenerated as the agent improves so that its positions track the
 distribution the agent actually visits. Its puzzle roots come from
 random play, Swap2 openings, and the TSS-certified endgame suffixes
-of mentor games at first, from real self-play games later. Two guards apply (chapter 12
+of baseline self-play games at first, from candidate self-play games
+later. Two guards apply (chapter 12
 §13): soundness over completeness — only lines verified by replaying
 every defender alternative become labels — and a small fraction,
 because forcing positions are a narrow, atypical slice of the game and
@@ -632,9 +633,9 @@ be produced again.**
 - [docs/specs/2026-10-04-net-tutorial-design.md](specs/2026-10-04-net-tutorial-design.md)
   — the `nettrain` design: phase-0 acceptance bar (I5), checkpoint
   layout (I6), the binary's CLI contract (chapter table, row 07).
-- [docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md)
-  — mentor self-play records: the game-record format (the
-  milestone-5 replay-buffer format), the `selfplay`-crate game
+- [docs/specs/2026-11-11-selfplay-corpora-design.md](specs/2026-11-11-selfplay-corpora-design.md)
+  — strength-graded baseline self-play corpora: the game-record format
+  (the milestone-5 replay-buffer format), the `selfplay`-crate game
   runner, certified endgame extraction.
 - [gomoku/crates/cli/README.md](../gomoku/crates/cli/README.md) —
   the terminal client: study table, AI seats, usage.

@@ -285,18 +285,23 @@ was stopped early; protocol amended: the bar is the criterion, the
 step count is the budget). Details: chapter 08's reality-check
 sections.
 
-The tutorial queue (owner-locked 2026-11-08): the net tutorial
-(phase-0 supervised training on the synthetic data) DONE, next the
-mentor-datagen tutorial — baseline-vs-baseline mentor self-play
-records, spec
-[docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md):
+The tutorial queue (owner-locked 2026-11-08, amended 2026-11-11): the
+net tutorial (phase-0 supervised training on the synthetic data) DONE,
+next the selfplay-corpora tutorial — strength-graded
+baseline-vs-baseline self-play records, spec
+[docs/specs/2026-11-11-selfplay-corpora-design.md](specs/2026-11-11-selfplay-corpora-design.md):
 store-games record format (the milestone-5 replay-buffer format),
 per-ply visit distributions + priors + outcomes recorded, certified
 endgame suffixes feed the milestone-4 anchor set, external
-supplements retained per ch. 14 decision D6 — then the queued client
-model-integration tutorial (journal-aware model picker). Milestones
-4–8 (TSS anchor set, selfplay service, the phased loop, hardening,
-upgrades) have not started.
+supplements retained per ch. 14 decision D6. The tactics-mock
+playing-strength probe is retired. The AlphaZero loop direction
+(decision S7) is phase-1 mixture training (self-play corpora +
+synthetic tactical set + retained external supplements), then phase-2
+candidate self-play into the replay buffer; promotion means beating
+the baseline at an equal simulation budget. The queued client
+model-integration tutorial (journal-aware model picker) follows.
+Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
+hardening, upgrades) have not started.
 
 Two further tutorial tracks are written and verified, ready to work:
 
@@ -536,9 +541,10 @@ cargo run -p cli                        # play! Swap2 opening + 't' for TSS over
 ## Roadmap beyond milestone 1
 
 MCTS with mock evaluator → net+train on tactics-generated synthetic data
-→ mentor datagen (baseline-vs-baseline game records) → TSS oracle +
-proven-label anchor set (≥10k verified forced-win puzzles; roots
-include certified mentor suffixes) → 14-worker self-play with batched evaluator (≥400 games/h
+→ selfplay-corpora generation (strength-graded baseline-vs-baseline
+game records) → TSS oracle + proven-label anchor set (≥10k verified
+forced-win puzzles; roots include certified baseline suffixes) →
+14-worker self-play with batched evaluator (≥400 games/h
 target) → phased `gomoku run` loop with arena Elo tracking → hardening
 (7-day runs, crash recovery) → registered upgrades one at a time
 (playout-cap randomization, global-pooling heads, continuous mode, net
