@@ -4332,6 +4332,7 @@ name = "net"
 version = "0.1.0"
 dependencies = [
  "burn",
+ "crossterm",
  "engine",
  "rand 0.10.3",
  "serde",

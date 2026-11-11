@@ -583,6 +583,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 8,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -667,6 +668,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 15,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -759,6 +761,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 15,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -904,6 +907,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 18,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -939,6 +943,110 @@ mod tests {
     }
 
     #[test]
+    fn graceful_stop_produces_loadable_checkpoint_with_stop_reason() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        fn temp_dir() -> std::path::PathBuf {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let pid = std::process::id();
+            let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+            std::env::temp_dir().join(format!("net-graceful-stop-{pid}-{counter}-{nanos}.tmp"))
+        }
+
+        struct StopAfterK {
+            events: Vec<crate::report::TrainEvent>,
+            threshold: usize,
+        }
+        impl crate::report::Reporter for StopAfterK {
+            fn on_event(&mut self, event: &crate::report::TrainEvent) {
+                self.events.push(event.clone());
+            }
+            fn stop_requested(&self) -> bool {
+                self.events.len() >= self.threshold
+            }
+        }
+
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+        let train_samples = samples.clone();
+        let holdout_samples = Vec::new();
+
+        let config = TrainConfig {
+            steps: 20,
+            batch_size: 4,
+            eval_interval: 0,
+            seed: 1,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 18,
+            weight_decay: 1e-4,
+            dataloader_workers: 0,
+        };
+
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let mut reporter = StopAfterK {
+            events: Vec::new(),
+            threshold: 3, // Started + 2 Step -> stop before step 3
+        };
+        let run_info = test_run_info(
+            model_config.clone(),
+            config,
+            format!("{device:?}"),
+            train_samples.len(),
+            holdout_samples.len(),
+        );
+
+        let (model, step_metrics, eval_metrics) = train_with_reporter(
+            model,
+            &config,
+            train_samples,
+            holdout_samples,
+            &device,
+            run_info,
+            &[],
+            &mut reporter,
+        );
+
+        let dir = temp_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let stop_reason = StopReason::StopRequested;
+        let journal = crate::checkpoint::RunJournal::new(
+            config.seed,
+            model_config,
+            config,
+            step_metrics.last().copied(),
+            eval_metrics.last().copied(),
+            stop_reason,
+        );
+        crate::checkpoint::save_checkpoint(&model, &journal, &dir).unwrap();
+
+        let loaded = crate::checkpoint::load_journal(&dir).unwrap();
+        assert_eq!(loaded.stop_reason, StopReason::StopRequested);
+        assert!(
+            loaded.final_step_metrics.is_some(),
+            "journal should record the last completed step"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn step_metrics_split_sums_to_total() {
         let device = Device::flex().autodiff();
         let samples = tiny_dataset(
@@ -962,6 +1070,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 3,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -1014,6 +1123,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 8,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -1085,6 +1195,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 4,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -1144,6 +1255,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 4,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();
@@ -1202,6 +1314,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 10,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         let model_config = crate::network::ModelConfig::tiny();

@@ -26,6 +26,8 @@ use net::network::{Model, ModelConfig};
 use net::report::jsonl::JsonlReporter;
 use net::report::line::{LineReporter, RealClock};
 use net::report::probe::select_probes;
+#[cfg(feature = "tui")]
+use net::report::tui::TuiReporter;
 use net::report::{CompositeReporter, Reporter, RunInfo, StopReason, format_system_time};
 use net::train::{EvalMetrics, StepMetrics, TrainConfig, train_with_reporter};
 use train::collect::{Quotas, collect};
@@ -53,7 +55,7 @@ enum Progress {
     /// Pick line or tui based on whether stderr is a terminal.
     #[default]
     Auto,
-    /// Full-screen terminal monitor (not yet implemented).
+    /// Full-screen terminal monitor.
     Tui,
     /// Timestamped lines on stderr.
     Line,
@@ -155,27 +157,51 @@ fn run(args: Args) -> Result<(), String> {
     let stderr_is_terminal = std::io::stderr().is_terminal();
     let progress_choice = match args.progress {
         Progress::Auto => {
-            // TODO(slice 3): choose Board when stderr_is_terminal is true,
-            // otherwise Line. The terminal probe is intentionally kept alive
-            // even though both cases currently resolve to Line.
-            let _ = stderr_is_terminal;
-            Progress::Line
+            if cfg!(feature = "tui") && stderr_is_terminal {
+                Progress::Tui
+            } else {
+                Progress::Line
+            }
         }
-        Progress::Tui => {
-            return Err("tui progress not yet available; use auto, line, or off".to_string());
-        }
-        other => other,
+        progress => progress,
     };
 
-    let mut line_reporter: Option<Box<dyn Reporter>> = match progress_choice {
-        Progress::Line => Some(Box::new(LineReporter::new(std::io::stderr(), RealClock))),
-        _ => None,
-    };
+    #[cfg(feature = "tui")]
+    let mut tui_reporter: Option<TuiReporter<RealClock>> = None;
+    let mut line_reporter: Option<LineReporter<std::io::Stderr, RealClock>> = None;
+
+    match progress_choice {
+        Progress::Tui => {
+            #[cfg(feature = "tui")]
+            {
+                let mut reporter = TuiReporter::new(RealClock)
+                    .map_err(|e| format!("failed to enter terminal mode on stderr: {e}"))?;
+                reporter.set_probe_positions(probes.clone());
+                tui_reporter = Some(reporter);
+            }
+            #[cfg(not(feature = "tui"))]
+            {
+                return Err(
+                    "tui progress requires the tui feature; rebuild with --features tui"
+                        .to_string(),
+                );
+            }
+        }
+        Progress::Line => {
+            line_reporter = Some(LineReporter::new(std::io::stderr(), RealClock));
+        }
+        Progress::Off => {}
+        Progress::Auto => unreachable!("auto was resolved above"),
+    }
 
     let mut composite = CompositeReporter::new();
     composite.push(&mut jsonl_reporter);
+    #[cfg(feature = "tui")]
+    if let Some(tui) = tui_reporter.as_mut() {
+        composite.push(tui);
+    }
     if let Some(line) = line_reporter.as_mut() {
-        composite.push(line.as_mut());
+        composite.push(line);
     }
 
     let model: Model = args.config.init(&device);
@@ -196,9 +222,13 @@ fn run(args: Args) -> Result<(), String> {
         StopReason::Completed
     };
 
-    // Release composite's mutable borrow of jsonl_reporter so we can
-    // inspect any metrics-stream error after the loop.
+    // Release composite's mutable borrow of its reporters so we can
+    // inspect the JSONL writer and tear down the terminal before the
+    // final stdout report.
     drop(composite);
+
+    #[cfg(feature = "tui")]
+    drop(tui_reporter);
 
     // metrics.jsonl is the durable evidence trail (design §9). If writing it
     // failed, the run's evidence is compromised, but the trained weights are

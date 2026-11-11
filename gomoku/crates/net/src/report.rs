@@ -13,6 +13,9 @@ pub mod jsonl;
 pub mod line;
 pub mod probe;
 
+#[cfg(feature = "tui")]
+pub mod tui;
+
 /// One thing that happened during training.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TrainEvent {

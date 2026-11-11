@@ -94,7 +94,6 @@ pub struct BoardReporter<C: Clock> {
     step_durations: Vec<Duration>,
     last_step_instant: Option<Instant>,
     eval_history: Vec<EvalReport>,
-    latest_probes: Vec<ProbeResult>,
     latest_probe_positions: Vec<ProbePosition>,
     stop_requested: bool,
 }
@@ -118,7 +117,6 @@ impl<C: Clock> BoardReporter<C> {
             step_durations: Vec::with_capacity(STEP_TIME_WINDOW),
             last_step_instant: None,
             eval_history: Vec::with_capacity(2),
-            latest_probes: Vec::new(),
             latest_probe_positions: Vec::new(),
             stop_requested: false,
         }
@@ -129,6 +127,18 @@ impl<C: Clock> BoardReporter<C> {
     pub fn with_flags(mut self, flags: BoardFlags) -> Self {
         self.flags = flags;
         self
+    }
+
+    /// The configured total number of steps, if known.
+    #[cfg(feature = "tui")]
+    pub(crate) fn total_steps(&self) -> usize {
+        self.total_steps
+    }
+
+    /// The current time according to the injected clock.
+    #[cfg(feature = "tui")]
+    pub(crate) fn clock_now(&self) -> Instant {
+        self.clock.now()
     }
 
     /// Request an early stop. The training loop polls [`Reporter::stop_requested`].
@@ -478,6 +488,26 @@ impl<C: Clock> BoardReporter<C> {
             .collect();
         out.push(titles.join("    "));
 
+        // If probe positions were never supplied, render captions only so
+        // the panel is never a half-drawn board.
+        if self.latest_probe_positions.is_empty() {
+            let captions: Vec<String> = latest_eval
+                .probes
+                .iter()
+                .map(|p| {
+                    let mark = if p.correct { '✓' } else { '✗' };
+                    let value = format_value(p.value);
+                    format!("top1 {} {}   v {}", algebraic(p.top1), mark, value)
+                })
+                .collect();
+            out.push(format!(
+                "probes @{} (board positions not selected)    {}",
+                step,
+                captions.join("    ")
+            ));
+            return;
+        }
+
         let boards: Vec<Vec<String>> = latest_eval
             .probes
             .iter()
@@ -528,7 +558,6 @@ impl<C: Clock> Reporter for BoardReporter<C> {
                     self.eval_history.remove(0);
                 }
                 self.eval_history.push(report.clone());
-                self.latest_probes = report.probes.clone();
             }
             TrainEvent::Finished(_) => {}
         }
@@ -597,10 +626,8 @@ fn probe_board_lines(result: &ProbeResult, position: &ProbePosition) -> Vec<Stri
     };
 
     let center = position.expected;
-    let r0 = center.row().saturating_sub(2);
-    let r1 = (center.row() + 3).min(14);
-    let c0 = center.col().saturating_sub(2);
-    let c1 = (center.col() + 3).min(14);
+    let (r0, r1) = window_around(center.row(), 2, 3, 14);
+    let (c0, c1) = window_around(center.col(), 2, 3, 14);
 
     let mut lines = Vec::new();
     for r in r0..=r1 {
@@ -617,6 +644,22 @@ fn probe_board_lines(result: &ProbeResult, position: &ProbePosition) -> Vec<Stri
         lines.push(line.trim_end().to_string());
     }
     lines
+}
+
+/// Compute a 6-cell window around `idx` on an axis of length `max + 1`.
+///
+/// The window tries to keep `offset_before` cells before `idx` and
+/// `offset_after` cells after it, clamping to the board edges so the
+/// window is always exactly six cells when the board is large enough.
+fn window_around(idx: u8, offset_before: u8, offset_after: u8, max: u8) -> (u8, u8) {
+    let window_size = offset_before + offset_after + 1;
+    let mut start = idx.saturating_sub(offset_before);
+    let mut end = start + window_size - 1;
+    if end > max {
+        end = max;
+        start = end.saturating_sub(window_size - 1);
+    }
+    (start, end)
 }
 
 fn probe_cell(board: &Board, result: &ProbeResult, mv: Move) -> char {
@@ -685,9 +728,14 @@ fn format_thousands(n: usize) -> String {
 
 fn format_duration_mm_ss(d: Duration) -> String {
     let secs = d.as_secs();
+    let hh = secs / 3600;
     let mm = (secs % 3600) / 60;
     let ss = secs % 60;
-    format!("{:02}:{:02}", mm, ss)
+    if hh > 0 {
+        format!("{:02}:{:02}:{:02}", hh, mm, ss)
+    } else {
+        format!("{:02}:{:02}", mm, ss)
+    }
 }
 
 #[cfg(test)]
@@ -1009,5 +1057,92 @@ mod tests {
         assert!(!reporter.stop_requested());
         reporter.request_stop();
         assert!(reporter.stop_requested());
+    }
+
+    #[test]
+    fn eta_formats_hours_when_long() {
+        let clock = TestClock::new();
+        let reporter = BoardReporter::new(&clock);
+        let frame = reporter.render(false);
+        let _ = frame; // render unused; we exercise the formatter directly.
+        assert_eq!(format_duration_mm_ss(Duration::from_secs(5)), "00:05");
+        assert_eq!(
+            format_duration_mm_ss(Duration::from_secs(3600 + 5)),
+            "01:00:05"
+        );
+        assert_eq!(
+            format_duration_mm_ss(Duration::from_secs(3600 * 12 + 30 * 60 + 15)),
+            "12:30:15"
+        );
+    }
+
+    #[test]
+    fn probe_crop_clips_to_six_by_six_near_edge() {
+        // Expected move at the top-left corner; the window must clamp
+        // to the board and still produce six rows and six columns.
+        let sample = train::Sample {
+            black: Vec::new(),
+            white: Vec::new(),
+            to_move: engine::Color::Black,
+            policy: vec![(mv(0, 0), 1.0)],
+            value: 0.0,
+        };
+        let position = ProbePosition {
+            sample,
+            class: ProbeClass::Quiet,
+            expected: mv(0, 0),
+        };
+        let result = ProbeResult {
+            step: 10,
+            class: ProbeClass::Quiet,
+            policy: vec![0.0; 225],
+            top1: mv(0, 0),
+            value: 0.03,
+            correct: true,
+        };
+        let lines = probe_board_lines(&result, &position);
+        assert_eq!(lines.len(), 6, "expected 6 rows near corner: {lines:?}");
+        // Each row has six glyphs separated by single spaces; the trailing
+        // space is trimmed, so count non-whitespace glyphs.
+        for (i, line) in lines.iter().enumerate() {
+            let cells = line.chars().filter(|c| !c.is_whitespace()).count();
+            assert_eq!(cells, 6, "row {i} should have 6 cells: {line}");
+        }
+    }
+
+    #[test]
+    fn probe_panel_fallback_when_positions_missing() {
+        let clock = TestClock::new();
+        let mut reporter = BoardReporter::new(&clock);
+        reporter.on_event(&TrainEvent::Started(run_info(100)));
+
+        let result = ProbeResult {
+            step: 10,
+            class: ProbeClass::Win,
+            policy: vec![0.0; 225],
+            top1: mv(7, 7),
+            value: 0.94,
+            correct: true,
+        };
+        let eval = EvalReport {
+            metrics: EvalMetrics {
+                step: 10,
+                loss: 0.5,
+                policy_top1_accuracy: 0.42,
+                value_sign_accuracy: 0.78,
+            },
+            probes: vec![result],
+        };
+        reporter.on_event(&TrainEvent::Eval(eval));
+        let frame = reporter.render(false);
+        let text = frame.join("\n");
+        assert!(
+            text.contains("board positions not selected"),
+            "missing positions should render fallback: {text}"
+        );
+        assert!(
+            text.contains("top1 h8"),
+            "fallback still shows caption: {text}"
+        );
     }
 }

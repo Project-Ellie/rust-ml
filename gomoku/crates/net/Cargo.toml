@@ -5,13 +5,14 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["flex"]
+default = ["flex", "tui"]
 flex = ["burn/flex", "burn/dataset", "burn/train"]
 # autotune + fusion: measured 3x end-to-end training speedup on
 # wgpu/Metal (M5 Max, 2026-11-11); both shipped fixed in pinned Burn
 # 0.22.0 (issues #5162/#5626 closed). Without them, conv3x3 and
 # BatchNorm backward kernels are pathologically slow on wgpu.
 gpu = ["burn/wgpu", "burn/metal", "burn/autotune", "burn/fusion", "burn/dataset", "burn/train"]
+tui = ["dep:crossterm"]
 
 [[example]]
 name = "eval_stratified"
@@ -23,6 +24,7 @@ required-features = ["gpu"]
 
 [dependencies]
 burn = { workspace = true }
+crossterm = { workspace = true, optional = true }
 engine = { path = "../engine" }
 train = { path = "../train" }
 rand = "0.10.3"
