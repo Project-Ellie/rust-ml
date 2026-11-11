@@ -20,6 +20,9 @@ pub mod fmt;
 pub mod game_file;
 /// Persistent variation tree.
 pub mod history;
+/// A trained network behind the MCTS evaluator seam (feature `net`).
+#[cfg(feature = "net")]
+pub mod net_eval;
 /// Algebraic notation.
 pub mod notation;
 /// Swap2 opening ceremony state.

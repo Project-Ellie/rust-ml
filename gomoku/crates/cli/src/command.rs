@@ -102,6 +102,13 @@ pub enum Command {
         /// Literal source path
         path: PathBuf,
     },
+    /// Install a trained net model (a `nettrain` run directory holding
+    /// `model.mpk` and `run.json`) as the evaluator of every AI seat.
+    /// Served by the shell; runtime-only, never serialized.
+    LoadModel {
+        /// Literal run-directory path
+        path: PathBuf,
+    },
 }
 
 /// Phase of a Swap2 opening ceremony.
@@ -450,6 +457,17 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
             Command::Save { path }
         } else {
             Command::Load { path }
+        });
+    }
+    if verb.eq_ignore_ascii_case("model") {
+        let remainder = trimmed[split..].trim();
+        if remainder.is_empty() {
+            return Err(CommandError::Parse(
+                "model requires a nettrain run directory path".to_string(),
+            ));
+        }
+        return Ok(Command::LoadModel {
+            path: std::path::PathBuf::from(remainder),
         });
     }
 
@@ -916,5 +934,24 @@ mod tests {
                 path: "~/x.json".into()
             }
         );
+    }
+
+    #[test]
+    fn model_command_parses_a_run_directory_path() {
+        assert_eq!(
+            parse("model artifacts/gomoku/runs/first-model").unwrap(),
+            Command::LoadModel {
+                path: "artifacts/gomoku/runs/first-model".into()
+            }
+        );
+        // Like save/load: case-insensitive verb, internal spaces kept.
+        assert_eq!(
+            parse("Model  My Runs/run 1").unwrap(),
+            Command::LoadModel {
+                path: "My Runs/run 1".into()
+            }
+        );
+        assert!(parse("model").is_err());
+        assert!(parse("model \t").is_err());
     }
 }

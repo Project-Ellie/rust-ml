@@ -40,6 +40,7 @@ pub fn execute(core: &mut SessionCore, command: Command) -> Result<SharedShellRe
                 ..SharedShellReply::default()
             })
         }
+        Command::LoadModel { path } => execute_load_model(core, path),
         other => core
             .execute(other)
             .map(|events| SharedShellReply {
@@ -48,6 +49,35 @@ pub fn execute(core: &mut SessionCore, command: Command) -> Result<SharedShellRe
             })
             .map_err(|e| e.to_string()),
     }
+}
+
+/// Load a `nettrain` run directory and install the model on the AI
+/// seats. The load is transactional: a failure leaves the session
+/// untouched.
+#[cfg(feature = "net")]
+fn execute_load_model(
+    core: &mut SessionCore,
+    path: std::path::PathBuf,
+) -> Result<SharedShellReply, String> {
+    let evaluator = crate::net_eval::NetEvaluator::load(&path)
+        .map_err(|e| format!("could not load model from {}: {e}", path.display()))?;
+    core.install_net_model(evaluator.into_model());
+    Ok(SharedShellReply {
+        message: Some(format!(
+            "model loaded from {} — AI seats now use the network",
+            path.display()
+        )),
+        ..SharedShellReply::default()
+    })
+}
+
+/// Without the `net` feature the command is a plain error.
+#[cfg(not(feature = "net"))]
+fn execute_load_model(
+    _core: &mut SessionCore,
+    _path: std::path::PathBuf,
+) -> Result<SharedShellReply, String> {
+    Err("net support is not compiled in (cli feature 'net')".to_string())
 }
 
 #[cfg(test)]
@@ -66,6 +96,73 @@ mod tests {
         ));
         std::fs::create_dir(&path).unwrap();
         path
+    }
+
+    #[cfg(feature = "net")]
+    fn write_tiny_run(dir: &std::path::Path) {
+        let device = burn::tensor::Device::flex();
+        let config = net::network::ModelConfig::tiny();
+        let model: net::network::Model = config.init(&device);
+        let journal = net::checkpoint::RunJournal::new(
+            0,
+            config,
+            net::train::TrainConfig::tiny(),
+            None,
+            None,
+        );
+        net::checkpoint::save_checkpoint(&model, &journal, dir).unwrap();
+    }
+
+    #[cfg(feature = "net")]
+    #[test]
+    fn model_command_installs_the_net_and_the_seat_searches() {
+        use crate::command::SeatSel;
+
+        let dir = scratch();
+        write_tiny_run(&dir);
+
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        core.execute(Command::SetSims {
+            seat: SeatSel::White,
+            n: 4,
+        })
+        .unwrap();
+        core.execute(Command::Release {
+            seat: SeatSel::White,
+        })
+        .unwrap();
+
+        let reply = execute(&mut core, Command::LoadModel { path: dir.clone() }).unwrap();
+        assert!(reply.message.unwrap().contains("model loaded"));
+
+        // The human plays; the net seat answers through MCTS.
+        core.execute(Command::Play {
+            mv: Move::new(7, 7).unwrap(),
+        })
+        .unwrap();
+        let events = core.execute(Command::Step).unwrap();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::Moved { .. })),
+            "the net seat must play a move, got {events:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(feature = "net")]
+    #[test]
+    fn failed_model_load_leaves_the_session_untouched() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        let missing = std::env::temp_dir().join("gomoku-no-such-run-directory");
+
+        let err = execute(&mut core, Command::LoadModel { path: missing }).unwrap_err();
+        assert!(err.contains("could not load model"), "got: {err}");
+
+        // The session is still fully functional.
+        core.execute(Command::Play {
+            mv: Move::new(7, 7).unwrap(),
+        })
+        .unwrap();
     }
 
     #[test]

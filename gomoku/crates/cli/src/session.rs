@@ -282,6 +282,14 @@ fn status_from_str(s: &str) -> Result<Status, String> {
     }
 }
 
+/// Prototype passed to player construction: the installed net model
+/// when the `net` feature is on, an uninhabited reference otherwise.
+#[cfg(feature = "net")]
+type NetPrototype<'a> = Option<&'a net::network::Model>;
+/// Without the `net` feature there is no prototype to pass.
+#[cfg(not(feature = "net"))]
+type NetPrototype<'a> = Option<&'a ()>;
+
 /// Headless session state machine.
 pub struct SessionCore {
     // Runtime-only identity for shell analysis; never serialized.
@@ -292,6 +300,11 @@ pub struct SessionCore {
     // Evaluators are runtime state, not clonable/serializable seat config.
     black_player: Option<player::AiPlayer>,
     white_player: Option<player::AiPlayer>,
+    // A model installed by the `model` command is runtime state,
+    // never serialized: save files keep the seats' configured
+    // evaluator kinds.
+    #[cfg(feature = "net")]
+    net_model: Option<net::network::Model>,
     default_config: AiConfig,
     black_sims: Option<u32>,
     white_sims: Option<u32>,
@@ -320,8 +333,10 @@ impl SessionCore {
             history: History::from_opening(&init.opening),
             black: init.black.clone(),
             white: init.white.clone(),
-            black_player: Self::make_player(&init.black),
-            white_player: Self::make_player(&init.white),
+            black_player: Self::make_player(None, &init.black),
+            white_player: Self::make_player(None, &init.white),
+            #[cfg(feature = "net")]
+            net_model: None,
             default_config: init.default_config.clone(),
             black_sims: init.black_sims,
             white_sims: init.white_sims,
@@ -464,7 +479,9 @@ impl SessionCore {
             Command::Reveal => self.execute_reveal(),
             Command::NextPuzzle => self.execute_puzzle_nav(1),
             Command::PrevPuzzle => self.execute_puzzle_nav(-1),
-            Command::Save { .. } | Command::Load { .. } => Err(CommandError::ShellOnly),
+            Command::Save { .. } | Command::Load { .. } | Command::LoadModel { .. } => {
+                Err(CommandError::ShellOnly)
+            }
         }
     }
 
@@ -895,8 +912,32 @@ impl SessionCore {
         }
     }
 
+    /// Install a net model as the evaluator of every AI seat.
+    ///
+    /// Runtime-only overlay (v1): save files keep the seats'
+    /// configured evaluator kinds, and the installed model is process
+    /// state. Current AI seats are rebuilt at once so the change takes
+    /// effect on the next search; shell analysis is invalidated.
+    #[cfg(feature = "net")]
+    pub fn install_net_model(&mut self, model: net::network::Model) {
+        self.invalidate_analysis();
+        self.net_model = Some(model);
+        let black = self.black.clone();
+        let white = self.white.clone();
+        if black.is_ai() {
+            self.set_occupant(Color::Black, black);
+        }
+        if white.is_ai() {
+            self.set_occupant(Color::White, white);
+        }
+    }
+
     fn set_occupant(&mut self, color: Color, occupant: Occupant) {
-        let player = Self::make_player(&occupant);
+        #[cfg(feature = "net")]
+        let net = self.net_model.as_ref();
+        #[cfg(not(feature = "net"))]
+        let net = None;
+        let player = Self::make_player(net, &occupant);
         match color {
             Color::Black => {
                 self.black = occupant;
@@ -929,16 +970,24 @@ impl SessionCore {
         // Keep the same RNG; reset does not reseed.
     }
 
-    fn make_player(occupant: &Occupant) -> Option<player::AiPlayer> {
+    fn make_player(net: NetPrototype<'_>, occupant: &Occupant) -> Option<player::AiPlayer> {
         match occupant {
             Occupant::Ai(config) => Some(player::AiPlayer::new(Self::make_evaluator(
+                net,
                 &config.evaluator,
             ))),
             Occupant::Human => None,
         }
     }
 
-    fn make_evaluator(kind: &EvaluatorKind) -> Box<dyn mcts::Evaluator> {
+    fn make_evaluator(net: NetPrototype<'_>, kind: &EvaluatorKind) -> Box<dyn mcts::Evaluator> {
+        // An installed net model overrides every AI seat's configured
+        // evaluator kind (runtime-only v1 overlay).
+        #[cfg(feature = "net")]
+        if let Some(model) = net {
+            return Box::new(crate::net_eval::NetEvaluator::from_model(model.clone()));
+        }
+        let _ = net;
         match kind {
             // Currently, there are two.
             EvaluatorKind::Tactics => Box::new(mcts::TacticsEvaluator::new()),

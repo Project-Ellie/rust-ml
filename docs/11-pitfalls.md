@@ -25,6 +25,22 @@ community reports (links included).
    `SupervisedTraining` + `Learner`, `InferenceStep`, and
    `Config::init` + `load_record`. Any blog post using the old names is
    pre-0.21 — often still conceptually right, mechanically wrong.
+5. **Default wgpu kernels can be pathologically slow in backward —
+   enable `autotune` + `fusion`, and prefer native Metal shaders.**
+   Measured on an M5 Max with the `net` crate's default config (128
+   channels x 10 residual blocks at 17x17), batch 1024: conv3x3 backward
+   cost ~4x its forward (healthy: ~2x) and BatchNorm backward ~14x its
+   forward; end-to-end 7.98 s/step, barely faster than the pure-Rust CPU
+   backend. Enabling `burn/autotune` + `burn/fusion` gave 2.48 s/step;
+   switching `Device::wgpu` to `Device::metal` (native MSL instead of
+   WGSL) gave 1.56 s/step — 5.1x total on identical hardware
+   (2026-11-11; reproduction: `cargo run --release -p net --features gpu
+   --example layerbench`). Two tells: per-sample cost that *degrades*
+   with batch size, and a GPU that looks barely faster than CPU — both
+   mean kernel selection, not hardware. Caveats: autotune re-tunes per
+   process (seconds on the first steps; the tuned configs are cached on
+   disk), kernel selection changes numerics slightly, and the parity
+   rule of pitfall 10 still applies before trusting training results.
 
 ## From the Burn issue tracker
 

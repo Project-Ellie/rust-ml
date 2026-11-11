@@ -39,7 +39,16 @@ evaluator, and generates the milestone-3 synthetic training set.
 - Backends: **Flex** (pure-Rust CPU, verified, deterministic) is the
   parity-test twin; **Wgpu/Metal** is the GPU path but **training on it
   is gated on a backend parity test** (Burn issues #5162 NaN gradients,
-  #5626 autotune 1×1-conv — both hit load-bearing parts of our network).
+  #5626 autotune 1×1-conv — both CLOSED and verified fixed in the
+  pinned 0.22.0, but the project's own parity run has not happened
+  yet). The `gpu` feature of `net` enables `burn/autotune` +
+  `burn/fusion` + native-MSL `Device::metal`: measured 2026-11-11 on an
+  M5 Max, default config, batch 1024 — 7.98 → 1.56 s/step vs. plain
+  wgpu (5.1×; without autotune the wgpu conv3×3/BatchNorm backward
+  kernels are pathological — docs/11 pitfall 5). `nettrain --device
+  metal` is the fast path; `--device flex` stays the reproducibility
+  reference (`dataloader_workers: 8` trades bit-reproducibility for
+  ~25% throughput; set 0 for reproducible seeded runs).
 - Rust: edition 2024 in the `gomoku/` workspace, edition 2021 in the
   root package. No tokio anywhere — the system is CPU-bound actors +
   `crossbeam-channel` (reasoning: ch. 12 §5).

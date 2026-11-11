@@ -30,6 +30,7 @@ pub const HELP: &str = r#"Commands (case-insensitive):
   take black|white|both      make seat(s) human
   release black|white|both   release seat(s) to AI
   sims black|white N         set per-seat simulations
+  model DIR                  load a trained nettrain run as the AI evaluator
   decision [N] [event E]   original concession report; N previews candidate (1-based)
   info             show AI search info at the cursor
   v, value         toggle the value strip

@@ -41,6 +41,16 @@ pub struct TrainConfig {
     pub lr_cosine_steps: usize,
     /// AdamW weight decay.
     pub weight_decay: f32,
+    /// Background dataloader workers for batch encoding and D4
+    /// augmentation.
+    ///
+    /// 0 batches on the caller thread: seeded runs stay
+    /// bit-reproducible. >0 overlaps CPU batching with device compute
+    /// (measured 2026-11-11, M5 Max, metal device, batch 256: 0.333
+    /// -> 0.256 s/step) but the augmentation order becomes
+    /// scheduling-dependent, i.e. not bit-reproducible.
+    #[serde(default)]
+    pub dataloader_workers: usize,
 }
 
 impl TrainConfig {
@@ -56,6 +66,7 @@ impl TrainConfig {
             lr_min: 1e-5,
             lr_cosine_steps: 45,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         }
     }
 }
@@ -106,7 +117,13 @@ pub fn train(
     let train_loader = DataLoaderBuilder::new(NetBatcher::new(config.seed, true))
         .batch_size(config.batch_size)
         .shuffle(config.seed)
-        .num_workers(0)
+        // Background batch workers: encoding + D4 augmentation run on
+        // CPU while the GPU computes. Measured 2026-11-11 (M5 Max,
+        // metal device, batch 256): 0.333 -> 0.256 s/step vs 0
+        // workers; on flex 1.49 -> 1.27 s/step. See
+        // TrainConfig::dataloader_workers for the reproducibility
+        // trade-off.
+        .num_workers(config.dataloader_workers)
         .set_device(device.clone())
         .build(train_dataset);
 
@@ -337,6 +354,7 @@ mod tests {
             lr_min: 1e-5,
             lr_cosine_steps: 15,
             weight_decay: 1e-4,
+            dataloader_workers: 0,
         };
 
         // Warm up the backend so any lazy compilation / kernel selection

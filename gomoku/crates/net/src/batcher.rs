@@ -118,10 +118,21 @@ fn transform_sample(sample: &Sample, tranform: Option<Transform>) -> (Board, Vec
     let Some(t) = tranform else {
         return (board, policy);
     };
-    let mut transformed_board = Board::new();
-    for &mv in board.moves() {
-        let _ = transformed_board.play(t.transform_move(mv));
-    }
+    // Rebuild from the transformed STONE LISTS, not by replaying
+    // `board.moves()`: dataset boards come from `Board::from_position`,
+    // which carries no move history, so replay would yield an empty board.
+    let black: Vec<Move> = sample
+        .black
+        .iter()
+        .map(|&mv| t.transform_move(mv))
+        .collect();
+    let white: Vec<Move> = sample
+        .white
+        .iter()
+        .map(|&mv| t.transform_move(mv))
+        .collect();
+    let transformed_board = Board::from_position(&black, &white, board.to_move())
+        .expect("D4-transformed position must stay legal");
 
     // Transform policy masses along with their moves.
     let transformed_policy: Vec<(Move, f32)> = policy
