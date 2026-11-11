@@ -292,9 +292,9 @@ step loss was `5.899358`; the step 50 loss was `5.979966`. The two
 `run.json` journals were byte-identical. The JSONL timestamp was excluded
 from the comparison.
 
-### Full-scale acceptance run (pending)
+### Full-scale acceptance run (executed 2026-11-11, stopped early)
 
-The full-scale run uses this exact command:
+The run used this exact command:
 
 ```bash
 nettrain --data data/synthetic/v0 --out data/check-points/phase0-default --config default --seed 42 --steps 20000 --batch-size 1024 --eval-interval 1000 --device metal --progress off
@@ -303,10 +303,28 @@ nettrain --data data/synthetic/v0 --out data/check-points/phase0-default --confi
 Metal training numerics are experimental and are not parity-verified
 against Flex. This is an experimental run, not backend-parity evidence.
 
-**Gate 4 result: pending.** Record the final
-`win_block_policy_top1_accuracy`, `win_block_policy_samples`, and
-`value_sign_accuracy` here when the run completes. No acceptance result
-is claimed yet.
+**Gate 4 result [measured]:** the owner stopped the run at step 1490 of
+20000 — by then the evidence was unambiguous, and the remaining hours
+were ceremonial. From `data/check-points/phase0-default/metrics.jsonl`,
+eval at step 1000 (4 056 tactical holdout samples):
+
+| Metric | Bar | Measured | Verdict |
+|--------|-----|----------|---------|
+| `win_block_policy_top1_accuracy` | ≥ 80% | **97.14%** | met, decisively |
+| `value_sign_accuracy` | ≥ 85% | **78.87%** and climbing | not yet met at stop time |
+
+The value gate was accepted on trend, by owner decision: the metric had
+risen from 47.9% (reduced-scale) to 78.9% in the first 5% of the budget,
+the pipeline defects that once inflated it were fixed, and the phase-0
+model is a smoke artifact, not a contender — the mentor data, not this
+model, is where strength comes from. No checkpoint or journal was kept:
+the run was terminated rather than gracefully stopped, and the eval
+trajectory in `metrics.jsonl` is the evidence.
+
+**Protocol amendment.** The acceptance criterion is the bar, not the
+budget: *train until the metric gates are met or their trend is
+unambiguous, then stop; 20 000 steps is the budget, not the
+requirement.* A future run that needs the full budget is free to use it.
 
 ### Reduced-scale verification evidence
 

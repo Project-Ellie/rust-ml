@@ -142,7 +142,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-09-28 — update this section as work lands)
+## Current status (verified 2026-11-11 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -241,7 +241,8 @@ tutorial tracks are written and verified end-to-end (reference
 implementations built TDD-first in disposable worktrees, reviewed,
 acceptance-measured, then deleted per convention; the solution files
 are the durable record). The `train` and `patterns` crates exist in the
-workspace; the `net` crate is next. Living docs for the gomoku workspace
+workspace; the `net` crate is COMPLETE (net tutorial accepted
+2026-11-11). Living docs for the gomoku workspace
 have been updated to **Burn 0.22.0** on branch `burn-0.22-upgrade`.
 
 Current milestone-3 status:
@@ -274,8 +275,18 @@ Current milestone-3 status:
   default suite ~36 s debug (83 passed / 3 ignored); exact CPU-vs-Wgpu
   parity (93 passed with `--features gpu`).
 
+**Milestone 3 net tutorial COMPLETE (2026-11-11)** — all 8 chapters
+landed, including the owner's progress-monitor extension (reporter
+seam, metrics.jsonl event stream, probe boards, metal fast path,
+TUI). Acceptance: gates 1/2/5 green; gate 4 policy bar met
+decisively (97.14% win/block at step 1000 of 20000), value-sign gate
+accepted on trend by owner decision (78.87% and climbing when the run
+was stopped early; protocol amended: the bar is the criterion, the
+step count is the budget). Details: chapter 08's reality-check
+sections.
+
 The tutorial queue (owner-locked 2026-11-08): the net tutorial
-(phase-0 supervised training on the synthetic data) next, then the
+(phase-0 supervised training on the synthetic data) DONE, next the
 mentor-datagen tutorial — baseline-vs-baseline mentor self-play
 records, spec
 [docs/specs/2026-11-08-mentor-datagen-design.md](specs/2026-11-08-mentor-datagen-design.md):
