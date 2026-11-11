@@ -933,6 +933,8 @@ mod tests {
                 loss: 0.7,
                 policy_top1_accuracy: 0.40,
                 value_sign_accuracy: 0.75,
+                win_block_policy_top1_accuracy: Some(0.4),
+                win_block_policy_samples: 20,
             },
             probes: Vec::new(),
         };
@@ -942,6 +944,8 @@ mod tests {
                 loss: 0.65,
                 policy_top1_accuracy: 0.45,
                 value_sign_accuracy: 0.80,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 20,
             },
             probes: Vec::new(),
         };
@@ -1037,6 +1041,8 @@ mod tests {
                 loss: 0.5,
                 policy_top1_accuracy: 0.42,
                 value_sign_accuracy: 0.78,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 20,
             },
             probes: vec![result],
         };
@@ -1130,6 +1136,8 @@ mod tests {
                 loss: 0.5,
                 policy_top1_accuracy: 0.42,
                 value_sign_accuracy: 0.78,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 20,
             },
             probes: vec![result],
         };

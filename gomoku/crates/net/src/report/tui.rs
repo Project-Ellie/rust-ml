@@ -230,8 +230,19 @@ fn enter_terminal_mode() -> io::Result<()> {
 
 /// Restore the cursor, leave the alternate screen, and disable raw mode.
 fn leave_terminal_mode() -> io::Result<()> {
-    execute!(io::stderr(), Show, LeaveAlternateScreen)?;
-    terminal::disable_raw_mode()
+    leave_terminal_mode_with(
+        || execute!(io::stderr(), Show, LeaveAlternateScreen),
+        terminal::disable_raw_mode,
+    )
+}
+
+fn leave_terminal_mode_with(
+    restore_screen: impl FnOnce() -> io::Result<()>,
+    disable_raw_mode: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let screen_result = restore_screen();
+    let raw_mode_result = disable_raw_mode();
+    screen_result.and(raw_mode_result)
 }
 
 /// A key action understood by the TUI.
@@ -292,6 +303,24 @@ mod tests {
             value_loss: loss * 0.5,
             lr: 1e-3,
         }
+    }
+
+    #[test]
+    fn terminal_restoration_attempts_raw_mode_after_screen_error() {
+        let raw_mode_attempted = std::cell::Cell::new(false);
+
+        let error = leave_terminal_mode_with(
+            || Err(io::Error::new(io::ErrorKind::BrokenPipe, "screen")),
+            || {
+                raw_mode_attempted.set(true);
+                Err(io::Error::other("raw mode"))
+            },
+        )
+        .unwrap_err();
+
+        assert!(raw_mode_attempted.get());
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(error.to_string(), "screen");
     }
 
     #[test]
@@ -387,6 +416,8 @@ mod tests {
                 loss: 0.4,
                 policy_top1_accuracy: 0.5,
                 value_sign_accuracy: 0.6,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 1,
             },
             probes: Vec::new(),
         };

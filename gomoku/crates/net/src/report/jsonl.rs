@@ -139,6 +139,8 @@ mod tests {
                 loss: 0.4,
                 policy_top1_accuracy: 0.5,
                 value_sign_accuracy: 0.6,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 2,
             },
             probes: Vec::new(),
         }
@@ -171,6 +173,11 @@ mod tests {
         assert_eq!(values[1]["Step"]["step"], 1);
         assert_eq!(values[2]["Step"]["step"], 2);
         assert_eq!(values[3]["Eval"]["metrics"]["step"], 2);
+        assert_eq!(
+            values[3]["Eval"]["metrics"]["win_block_policy_top1_accuracy"],
+            0.5
+        );
+        assert_eq!(values[3]["Eval"]["metrics"]["win_block_policy_samples"], 2);
         assert_eq!(values[4]["Finished"]["stop_reason"], "Completed");
     }
 
@@ -228,6 +235,8 @@ mod tests {
                 loss: 0.4,
                 policy_top1_accuracy: 0.5,
                 value_sign_accuracy: 0.6,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 2,
             },
             probes: vec![ProbeResult {
                 step: 8,

@@ -5,8 +5,8 @@
 //! ```text
 //! nettrain --out <DIR> [--data <DIR>] [--config tiny|mid|default]
 //!          [--device flex|wgpu|metal] [--seed <u64>] [--steps <n>]
-//!          [--batch-size <n>] [--eval-interval <n>] [--lr-max <f>]
-//!          [--progress auto|tui|line|off]
+//!          [--batch-size <n>] [--dataloader-workers <n>]
+//!          [--eval-interval <n>] [--lr-max <f>] [--progress auto|tui|line|off]
 //! ```
 //!
 //! If `--data` is omitted, a tiny synthetic dataset is generated in-memory
@@ -28,7 +28,7 @@ use net::report::line::{LineReporter, RealClock};
 use net::report::probe::select_probes;
 #[cfg(feature = "tui")]
 use net::report::tui::TuiReporter;
-use net::report::{CompositeReporter, Reporter, RunInfo, StopReason, format_system_time};
+use net::report::{CompositeReporter, RunInfo, format_system_time};
 use net::train::{EvalMetrics, StepMetrics, TrainConfig, train_with_reporter};
 use train::collect::{Quotas, collect};
 use train::dataset::read_dataset;
@@ -88,7 +88,8 @@ fn main() {
             eprintln!(
                 "Usage: nettrain --out <DIR> [--data <DIR>] [--config tiny|mid|default]\n\
                  [--device flex|wgpu|metal] [--seed <u64>] [--steps <n>] [--batch-size <n>]\n\
-                 [--eval-interval <n>] [--lr-max <f>] [--progress auto|tui|line|off]\n\
+                 [--dataloader-workers <n>] [--eval-interval <n>] [--lr-max <f>]\n\
+                 [--progress auto|tui|line|off]\n\
                  Use `--flag value` only; `--flag=value` is not supported."
             );
             process::exit(2);
@@ -205,7 +206,7 @@ fn run(args: Args) -> Result<(), String> {
     }
 
     let model: Model = args.config.init(&device);
-    let (model, step_metrics, eval_metrics) = train_with_reporter(
+    let (model, step_metrics, eval_metrics, stop_reason) = train_with_reporter(
         model,
         &args.train_config,
         train_samples,
@@ -215,12 +216,6 @@ fn run(args: Args) -> Result<(), String> {
         &probes,
         &mut composite,
     );
-
-    let stop_reason = if composite.stop_requested() {
-        StopReason::StopRequested
-    } else {
-        StopReason::Completed
-    };
 
     // Release composite's mutable borrow of its reporters so we can
     // inspect the JSONL writer and tear down the terminal before the
@@ -255,6 +250,10 @@ fn run(args: Args) -> Result<(), String> {
 }
 
 fn load_or_generate_data(args: &Args) -> Result<(Vec<train::Sample>, Vec<train::Sample>), String> {
+    if args.train_config.batch_size == 0 {
+        return Err("batch size must be greater than zero".to_string());
+    }
+
     let samples = if let Some(dir) = &args.data_dir {
         read_dataset(dir).map_err(|e| format!("failed to read dataset: {e}"))?
     } else {
@@ -281,6 +280,12 @@ fn load_or_generate_data(args: &Args) -> Result<(Vec<train::Sample>, Vec<train::
         }
     }
 
+    if train_samples.is_empty() {
+        return Err(
+            "training partition is empty; provide at least one non-holdout sample".to_string(),
+        );
+    }
+
     Ok((train_samples, holdout_samples))
 }
 
@@ -297,14 +302,24 @@ fn print_report(
         );
     }
     for eval in eval_metrics {
-        println!(
-            "Holdout @ step {}: loss={:.6} policy_top1={:.2}% value_sign={:.2}%",
-            eval.step,
-            eval.loss,
-            eval.policy_top1_accuracy * 100.0,
-            eval.value_sign_accuracy * 100.0,
-        );
+        println!("{}", format_holdout_report(eval));
     }
+}
+
+fn format_holdout_report(eval: &EvalMetrics) -> String {
+    let win_block_accuracy = eval.win_block_policy_top1_accuracy.map_or_else(
+        || "n/a".to_string(),
+        |accuracy| format!("{:.2}%", accuracy * 100.0),
+    );
+    format!(
+        "Holdout @ step {}: loss={:.6} policy_top1={:.2}% value_sign={:.2}% win_block_policy_top1={} win_block_policy_samples={}",
+        eval.step,
+        eval.loss,
+        eval.policy_top1_accuracy * 100.0,
+        eval.value_sign_accuracy * 100.0,
+        win_block_accuracy,
+        eval.win_block_policy_samples,
+    )
 }
 
 /// The wgpu training device; only available with the `gpu` feature.
@@ -354,6 +369,7 @@ where
     let mut seed: Option<u64> = Some(0);
     let mut steps: Option<usize> = Some(20);
     let mut batch_size: Option<usize> = Some(16);
+    let mut dataloader_workers: Option<usize> = Some(8);
     let mut eval_interval: Option<usize> = Some(0);
     let mut lr_max: Option<f64> = None;
     let mut device = DeviceChoice::Flex;
@@ -408,6 +424,15 @@ where
                         .parse::<usize>()
                         .map_err(|e| format!("invalid --batch-size value '{value}': {e}"))?,
                 );
+            }
+            "--dataloader-workers" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--dataloader-workers requires a value".to_string())?;
+                dataloader_workers =
+                    Some(value.parse::<usize>().map_err(|e| {
+                        format!("invalid --dataloader-workers value '{value}': {e}")
+                    })?);
             }
             "--eval-interval" => {
                 let value = args
@@ -497,8 +522,8 @@ where
             lr_cosine_steps: steps,
             weight_decay: 1e-4,
             // Throughput over bit-reproducibility for real runs;
-            // set 0 for a reproducible seeded run (field docs).
-            dataloader_workers: 8,
+            // --dataloader-workers 0 for a reproducible seeded run.
+            dataloader_workers: dataloader_workers.unwrap_or(8),
         },
         device,
         progress,
@@ -508,6 +533,103 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "nettrain-data-{}-{counter}-{nanos}.tmp",
+            std::process::id()
+        ))
+    }
+
+    fn args_with_data(data_dir: PathBuf, batch_size: usize) -> Args {
+        Args {
+            out_dir: PathBuf::from("/tmp/nettrain-test-output"),
+            data_dir: Some(data_dir),
+            config: ModelConfig::tiny(),
+            train_config: TrainConfig {
+                batch_size,
+                ..TrainConfig::tiny()
+            },
+            device: DeviceChoice::Flex,
+            progress: Progress::Off,
+        }
+    }
+
+    fn write_holdout_only_dataset(dir: &std::path::Path) {
+        let overlapping = engine::Move::new(0, 0).unwrap();
+        let sample = train::Sample {
+            black: vec![overlapping],
+            white: vec![overlapping],
+            to_move: engine::Color::White,
+            policy: Vec::new(),
+            value: 0.0,
+        };
+        assert!(is_holdout(&sample));
+        train::shard::write_dataset(
+            &[sample],
+            dir,
+            0,
+            Quotas {
+                win: 0,
+                block: 0,
+                quiet: 1,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn load_data_rejects_empty_training_partition() {
+        let dir = temp_dir();
+        write_holdout_only_dataset(&dir);
+
+        let error = load_or_generate_data(&args_with_data(dir.clone(), 16)).unwrap_err();
+
+        assert!(
+            error.contains("training partition is empty"),
+            "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_data_rejects_zero_batch_size() {
+        let dir = temp_dir();
+        write_holdout_only_dataset(&dir);
+
+        let error = load_or_generate_data(&args_with_data(dir.clone(), 0)).unwrap_err();
+
+        assert!(
+            error.contains("batch size must be greater than zero"),
+            "unexpected error: {error}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn final_report_contains_win_block_policy_metric() {
+        let line = format_holdout_report(&EvalMetrics {
+            step: 10,
+            loss: 0.4,
+            policy_top1_accuracy: 0.5,
+            value_sign_accuracy: 0.6,
+            win_block_policy_top1_accuracy: Some(0.75),
+            win_block_policy_samples: 20,
+        });
+
+        assert!(
+            line.contains("win_block_policy_top1=75.00% win_block_policy_samples=20"),
+            "{line}"
+        );
+    }
 
     #[test]
     fn parse_args_requires_out() {
@@ -523,6 +645,7 @@ mod tests {
         assert_eq!(args.config, ModelConfig::tiny());
         assert_eq!(args.train_config.steps, 20);
         assert_eq!(args.train_config.batch_size, 16);
+        assert_eq!(args.train_config.dataloader_workers, 8);
     }
 
     #[test]
@@ -555,6 +678,8 @@ mod tests {
                 "100".to_string(),
                 "--batch-size".to_string(),
                 "32".to_string(),
+                "--dataloader-workers".to_string(),
+                "0".to_string(),
                 "--eval-interval".to_string(),
                 "10".to_string(),
             ]
@@ -568,6 +693,7 @@ mod tests {
         assert_eq!(args.train_config.seed, 7);
         assert_eq!(args.train_config.steps, 100);
         assert_eq!(args.train_config.batch_size, 32);
+        assert_eq!(args.train_config.dataloader_workers, 0);
         assert_eq!(args.train_config.eval_interval, 10);
     }
 

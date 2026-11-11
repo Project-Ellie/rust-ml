@@ -176,8 +176,18 @@ impl<W: Write, C: Clock> LineReporter<W, C> {
 
     fn format_eval_line(&self, report: &EvalReport, now: Instant) -> String {
         let elapsed = self.elapsed(now);
+        let win_block = report.metrics.win_block_policy_top1_accuracy.map_or_else(
+            || "win_block=n/a".to_string(),
+            |accuracy| {
+                format!(
+                    "win_block={:.1}% (n={})",
+                    accuracy * 100.0,
+                    report.metrics.win_block_policy_samples
+                )
+            },
+        );
         format!(
-            "[{}] holdout @{} loss={:.3} top1={:.1}% vsign={:.1}%",
+            "[{}] holdout @{} loss={:.3} top1={:.1}% vsign={:.1}% {win_block}",
             format_duration_hms(elapsed),
             report.metrics.step,
             report.metrics.loss,
@@ -337,6 +347,8 @@ mod tests {
                 loss: 0.5,
                 policy_top1_accuracy: 0.42,
                 value_sign_accuracy: 0.78,
+                win_block_policy_top1_accuracy: Some(0.5),
+                win_block_policy_samples: 2,
             },
             probes: Vec::new(),
         }
@@ -407,6 +419,19 @@ mod tests {
         assert_eq!(lines.len(), 1, "expected one throttled line, got {lines:?}");
         // The first step is emitted before the throttle window closes.
         assert!(lines[0].contains("step 1/100"), "{}", lines[0]);
+    }
+
+    #[test]
+    fn eval_line_contains_win_block_policy_metric() {
+        let clock = TestClock::new();
+        let out = SharedWriter::new();
+        let mut reporter = LineReporter::new(out.clone(), &clock);
+
+        reporter.on_event(&TrainEvent::Started(run_info(100)));
+        reporter.on_event(&TrainEvent::Eval(eval(1)));
+
+        let line = String::from_utf8(out.take()).unwrap();
+        assert!(line.contains("win_block=50.0% (n=2)"), "{line}");
     }
 
     #[test]

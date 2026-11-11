@@ -6,7 +6,6 @@
 //! Value loss is MSE against the scalar target. The combined loss is
 //! the sum.
 
-use burn::prelude::ElementConversion;
 use burn::tensor::Tensor;
 use burn::tensor::activation::log_softmax;
 
@@ -72,12 +71,57 @@ fn value_loss(pred: Tensor<2>, target: Tensor<2>) -> Tensor<1> {
     diff.powf_scalar(2.0).mean()
 }
 
+/// Whether the predicted policy argmax is any move with maximal positive
+/// target mass.
+///
+/// Tactical targets can assign equal mass to multiple winning or blocking
+/// moves; every one of those moves is a correct top-1 prediction.
+pub fn policy_top1_correct(policy_logits: &[f32], policy_target: &[f32]) -> bool {
+    assert_eq!(
+        policy_logits.len(),
+        policy_target.len(),
+        "policy logits and targets must cover the same moves"
+    );
+    let Some((predicted, _)) = policy_logits
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+    else {
+        return false;
+    };
+    let Some(target_max) = policy_target.iter().max_by(|a, b| a.total_cmp(b)) else {
+        return false;
+    };
+
+    policy_target[predicted] > 0.0 && policy_target[predicted] >= *target_max - 1e-6
+}
+
+/// Whether a predicted value and target belong to the same exact
+/// three-way sign class: negative, zero, or positive.
+pub fn value_sign_correct(prediction: f32, target: f32) -> bool {
+    fn sign_class(value: f32) -> i8 {
+        if value < 0.0 {
+            -1
+        } else if value > 0.0 {
+            1
+        } else {
+            0
+        }
+    }
+
+    sign_class(prediction) == sign_class(target)
+}
+
 /// Training/evaluation metrics.
 pub struct Metrics {
     /// Fraction of samples where the policy argmax matches the target argmax.
     pub policy_top1_accuracy: f32,
     /// Fraction of samples where the predicted value has the same sign as the target.
     pub value_sign_accuracy: f32,
+    /// Integer number of policy-correct samples in this batch.
+    pub policy_top1_correct: u64,
+    /// Integer number of value-sign-correct samples in this batch.
+    pub value_sign_correct: u64,
 }
 
 /// Compute metrics from raw model outputs and targets.
@@ -91,21 +135,46 @@ pub fn compute_metrics(
 ) -> Metrics {
     let batch = policy_logits.dims()[0];
 
-    // Policy argmax agreement.
-    let pred_argmax = policy_logits.clone().argmax(1).squeeze_dim::<1>(1);
-    let target_argmax = policy_target.clone().argmax(1).squeeze_dim::<1>(1);
-    let policy_correct: f32 = pred_argmax.equal(target_argmax).int().sum().into_scalar();
-    let policy_correct: i32 = policy_correct.elem();
+    // Policy top-1 agreement, accepting every max-mass target move.
+    let moves = policy_logits.dims()[1];
+    let logits: Vec<f32> = policy_logits
+        .clone()
+        .into_data()
+        .try_to_vec::<f32>()
+        .expect("policy logits are f32");
+    let policy_targets: Vec<f32> = policy_target
+        .clone()
+        .into_data()
+        .try_to_vec::<f32>()
+        .expect("policy targets are f32");
+    let policy_correct = logits
+        .chunks_exact(moves)
+        .zip(policy_targets.chunks_exact(moves))
+        .filter(|(logits, target)| policy_top1_correct(logits, target))
+        .count() as u64;
 
-    // Value sign agreement.
-    let pred_sign = value_pred.clone().greater_elem(0.0).int();
-    let target_sign = value_target.clone().greater_elem(0.0).int();
-    let value_correct: f32 = pred_sign.equal(target_sign).int().sum().into_scalar();
-    let value_correct: i32 = value_correct.elem();
+    // Value sign agreement: negative, zero, and positive are distinct.
+    let predictions: Vec<f32> = value_pred
+        .clone()
+        .into_data()
+        .try_to_vec::<f32>()
+        .expect("value predictions are f32");
+    let targets: Vec<f32> = value_target
+        .clone()
+        .into_data()
+        .try_to_vec::<f32>()
+        .expect("value targets are f32");
+    let value_correct = predictions
+        .iter()
+        .zip(&targets)
+        .filter(|(prediction, target)| value_sign_correct(**prediction, **target))
+        .count() as u64;
 
     Metrics {
         policy_top1_accuracy: policy_correct as f32 / batch as f32,
         value_sign_accuracy: value_correct as f32 / batch as f32,
+        policy_top1_correct: policy_correct,
+        value_sign_correct: value_correct,
     }
 }
 
@@ -188,6 +257,57 @@ mod tests {
         let metrics = compute_metrics(&policy_logits, &policy_target, &value_pred, &value_target);
         assert!((metrics.policy_top1_accuracy - 0.5).abs() < 1e-5);
         assert!((metrics.value_sign_accuracy - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn policy_metric_accepts_any_max_mass_target_move() {
+        let device = Device::flex();
+        let policy_logits = Tensor::<2>::from_floats([[1.0, 2.0, 0.0]], &device);
+        let policy_target = Tensor::<2>::from_floats([[0.45, 0.45, 0.1]], &device);
+        let value_pred = Tensor::<2>::from_floats([[1.0]], &device);
+        let value_target = Tensor::<2>::from_floats([[1.0]], &device);
+
+        let metrics = compute_metrics(&policy_logits, &policy_target, &value_pred, &value_target);
+
+        assert_eq!(metrics.policy_top1_correct, 1);
+        assert_eq!(metrics.policy_top1_accuracy, 1.0);
+    }
+
+    #[test]
+    fn metrics_return_integer_correct_counts() {
+        let device = Device::flex();
+        let policy_logits = Tensor::<2>::from_floats([[1.0, 0.0]; 22], &device);
+        let policy_target = Tensor::<2>::from_floats(
+            std::array::from_fn::<[f32; 2], 22, _>(|index| {
+                if index < 13 { [1.0, 0.0] } else { [0.0, 1.0] }
+            }),
+            &device,
+        );
+        let value_pred = Tensor::<2>::from_floats([[0.5]; 22], &device);
+        let value_target = Tensor::<2>::from_floats([[1.0]; 22], &device);
+
+        let metrics = compute_metrics(&policy_logits, &policy_target, &value_pred, &value_target);
+
+        assert_eq!(metrics.policy_top1_correct, 13);
+        assert_eq!(metrics.value_sign_correct, 22);
+        assert_eq!(metrics.policy_top1_accuracy, 13.0 / 22.0);
+        assert_eq!(metrics.value_sign_accuracy, 1.0);
+    }
+
+    #[test]
+    fn metrics_distinguish_negative_and_zero_value_signs() {
+        let device = Device::flex();
+        let policy_logits = Tensor::<2>::from_floats([[1.0, 0.0], [1.0, 0.0]], &device);
+        let policy_target = Tensor::<2>::from_floats([[1.0, 0.0], [1.0, 0.0]], &device);
+        let value_pred = Tensor::<2>::from_floats([[-0.5], [0.0]], &device);
+        let value_target = Tensor::<2>::from_floats([[0.0], [-1.0]], &device);
+
+        let metrics = compute_metrics(&policy_logits, &policy_target, &value_pred, &value_target);
+
+        assert_eq!(
+            metrics.value_sign_accuracy, 0.0,
+            "negative-vs-zero must be incorrect in both directions"
+        );
     }
 
     #[test]

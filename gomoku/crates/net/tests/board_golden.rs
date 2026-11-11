@@ -195,6 +195,8 @@ fn golden_mid_run_with_probes() {
             loss: 0.75,
             policy_top1_accuracy: 0.35,
             value_sign_accuracy: 0.70,
+            win_block_policy_top1_accuracy: Some(0.4),
+            win_block_policy_samples: 100,
         },
         probes: vec![],
     };
@@ -206,6 +208,8 @@ fn golden_mid_run_with_probes() {
             loss: 0.65,
             policy_top1_accuracy: 0.42,
             value_sign_accuracy: 0.78,
+            win_block_policy_top1_accuracy: Some(0.5),
+            win_block_policy_samples: 100,
         },
         probes: results,
     };

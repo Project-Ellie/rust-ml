@@ -38,7 +38,7 @@ done
 # Incremental no-op when the sources are unchanged.
 (cd "$(dirname "$0")/.." && cargo build --release -p net --features gpu --bin nettrain)
 
-exec target/release/nettrain \
+exec "$(dirname "$0")/../target/release/nettrain" \
   --data "$GOMOKU_DATA/synthetic/v0" \
   --out "$GOMOKU_DATA/check-points/v0" \
   --config default \

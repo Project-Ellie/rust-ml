@@ -186,6 +186,8 @@ mod tests {
                 loss: 1.45,
                 policy_top1_accuracy: 0.8,
                 value_sign_accuracy: 0.85,
+                win_block_policy_top1_accuracy: Some(0.8),
+                win_block_policy_samples: 20,
             }),
             StopReason::Completed,
         );
@@ -258,6 +260,21 @@ mod tests {
     }
 
     #[test]
+    fn legacy_eval_metrics_default_win_block_fields() {
+        let old_json = r#"{
+            "step": 10,
+            "loss": 1.45,
+            "policy_top1_accuracy": 0.8,
+            "value_sign_accuracy": 0.85
+        }"#;
+
+        let metrics: EvalMetrics = serde_json::from_str(old_json).unwrap();
+
+        assert_eq!(metrics.win_block_policy_top1_accuracy, None);
+        assert_eq!(metrics.win_block_policy_samples, 0);
+    }
+
+    #[test]
     fn journal_roundtrips_new_fields() {
         let dir = temp_dir();
         let _ = std::fs::remove_dir_all(&dir);
@@ -279,6 +296,8 @@ mod tests {
                 loss: 1.45,
                 policy_top1_accuracy: 0.8,
                 value_sign_accuracy: 0.85,
+                win_block_policy_top1_accuracy: Some(0.8),
+                win_block_policy_samples: 20,
             }),
             StopReason::StopRequested,
         );

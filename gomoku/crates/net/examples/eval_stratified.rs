@@ -11,6 +11,7 @@ use burn::module::Module;
 use burn::tensor::Device;
 use net::batcher::NetBatcher;
 use net::checkpoint::load_model;
+use net::loss::{policy_top1_correct, value_sign_correct};
 use net::network::ModelConfig;
 use std::path::{Path, PathBuf};
 use train::dataset::read_dataset;
@@ -82,22 +83,9 @@ fn main() {
 
         for (i, s) in chunk.iter().enumerate() {
             let row = &logits[i * 225..(i + 1) * 225];
-            let pred = row
-                .iter()
-                .enumerate()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                .map(|(i, _)| i)
-                .unwrap();
             let trow = &targets[i * 225..(i + 1) * 225];
-            let tmax = trow
-                .iter()
-                .enumerate()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                .map(|(i, _)| i)
-                .unwrap();
-            // For multi-move tactical targets any max-mass move counts.
-            let top1_ok = trow[pred] >= trow[tmax] - 1e-6 && trow[pred] > 0.0;
-            let vsign_ok = (values[i] > 0.0) == (s.value > 0.0);
+            let top1_ok = policy_top1_correct(row, trow);
+            let vsign_ok = value_sign_correct(values[i], s.value);
 
             overall.record(top1_ok, vsign_ok);
             match classes[i] {

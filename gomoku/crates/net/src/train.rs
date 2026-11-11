@@ -108,6 +108,13 @@ pub struct EvalMetrics {
     pub policy_top1_accuracy: f32,
     /// Value sign accuracy.
     pub value_sign_accuracy: f32,
+    /// Policy top-1 accuracy on held-out Win and Block samples only.
+    /// `None` when the holdout contains no tactical samples.
+    #[serde(default)]
+    pub win_block_policy_top1_accuracy: Option<f32>,
+    /// Number of held-out Win and Block samples behind the tactical metric.
+    #[serde(default)]
+    pub win_block_policy_samples: u64,
 }
 
 /// Run the manual training loop.
@@ -134,7 +141,7 @@ pub fn train(
         holdout_samples: holdout_samples.len(),
         started_at: format_system_time(std::time::SystemTime::now()),
     };
-    train_with_reporter(
+    let (model, step_metrics, eval_metrics, _) = train_with_reporter(
         model,
         config,
         train_samples,
@@ -143,7 +150,8 @@ pub fn train(
         run_info,
         &[],
         &mut NullReporter,
-    )
+    );
+    (model, step_metrics, eval_metrics)
 }
 
 /// Run the manual training loop, publishing events to `reporter`.
@@ -152,7 +160,9 @@ pub fn train(
 /// optimizer step, [`TrainEvent::Eval`] after every holdout evaluation,
 /// and [`TrainEvent::Finished`] once at the end. The loop checks
 /// [`Reporter::stop_requested`] between steps and stops early if the
-/// reporter requests it.
+/// reporter requests it. The returned [`StopReason`] is the same reason
+/// emitted in `Finished`, so callers do not need to re-derive it from a
+/// stop flag that may have been raised during the final step.
 // The argument count is intentionally high: the function is the main
 // entry point and probes are an optional add-on. A builder or options
 // struct would be overkill for the current call sites.
@@ -166,7 +176,7 @@ pub fn train_with_reporter(
     run_info: RunInfo,
     probes: &[ProbePosition],
     reporter: &mut dyn Reporter,
-) -> (Model, Vec<StepMetrics>, Vec<EvalMetrics>) {
+) -> (Model, Vec<StepMetrics>, Vec<EvalMetrics>, StopReason) {
     device.seed(config.seed);
 
     reporter.on_event(&TrainEvent::Started(run_info));
@@ -190,12 +200,29 @@ pub fn train_with_reporter(
         .set_device(device.clone())
         .build(train_dataset);
 
+    let win_block_holdout_samples: Vec<Sample> = holdout_samples
+        .iter()
+        .filter(|sample| {
+            let board = sample.board().expect("holdout sample has a valid board");
+            matches!(
+                train::label::classify(&board),
+                train::label::TacticalClass::Win | train::label::TacticalClass::Block
+            )
+        })
+        .cloned()
+        .collect();
+
     let holdout_dataset = InMemDataset::new(holdout_samples);
     let holdout_loader = DataLoaderBuilder::new(NetBatcher::holdout())
         .batch_size(config.batch_size)
         .num_workers(0)
         .set_device(device.clone())
         .build(holdout_dataset);
+    let win_block_holdout_loader = DataLoaderBuilder::new(NetBatcher::holdout())
+        .batch_size(config.batch_size)
+        .num_workers(0)
+        .set_device(device.clone())
+        .build(InMemDataset::new(win_block_holdout_samples));
 
     let mut step_metrics = Vec::new();
     let mut eval_metrics = Vec::new();
@@ -207,7 +234,7 @@ pub fn train_with_reporter(
             reporter.on_event(&TrainEvent::Finished(FinishInfo {
                 stop_reason: StopReason::StopRequested,
             }));
-            return (model, step_metrics, eval_metrics);
+            return (model, step_metrics, eval_metrics, StopReason::StopRequested);
         }
 
         let batch = loop {
@@ -233,7 +260,7 @@ pub fn train_with_reporter(
         step_metrics.push(metrics);
 
         if config.eval_interval > 0 && step % config.eval_interval == 0 {
-            let eval = evaluate(&model, &holdout_loader, device);
+            let eval = evaluate(&model, &holdout_loader, &win_block_holdout_loader, device);
             let eval_metrics_entry = EvalMetrics { step, ..eval };
             let probe_results = if probes.is_empty() {
                 Vec::new()
@@ -252,7 +279,7 @@ pub fn train_with_reporter(
         stop_reason: StopReason::Completed,
     }));
 
-    (model, step_metrics, eval_metrics)
+    (model, step_metrics, eval_metrics, StopReason::Completed)
 }
 
 fn build_scheduler(config: &TrainConfig) -> ModuleLrScheduler {
@@ -295,8 +322,12 @@ fn training_step(
 fn evaluate(
     model: &Model,
     loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<NetBatch>>,
+    win_block_loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<NetBatch>>,
     _device: &Device,
 ) -> EvalMetrics {
+    // Holdout evaluation must never train BatchNorm on the data being
+    // measured. Use one validation-mode model for every holdout batch.
+    let model = model.valid();
     let mut total_loss = 0.0f32;
     let mut total_policy_correct = 0u64;
     let mut total_value_correct = 0u64;
@@ -320,9 +351,24 @@ fn evaluate(
         let batch_size = batch.input.dims()[0];
         let loss_f: f32 = loss.into_scalar();
         total_loss += loss_f * batch_size as f32;
-        total_policy_correct += (metrics.policy_top1_accuracy * batch_size as f32) as u64;
-        total_value_correct += (metrics.value_sign_accuracy * batch_size as f32) as u64;
+        total_policy_correct += metrics.policy_top1_correct;
+        total_value_correct += metrics.value_sign_correct;
         total_samples += batch_size as u64;
+    }
+
+    let mut win_block_policy_correct = 0u64;
+    let mut win_block_policy_samples = 0u64;
+    for batch in win_block_loader.iter() {
+        let batch = batch.expect("Win/Block holdout loader batch");
+        let output = model.forward(batch.input.clone());
+        let metrics = loss::compute_metrics(
+            &output.policy,
+            &batch.policy_target,
+            &output.value,
+            &batch.value_target,
+        );
+        win_block_policy_correct += metrics.policy_top1_correct;
+        win_block_policy_samples += batch.input.dims()[0] as u64;
     }
 
     EvalMetrics {
@@ -342,6 +388,9 @@ fn evaluate(
         } else {
             0.0
         },
+        win_block_policy_top1_accuracy: (win_block_policy_samples > 0)
+            .then(|| win_block_policy_correct as f32 / win_block_policy_samples as f32),
+        win_block_policy_samples,
     }
 }
 
@@ -697,7 +746,7 @@ mod tests {
         let mut reporter_a = crate::report::RecordingReporter::new();
         let mut reporter_b = crate::report::RecordingReporter::new();
 
-        let (_, metrics_a, _) = train_with_reporter(
+        let (_, metrics_a, _, _) = train_with_reporter(
             base_model.clone(),
             &config,
             train_samples.clone(),
@@ -707,7 +756,7 @@ mod tests {
             &[],
             &mut reporter_a,
         );
-        let (_, metrics_b, _) = train_with_reporter(
+        let (_, metrics_b, _, _) = train_with_reporter(
             base_model,
             &config,
             train_samples,
@@ -799,7 +848,7 @@ mod tests {
         );
 
         let mut reporter = crate::report::RecordingReporter::new();
-        let (_, metrics_recorded, _) = train_with_reporter(
+        let (_, metrics_recorded, _, _) = train_with_reporter(
             base_model,
             &config,
             train_samples,
@@ -924,7 +973,7 @@ mod tests {
             holdout_samples.len(),
         );
 
-        let (_, metrics, _) = train_with_reporter(
+        let (_, metrics, _, _) = train_with_reporter(
             model,
             &config,
             train_samples,
@@ -1010,7 +1059,7 @@ mod tests {
             holdout_samples.len(),
         );
 
-        let (model, step_metrics, eval_metrics) = train_with_reporter(
+        let (model, step_metrics, eval_metrics, stop_reason) = train_with_reporter(
             model,
             &config,
             train_samples,
@@ -1025,7 +1074,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let stop_reason = StopReason::StopRequested;
         let journal = crate::checkpoint::RunJournal::new(
             config.seed,
             model_config,
@@ -1044,6 +1092,96 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn final_step_stop_request_journals_completed() {
+        struct StopOnFinalStep {
+            requested: bool,
+        }
+        impl crate::report::Reporter for StopOnFinalStep {
+            fn on_event(&mut self, event: &crate::report::TrainEvent) {
+                if matches!(event, TrainEvent::Step(_)) {
+                    self.requested = true;
+                }
+            }
+            fn stop_requested(&self) -> bool {
+                self.requested
+            }
+        }
+
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+        let config = TrainConfig {
+            steps: 1,
+            batch_size: 4,
+            eval_interval: 0,
+            seed: 1,
+            lr_warmup_steps: 1,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 1,
+            weight_decay: 1e-4,
+            dataloader_workers: 0,
+        };
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let mut reporter = StopOnFinalStep { requested: false };
+        let run_info = test_run_info(
+            model_config.clone(),
+            config,
+            format!("{device:?}"),
+            samples.len(),
+            0,
+        );
+
+        let (model, step_metrics, eval_metrics, stop_reason) = train_with_reporter(
+            model,
+            &config,
+            samples,
+            Vec::new(),
+            &device,
+            run_info,
+            &[],
+            &mut reporter,
+        );
+
+        assert_eq!(step_metrics.len(), 1);
+        assert!(
+            reporter.stop_requested(),
+            "the final-step request must remain raised"
+        );
+        assert_eq!(stop_reason, StopReason::Completed);
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "net-final-step-stop-{}-{nanos}.tmp",
+            std::process::id()
+        ));
+        let journal = crate::checkpoint::RunJournal::new(
+            config.seed,
+            model_config,
+            config,
+            step_metrics.last().copied(),
+            eval_metrics.last().copied(),
+            stop_reason,
+        );
+        crate::checkpoint::save_checkpoint(&model, &journal, &dir).unwrap();
+
+        let loaded = crate::checkpoint::load_journal(&dir).unwrap();
+        assert_eq!(loaded.stop_reason, StopReason::Completed);
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1291,6 +1429,232 @@ mod tests {
     }
 
     #[test]
+    fn no_tactical_holdout_samples_yield_no_win_block_metric() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 0,
+                block: 0,
+                quiet: 4,
+            },
+        );
+        let config = TrainConfig {
+            steps: 1,
+            batch_size: 4,
+            eval_interval: 1,
+            ..TrainConfig::tiny()
+        };
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+
+        let (_, _, evals) = train(
+            model,
+            &config,
+            &model_config,
+            samples.clone(),
+            samples,
+            &device,
+        );
+
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].win_block_policy_top1_accuracy, None);
+        assert_eq!(evals[0].win_block_policy_samples, 0);
+    }
+
+    #[test]
+    fn win_block_policy_metric_is_separate_from_global_accuracy() {
+        let device = Device::flex().autodiff();
+        let model: Model = crate::network::ModelConfig::tiny().init(&device);
+        let mut samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 2,
+                block: 2,
+                quiet: 4,
+            },
+        );
+        let batcher = NetBatcher::holdout();
+        let batch = batcher.batch(samples.clone(), &device);
+        let logits = model
+            .valid()
+            .forward(batch.input)
+            .policy
+            .into_data()
+            .try_to_vec::<f32>()
+            .unwrap();
+
+        let mut tactical_samples = Vec::new();
+        for (index, sample) in samples.iter_mut().enumerate() {
+            let row = &logits[index * 225..(index + 1) * 225];
+            let predicted = row
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                .map(|(index, _)| index)
+                .unwrap();
+            let class = train::label::classify(&sample.board().unwrap());
+            let target = match class {
+                train::label::TacticalClass::Win | train::label::TacticalClass::Block => predicted,
+                train::label::TacticalClass::Quiet => (predicted + 1) % 225,
+            };
+            sample.policy = vec![(mv((target / 15) as u8, (target % 15) as u8), 1.0)];
+            if class != train::label::TacticalClass::Quiet {
+                tactical_samples.push(sample.clone());
+            }
+        }
+        assert_eq!(tactical_samples.len(), 4);
+
+        let loader = DataLoaderBuilder::new(NetBatcher::holdout())
+            .batch_size(8)
+            .num_workers(0)
+            .set_device(device.clone())
+            .build(InMemDataset::new(samples));
+        let tactical_loader = DataLoaderBuilder::new(NetBatcher::holdout())
+            .batch_size(8)
+            .num_workers(0)
+            .set_device(device.clone())
+            .build(InMemDataset::new(tactical_samples));
+
+        let metrics = evaluate(&model, &loader, &tactical_loader, &device);
+
+        assert_eq!(metrics.policy_top1_accuracy, 0.5);
+        assert_eq!(metrics.win_block_policy_top1_accuracy, Some(1.0));
+        assert_eq!(metrics.win_block_policy_samples, 4);
+    }
+
+    #[test]
+    fn holdout_evaluation_uses_inference_statistics() {
+        let device = Device::flex().autodiff();
+        let model_config = crate::network::ModelConfig::tiny();
+        let model: Model = model_config.init(&device);
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 4,
+                block: 4,
+                quiet: 8,
+            },
+        );
+        let loader = DataLoaderBuilder::new(NetBatcher::holdout())
+            .batch_size(16)
+            .num_workers(0)
+            .set_device(device.clone())
+            .build(InMemDataset::new(samples));
+
+        let actual = evaluate(&model, &loader, &loader, &device);
+        let valid_model = model.valid();
+        let mut expected_loss = 0.0;
+        let mut expected_samples = 0usize;
+        for batch in loader.iter() {
+            let batch = batch.unwrap();
+            let output = valid_model.forward(batch.input.clone());
+            let loss = loss::compute_loss(LossInput {
+                policy_logits: output.policy,
+                policy_target: batch.policy_target,
+                value_pred: output.value,
+                value_target: batch.value_target,
+            });
+            let batch_size = batch.input.dims()[0];
+            expected_loss += loss.into_scalar::<f32>() * batch_size as f32;
+            expected_samples += batch_size;
+        }
+        expected_loss /= expected_samples as f32;
+
+        assert!(
+            (actual.loss - expected_loss).abs() < 1e-6,
+            "holdout loss {} must use inference statistics (expected {})",
+            actual.loss,
+            expected_loss
+        );
+    }
+
+    #[test]
+    fn holdout_evaluation_does_not_change_loss_trajectory() {
+        let device = Device::flex().autodiff();
+        let samples = tiny_dataset(
+            42,
+            Quotas {
+                win: 4,
+                block: 4,
+                quiet: 8,
+            },
+        );
+        let holdout_samples = tiny_dataset(
+            99,
+            Quotas {
+                win: 12,
+                block: 0,
+                quiet: 0,
+            },
+        );
+        let model_config = crate::network::ModelConfig::tiny();
+        let base_model: Model = model_config.init(&device);
+        let base_config = TrainConfig {
+            steps: 12,
+            batch_size: 4,
+            eval_interval: 0,
+            seed: 3,
+            lr_warmup_steps: 2,
+            lr_max: 1e-3,
+            lr_min: 1e-5,
+            lr_cosine_steps: 10,
+            weight_decay: 1e-4,
+            dataloader_workers: 0,
+        };
+
+        let (model_without_eval, metrics_without_eval, _) = train(
+            base_model.clone(),
+            &base_config,
+            &model_config,
+            samples.clone(),
+            holdout_samples.clone(),
+            &device,
+        );
+        let (model_with_eval, metrics_with_eval, evals) = train(
+            base_model,
+            &TrainConfig {
+                eval_interval: 4,
+                ..base_config
+            },
+            &model_config,
+            samples,
+            holdout_samples,
+            &device,
+        );
+
+        assert_eq!(evals.len(), 3, "the non-empty holdout must be evaluated");
+        assert_eq!(
+            metrics_without_eval
+                .iter()
+                .map(|m| m.loss)
+                .collect::<Vec<_>>(),
+            metrics_with_eval.iter().map(|m| m.loss).collect::<Vec<_>>(),
+            "holdout evaluation must not mutate the training model"
+        );
+
+        let probe = NetBatcher::holdout().batch(
+            vec![sample_with_policy(vec![(mv(0, 0), 1.0)], 1.0)],
+            &device,
+        );
+        let output_without_eval = model_without_eval.valid().forward(probe.input.clone());
+        let output_with_eval = model_with_eval.valid().forward(probe.input);
+        assert_eq!(
+            output_without_eval
+                .policy
+                .into_data()
+                .try_to_vec::<f32>()
+                .unwrap(),
+            output_with_eval
+                .policy
+                .into_data()
+                .try_to_vec::<f32>()
+                .unwrap(),
+            "holdout evaluation must leave inference outputs unchanged"
+        );
+    }
+
+    #[test]
     fn probes_do_not_change_loss_trajectory() {
         let device = Device::flex().autodiff();
         let samples = tiny_dataset(
@@ -1340,7 +1704,7 @@ mod tests {
             0,
         );
 
-        let (_, metrics_without, _) = train_with_reporter(
+        let (_, metrics_without, _, _) = train_with_reporter(
             base_model.clone(),
             &config,
             samples.clone(),
@@ -1351,7 +1715,7 @@ mod tests {
             &mut crate::report::NullReporter,
         );
 
-        let (_, metrics_with, _) = train_with_reporter(
+        let (_, metrics_with, _, _) = train_with_reporter(
             base_model,
             &config,
             samples,
