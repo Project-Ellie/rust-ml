@@ -420,7 +420,7 @@ The walkthrough below names each central artifact at its first
 conceptual mention. The chapters derive the contracts; this primer
 fixes what they must not drift from.
 
-### 4.1 Chapter 01 — the game runner (planned: [the-game-runner.md](01-the-game-runner/the-game-runner.md))
+### 4.1 Chapter 01 — the game runner ([the-game-runner.md](01-the-game-runner/the-game-runner.md))
 
 The `selfplay` crate's first inhabitant is a synchronous,
 single-threaded game runner (decision S6). Two seats, each a

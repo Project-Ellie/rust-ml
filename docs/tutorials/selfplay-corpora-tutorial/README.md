@@ -206,7 +206,7 @@ reference. The worktree is deleted once the tutorial is complete on
 | # | Chapter | What lands | Companion papers |
 |---|---------|------------|------------------|
 | 00 | [Self-play primer](00-selfplay-primer.md) | The conceptual guide under the design spec: why strength-graded self-play data, the game record as the project's durable format, the placement between milestones 3, 4, and 5. | — (the primer is a single paper) |
-| 01 | [The game runner](01-the-game-runner/the-game-runner.md) *(planned)* | The `selfplay` crate: two `AiPlayer` seats with per-seat simulation budgets, the Swap2 ceremony through the engine typestate, the full-game loop. | [design](01-the-game-runner/the-game-runner-design.md) · [implementation plan](01-the-game-runner/the-game-runner-implementation.md) · [solution](01-the-game-runner/the-game-runner-solution.md) |
+| 01 | [The game runner](01-the-game-runner/the-game-runner.md) | The `selfplay` crate: two `AiPlayer` seats with per-seat simulation budgets, the Swap2 ceremony through the engine typestate, the full-game loop. | [design](01-the-game-runner/the-game-runner-design.md) · [implementation plan](01-the-game-runner/the-game-runner-implementation.md) · [solution](01-the-game-runner/the-game-runner-solution.md) |
 | 02 | [Recording games](02-recording-games/recording-games.md) *(planned)* | `GameRecord` with header and provenance (the pairing lives in the header); the corpus shard writer and manifest on the shared `train::storage` mechanics. | [design](02-recording-games/recording-games-design.md) · [implementation plan](02-recording-games/recording-games-implementation.md) · [solution](02-recording-games/recording-games-solution.md) |
 | 03 | [Recording the search](03-recording-the-search/recording-the-search.md) *(planned)* | Sparse per-ply visit records (the policy target π), sparse top-k priors, root-value estimates, sign conventions. | [design](03-recording-the-search/recording-the-search-design.md) · [implementation plan](03-recording-the-search/recording-the-search-implementation.md) · [solution](03-recording-the-search/recording-the-search-solution.md) |
 | 04 | [Diversity and grading](04-diversity-and-grading/diversity-and-grading.md) *(planned)* | Tournament opening lists, the exploration schedule (temperature 1 with root Dirichlet noise (Silver et al. 2017) for the opening plies, then greedy), the pairing matrix, seed discipline with deduplication, the `selfplaygen` binary. | [design](04-diversity-and-grading/diversity-and-grading-design.md) · [implementation plan](04-diversity-and-grading/diversity-and-grading-implementation.md) · [solution](04-diversity-and-grading/diversity-and-grading-solution.md) |
@@ -214,9 +214,11 @@ reference. The worktree is deleted once the tutorial is complete on
 | 06 | [Reading back](06-reading-back/reading-back.md) *(planned)* | Replay-to-sample derivation, the holdout split, D4 augmentation at sample time, weighted source mixing, the `selfplayexport` binary. | [design](06-reading-back/reading-back-design.md) · [implementation plan](06-reading-back/reading-back-implementation.md) · [solution](06-reading-back/reading-back-solution.md) |
 | 07 | [Acceptance](07-acceptance/acceptance.md) *(planned)* | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · [implementation plan](07-acceptance/acceptance-implementation.md) · [solution](07-acceptance/acceptance-solution.md) |
 
-The chapter links 01–07 and their companion-paper links name planned
+The chapter-01 chapter link and its companion-paper links are live.
+The chapter links 02–07 and their companion-paper links name planned
 documents (marked *(planned)*), consistently with the primer's
-per-chapter headings; the README and primer links are live. The order
+per-chapter headings. The README, the primer, and all chapter-1 paper
+links are live; the chapter paper sets 2–7 remain planned. The order
 is the dependency chain: a game before its record, the
 record before the search data inside it, recorded games before
 diversity at scale, corpora before the certificates they carry, and
@@ -224,9 +226,13 @@ everything before reading back and acceptance.
 
 ## Status
 
-- 2026-11-11 — the tutorial is **being written**. This README and the
-  [primer](00-selfplay-primer.md) are written; the seven chapter paper
-  sets remain planned. Nothing is learner-worked: the `selfplay` crate
+- 2026-11-13 — the tutorial is **being written**. This README, the
+  [primer](00-selfplay-primer.md), and the chapter-1 four-paper set
+  ([chapter](01-the-game-runner/the-game-runner.md),
+  [design](01-the-game-runner/the-game-runner-design.md),
+  [implementation plan](01-the-game-runner/the-game-runner-implementation.md),
+  [solution](01-the-game-runner/the-game-runner-solution.md)) are
+  written; the chapter paper sets 2–7 remain planned. Nothing is learner-worked: the `selfplay` crate
   does not exist on `main`, and no chapter has landed. The reference implementation is
   built and gate-verified in the read-only reference worktree
   described above: the workspace gates are green, the `selfplay` suite
