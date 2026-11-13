@@ -163,7 +163,14 @@ Create `gomoku/crates/selfplay/src/lib.rs` with three things:
    public field and every enum variant — needs a doc comment from the
    moment it exists.
 3. Nothing else yet. Modules are declared as their files appear
-   (steps 4 and 7); the curated re-exports arrive in step 13.
+   (steps 4 and 7) and stay private — no `pub mod`. The crate-root
+   `pub use` re-exports, however, are not one late step: each
+   re-export lands as the integration tests first need it. Step 9's
+   test file imports every name it uses from the crate root, so the
+   opening and runner re-exports must exist before step 10 can turn
+   that test green (the checkpoint lives in step 10); step 14 is the
+   final audit of exactly the public surface, not the first time
+   exports appear.
 
 Compile check: `cargo check -p selfplay` from `gomoku/`.
 
@@ -553,6 +560,15 @@ disables resignation, and default options are reserved for ordinary
 corpus runs — so this chapter's games end on the board. Both functions
 carry a `# Errors` doc section naming the three failure sources.
 
+`lib.rs` checkpoint: the test cannot compile until the crate root
+re-exports the names its import block lists, so add the `pub use`
+statements now — from `opening`: `Opening`, `OpeningAnswer`,
+`OpeningProvenance`, `OpeningSource`; from `game`: `Outcome`,
+`WinReason`, `play_game`, `play_game_with_opening`. The modules
+themselves stay private. Steps 11 to 13 add no new imports to the
+test file, so no further re-exports are needed before step 14's
+audit.
+
 Watch `injectable_opening_executes_the_add_two_swap2_branch` go green:
 the ceremony, the seats, the loop, and the record now run end to end.
 
@@ -627,10 +643,13 @@ the normalized root visit-count distribution of the deciding search
 
 ---
 
-## Step 14 — `src/lib.rs`: curate the public surface
+## Step 14 — `src/lib.rs`: audit the public surface
 
-Both modules are private; re-export exactly the chapter's public
-surface and nothing more:
+Both modules stayed private throughout, and the re-exports arrived
+incrementally at the step-10 checkpoint. This step is the final
+audit, not the first appearance of exports: the crate root re-exports
+exactly the chapter's public surface and nothing more — every listed
+item present, no unlisted item added:
 
 - From `game`: `Game`, `GameError`, `Outcome`, `PlyRecord`,
   `PlySearch`, `WinReason`, `play_game`, `play_game_with_opening`.
@@ -690,7 +709,7 @@ project's standing quality gates; both must be green with no changes.
 | `gomoku/Cargo.toml` | `crates/selfplay` in `workspace.members` | the workspace knows the new crate |
 | `selfplay/Cargo.toml` | path deps on `engine`, `baseline`, `player`; `rand` 0.10.3; workspace `serde` and `thiserror` | no `serde_json`, no `train`, no Burn |
 | `player/Cargo.toml` + `player/src/lib.rs` | serde on `ResignReason` | the only cross-crate change; `cargo test -p player` green |
-| `selfplay/src/lib.rs` | crate doc, `#![deny(missing_docs)]`, curated re-exports | exactly the chapter's public surface |
+| `selfplay/src/lib.rs` | crate doc, `#![deny(missing_docs)]`, incremental crate-root re-exports audited in step 14 | exactly the chapter's public surface |
 | `selfplay/src/opening.rs` | `OpeningProvenance`, `OpeningAnswer`, `Opening`, `Opening::new` | description vocabulary with serde derives; absolute colors |
 | `selfplay/src/opening.rs` | `Opening::board()` | the ceremony through the typestate; only `Occupied` can fail; White to move on both branches |
 | `selfplay/src/opening.rs` | `OpeningSource`, `GeneratedOpening` | infallible draw from the shared stream; central 7×7 unique cells; uniform answer |

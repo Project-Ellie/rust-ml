@@ -268,8 +268,10 @@ The `pub use` lines are the chapter's curated public surface — exactly the
 thirteen names the implementation plan's step 14 curates, nothing deeper.
 (The chapter paper's abstract lists a shorter surface that omits
 `GameError`; step 14's list is the authoritative one.) The implementation
-plan declares each module as its file appears and curates the re-exports
-last (its steps 3 and 14); the finished file is quoted once, complete:
+plan declares each module as its file appears (its step 3) and adds
+the crate-root re-exports incrementally — at its step 10, before the
+first integration test can go green — with step 14 auditing the final
+surface; the finished file is quoted once, complete:
 
 **Source:** [`gomoku/crates/selfplay/src/lib.rs`](../../../../gomoku/crates/selfplay/src/lib.rs),
 lines 1–15 (the complete chapter-1 file). *Not yet present on `main`; the

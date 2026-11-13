@@ -436,7 +436,7 @@ the prior, and the root value that §3.2 stores. Nothing is written
 yet; chapter 01 ends with games that replay legally through the
 engine.
 
-### 4.2 Chapter 02 — recording games (planned: [recording-games.md](02-recording-games/recording-games.md))
+### 4.2 Chapter 02 — recording games ([recording-games.md](02-recording-games/recording-games.md))
 
 `GameRecord` is the durable form of a `Game`: the header
 (`GameHeader`) carries the format version, the seed, the per-seat
