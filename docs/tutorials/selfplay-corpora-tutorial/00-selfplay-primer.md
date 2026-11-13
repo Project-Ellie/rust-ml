@@ -448,7 +448,7 @@ shards on the shared `train::storage` mechanics and writes the JSON
 manifest, with overwrite protection. Chapter 02 ends with corpora on
 disk that read back equal to what was written.
 
-### 4.3 Chapter 03 — recording the search (planned: [recording-the-search.md](03-recording-the-search/recording-the-search.md))
+### 4.3 Chapter 03 — recording the search ([recording-the-search.md](03-recording-the-search/recording-the-search.md))
 
 Chapter 03 fills the per-ply payload (decision S3): the sparse visit
 distribution (the training target π), the sparse top-k prior, and the
