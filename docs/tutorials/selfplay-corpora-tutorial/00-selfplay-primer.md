@@ -460,7 +460,7 @@ verified TSS proof carries **no search record** — the ply keeps empty
 visits and priors and no root value, because fabricating statistics
 for a move no search produced would be dishonest telemetry.
 
-### 4.4 Chapter 04 — diversity and grading (planned: [diversity-and-grading.md](04-diversity-and-grading/diversity-and-grading.md))
+### 4.4 Chapter 04 — diversity and grading ([diversity-and-grading.md](04-diversity-and-grading/diversity-and-grading.md))
 
 A deterministic evaluator with argmax selection would generate the
 same game twice; the corpus's value depends on deliberate diversity
