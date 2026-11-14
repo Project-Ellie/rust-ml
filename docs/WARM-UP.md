@@ -287,7 +287,7 @@ sections.
 
 The tutorial queue (owner-locked 2026-11-08, amended 2026-11-11): the
 net tutorial (phase-0 supervised training on the synthetic data) DONE,
-next the selfplay-corpora tutorial — strength-graded
+now the selfplay-corpora tutorial is being worked — strength-graded
 baseline-vs-baseline self-play records, spec
 [docs/specs/2026-11-11-selfplay-corpora-design.md](specs/2026-11-11-selfplay-corpora-design.md):
 store-games record format (the milestone-5 replay-buffer format),
@@ -298,7 +298,12 @@ playing-strength probe is retired. The AlphaZero loop direction
 (decision S7) is phase-1 mixture training (self-play corpora +
 synthetic tactical set + retained external supplements), then phase-2
 candidate self-play into the replay buffer; promotion means beating
-the baseline at an equal simulation budget. The queued client
+the baseline at an equal simulation budget. Selfplay-corpora status:
+the full paper set is written (primer, chapter sets 01–06, the
+chapter-07 paper; 07's companions remain planned); chapter 01 (the
+game runner) is learner-worked and landed on `main` — the `selfplay`
+crate plays Swap2 games between budget-seated baseline `AiPlayer`s
+and records every ply. The queued client
 model-integration tutorial (journal-aware model picker) follows.
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.

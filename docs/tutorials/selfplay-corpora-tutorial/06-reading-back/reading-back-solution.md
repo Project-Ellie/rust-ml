@@ -1765,12 +1765,12 @@ ephemeral):
 | `cargo test -p selfplay` | lib target: 2 passed, 0 ignored (0.05 s); `selfplayanchors` binary unit target: 0 tests; `selfplayexport` binary unit target: 0 tests; `selfplaygen` binary unit target: 4 passed, 0 ignored (6.25 s); anchors target: 4 passed (0.00 s); binary target: 3 passed (0.26 s); corpus target: 10 passed, 0 ignored (0.02 s); dedup target: 1 passed; game target: 5 passed, 2 ignored (12.50 s, debug); grading target: 0 passed, 1 ignored; openings target: 5 passed; read_path target: 11 passed (0.04 s); schedule target: 1 passed, 1 ignored; doc-tests: 0 — **46 passed, 4 ignored** in total |
 | `cargo test -p train` | src unit tests: 39 passed (0.21 s); `tests` targets: 3 passed (0.17 s); doc-tests: 0 — **42 passed, 0 ignored**; the crate is untouched |
 | `cargo test -p player` | src unit tests: 17 passed; `tests/decisions.rs`: 13 passed (0.26 s); `tests/guard.rs`: 13 passed (0.05 s); doc-tests: 0 — **43 passed, 0 ignored**; the crate is untouched |
-| `cargo test --workspace` | **exit 0; 850 passed, 0 failed, 11 ignored** across the workspace's test/doc suites |
+| `cargo test --workspace` | **exit 0; 850 passed, 0 failed, 11 ignored** as the raw sum over the log's 64 `test result` lines — deduplicated to unique harness invocations, **848 passed, 0 failed, 11 ignored across the workspace's 62 test/doc suites** (the count notes below reconcile the two) |
 | capstone (below) | `Exported 1860 samples from 48 games into 4 shards` in 0.12 s (debug); the manifest on disk agrees; the rerun against the same `--out` failed with the refusal message and exit code 1; the input corpus's SHA-256 hashes were identical before and after |
 | `cargo clippy --all-targets -- -D warnings` | clean, workspace-wide (11.40 s) |
 | `cargo fmt --all -- --check` | no changes |
 
-Three count notes keep the evidence precise. First, the chapter-06 closing
+Four count notes keep the evidence precise. First, the chapter-06 closing
 state is the sum of the per-target reports: chapter 05's targets keep their
 state (game 5 passed / 2 MANUAL-ignored, corpus 10/0, openings 5/0,
 schedule 1/1, dedup 1/0, grading 0/1, anchors 4/0, binary 3/0, and the
@@ -1781,10 +1781,20 @@ again shows three `test result` lines in the full-suite log: its
 cross-process determinism test re-executes the test binary twice as a child
 process, and the children's one-test reports (1 passed, 9 filtered out
 each) appear interleaved in the parent log — chapter 02's mechanism,
-unchanged. Third, the completed reference's full suite is larger — 50
-passed, 4 ignored, the hand-off's recorded number — entirely because
-chapter 07 adds the four `selfplayverify_*` binary tests; that number
-describes the completed reference, not this chapter's expectation.
+unchanged; the workspace log carries the same two child lines. Third, the
+workspace row's 850 passed / 11 ignored is the raw sum over that log's 64
+`test result` lines, which double-counts those two corpus child reports;
+deduplicated to unique harness invocations, the chapter-6 workspace gate is
+848 passed, 11 ignored across 62 suites (the raw `selfplay`-only sum is
+likewise 48 passed where the deduplicated closing state is 46). Fourth, the
+completed reference's suites are larger entirely because chapter 07 adds
+the four `selfplayverify_*` binary tests, and both arithmetics close on
+that +4: its full `selfplay` suite is 50 passed, 4 ignored — the
+hand-off's recorded number, deduplicated; the raw sum is 52 with the same
+two child lines — and its workspace gate is 852 passed, 11 ignored across
+63 suites deduplicated (854 raw across 65 `test result` lines), matching
+850 + 4 = 854 raw and 848 + 4 = 852 deduplicated. The reference numbers
+describe the completed reference, not this chapter's expectation.
 
 ### The capstone: 1 860 samples from 48 games into 4 shards
 

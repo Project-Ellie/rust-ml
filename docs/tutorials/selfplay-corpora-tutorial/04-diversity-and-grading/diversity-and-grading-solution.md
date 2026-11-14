@@ -2185,7 +2185,9 @@ and a draw as neither; print one stderr line per seed with the ply count and
 the outcome, so the report is visible on `--nocapture`. The assertion is only
 a direction: the stronger seat wins strictly more often than the weaker seat.
 No margin, no rate — this is a smoke signal, not a measurement; the design
-spec's pre-registered grading gate is chapter 07's work. Section 13 reports
+spec's grading gate is pre-registered by chapter 07, which records its
+execution as open — the reference has not run it at the registered
+scale. Section 13 reports
 what the probe actually did on the slice, including one outcome the
 reference's pinned comment does not describe.
 
@@ -2460,8 +2462,10 @@ played Black, because the binary declares budgets per color and no
 color-swapping exists yet. None of these caveats resolves the observation,
 and this chapter offers no resolution and no strength claim: the probe is
 evidence that the ladder's load-bearing assumption needs the real gate, which
-chapter 07 pre-registers and runs. This paper adds no fresh 20-game
-measurement; the observation stands as the reference recorded it.
+chapter 07 pre-registers and honestly records as not executed. This paper
+adds no fresh 20-game
+measurement; the observation stands as the reference recorded it — a
+report-only probe, not a gate result.
 
 ## References
 

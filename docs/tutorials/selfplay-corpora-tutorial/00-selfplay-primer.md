@@ -532,10 +532,12 @@ supplements). The `selfplayexport` binary materializes a corpus as
 `train`-format sample shards, so the existing `nettrain` binary
 trains on corpora without modification.
 
-### 4.7 Chapter 07 — acceptance (planned: [acceptance.md](07-acceptance/acceptance.md))
+### 4.7 Chapter 07 — acceptance ([acceptance.md](07-acceptance/acceptance.md))
 
-Chapter 07 runs the gates of §6 and publishes the quality report of
-the first corpora. The verifier binary `selfplayverify` replays every
+Chapter 07 builds the verifier, runs the measured gates of §6, and
+publishes the quality report of the first corpora; the grading gate
+it pre-registers and honestly records as not executed. The verifier
+binary `selfplayverify` replays every
 recorded game through the engine (hard error on an illegal move or an
 outcome mismatch) and reports corpus statistics: game lengths,
 opening distribution, outcome balance per pairing.
@@ -574,7 +576,8 @@ plainly:
   simulation budget. Arena infrastructure and candidate-vs-baseline
   ladder matches arrive with the loop, not with this tutorial. What
   this tutorial *does* establish is the ladder's premise: corpora at
-  declared budgets, plus a grading gate that measures whether budget
+  declared budgets, plus a grading gate — pre-registered, its
+  execution recorded honestly as open — that measures whether budget
   grades strength (§6).
 
 ## 6. Acceptance gates and measured evidence
@@ -604,8 +607,10 @@ and quoted in the chapters.
    of games (for example baseline-800 vs baseline-200). This gate
    validates the ladder's load-bearing assumption — simulation budget
    grades strength — and replaces the retired tactics-mock probe
-   (decision S7). The pre-registered run is the acceptance chapter's
-   work; the small probe already run is the open question of §7.1.
+   (decision S7). The acceptance chapter pre-registers the bar and
+   records the execution as open — the reference has not run the gate
+   at the registered scale; the small probe already run is the open
+   question of §7.1.
 4. **Corpus gate** [experiment] — build the first corpora at the
    declared pairings and report the numbers. Measured on the first
    corpus (48 games, baseline-32 vs baseline-32, seeds
@@ -733,8 +738,10 @@ The chapters derive; these invariants must not drift:
   outcomes z and search-improved policies π on positions that arise
   from reasonable play.
 - The simulation budget is the strength axis (decision S5); the
-  later promotion criterion depends on it, so the grading gate
-  measures it from the start.
+  later promotion criterion depends on it, so the grading gate is
+  pre-registered from the start — with its execution recorded
+  honestly as open, and the report-only probe standing as an
+  observation, not a result.
 - The durable record stores complete games — header with the pairing,
   per-ply sparse visits, sparse top-k prior, root value, outcome,
   optional certified suffix — never planes (decisions S2, S3).

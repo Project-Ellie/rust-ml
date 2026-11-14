@@ -269,16 +269,21 @@ directory is the operating system's error. The framing errors of
 
 The honesty boundary of the chapter is here, and the design states it
 plainly. **Checked at read time:** framing integrity and decodability,
-plus the manifest's JSON shape. **Not checked anywhere in this
+and — by `read_manifest` only, which `read_corpus` never calls — the
+manifest's JSON shape. **Not checked anywhere in this
 tutorial:** the format version. It is stamped into every header and
 every manifest, and no reader rejects a mismatched one — the stamp is
 the seam that makes a future rejection rule possible, and inventing the
 rejection now would be claiming a migration policy the project has not
-designed. **Deferred to chapter 07:** semantic validation. `read_corpus`
-does not replay the games: it does not check move legality, does not
-check that the recorded outcome matches the engine's verdict, and does
-not cross-check the manifest against the shards. A corpus that reads
-back cleanly from this chapter's API is *well-formed*, not *true*.
+designed. **Deferred to chapter 07:** move legality and outcome
+agreement — `read_corpus` does not replay the games, and the
+acceptance chapter's verifier implements exactly those two replay
+checks. **Open even in the completed reference:** the
+manifest-versus-shard cross-check, which no artifact in the tutorial
+implements — chapter 07's verifier reads the records and never opens
+the manifest, and its acceptance chapter records that limitation. A
+corpus that reads back cleanly from this chapter's API is
+*well-formed*, not *true*.
 
 ### Why the bytes agree
 
@@ -616,9 +621,11 @@ what reads back equals what went in, byte for byte, in any process.
    create-new is an error, never a truncation. The one honest caveat is
    documented: a mid-write failure can leave a partial shard behind.
 7. **Well-formed, not true.** This chapter checks framing, decodability,
-   and JSON shape — nothing more. Move legality, outcome correctness,
-   and manifest-versus-shard cross-checks are chapter 07's replay
-   verification, and no artifact here pretends otherwise.
+   and JSON shape — nothing more. Move legality and outcome correctness
+   are chapter 07's replay verification; the manifest-versus-shard
+   cross-check is implemented nowhere in the tutorial — chapter 07's
+   verifier reads records only, never the manifest, and its acceptance
+   chapter records the gap — and no artifact here pretends otherwise.
 8. **Raw slot data, as-is.** The record persists chapter 01's `PlySearch`
    slots verbatim: no `SearchStats` conversion, no top-k truncation, no
    normalization (all chapter 03), and no per-ply schedule behavior

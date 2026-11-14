@@ -545,17 +545,26 @@ matching shards yields an empty vector.
 The honesty boundary of this chapter is here, stated plainly:
 
 - **Checked at read time:** framing integrity and decodability —
-  the shard mechanics of step 5 — plus the manifest's JSON shape.
+  the shard mechanics of step 5 — and, in `read_manifest` only, the
+  manifest's JSON shape. `read_corpus` itself never opens the
+  manifest; it lists and decodes `shard-*.bin` files only.
 - **Not checked anywhere in this tutorial:** the format version. It
   is stamped into every header and manifest, and no reader rejects a
   mismatched one yet; the stamp is the seam for a future rule.
-- **Deferred to chapter 07:** semantic validation. `read_corpus`
-  does not replay the games: it does not check move legality, does
-  not check that the recorded outcome matches the engine's verdict,
-  and does not cross-check the manifest against the shards. Those
-  checks are the verifier binary's job, specified in the acceptance
-  chapter. A corpus that reads back cleanly from this chapter's API
-  is *well-formed*, not *true*.
+- **Deferred to chapter 07:** move legality and outcome agreement.
+  `read_corpus` does not replay the games: it does not check move
+  legality, and does not check that the recorded outcome matches the
+  engine's verdict. Those replay checks are the verifier binary's
+  job, and the acceptance chapter implements them. A corpus that
+  reads back cleanly from this chapter's API is *well-formed*, not
+  *true*.
+- **Open even in the completed reference:** the manifest-versus-shard
+  cross-check. The acceptance chapter's verifier never opens the
+  manifest — `read_manifest` is a separate API it does not call — so
+  a manifest that disagrees with its shards passes unnoticed. The
+  acceptance chapter records that limitation explicitly; the
+  cross-check stands as an open hardening gap, not as chapter 07's
+  implemented job.
 
 ### 8. Why the bytes agree
 

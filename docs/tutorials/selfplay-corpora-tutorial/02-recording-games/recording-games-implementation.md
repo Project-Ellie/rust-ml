@@ -672,11 +672,14 @@ discipline rather than inheriting it; the inheritance through
 `train::storage` covers the framing defenses, not the listing.
 
 The honesty boundary, stated in the doc comments and held everywhere:
-checked at read time are framing integrity, decodability, and the
-manifest's JSON shape — nothing more. No reader rejects a mismatched
+checked at read time are framing integrity, decodability, and — by
+`read_manifest` only, which `read_corpus` never calls — the manifest's
+JSON shape — nothing more. No reader rejects a mismatched
 format version (the stamp is the seam for a future rule, not a rule).
-No move legality, no outcome correctness, no manifest-versus-shard
-cross-check — those are chapter 07's replay verification. A corpus
+Move legality and outcome correctness are chapter 07's replay
+verification; the manifest-versus-shard cross-check is implemented
+nowhere in the tutorial — chapter 07's verifier never opens the
+manifest, and its acceptance chapter records that limitation. A corpus
 that reads back cleanly from this API is *well-formed*, not *true*.
 
 `lib.rs` checkpoint: re-export `read_manifest` and `read_corpus`

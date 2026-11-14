@@ -302,9 +302,21 @@ test in `tests/binary.rs`:
 
 This test is a sanity probe, not the grading gate. The design spec's
 gate 3 — a pre-registered margin over a fixed number of games — is
-chapter 07's acceptance work, and the report-only inversion observed
-in the reference measurements is discussed in the open observations
-below, unresolved.
+pre-registered by chapter 07, which honestly records the run as open
+and not executed; the report-only inversion observed in the reference
+measurements is discussed in the open observations below, unresolved.
+
+One fresh-measurement note belongs with this probe. The chapter-4
+slice ran the same four pinned seeds twice in release, and both runs
+agreed seed for seed: two stronger-seat wins, one weaker-seat win, and
+one draw. The direction assertion passes under these outcomes, but the
+per-seed outcomes differ from the reference comment's record of "four
+short games, all won by baseline-16" — fixed seeds are fixed inputs,
+not a promise that per-seed outcomes can never differ between
+measurement contexts. The [chapter
+solution](diversity-and-grading-solution.md) records the per-seed
+evidence in full, and chapter 07 carries the divergence among its open
+observations; this chapter reports it without resolving it.
 
 ## Walkthrough
 
@@ -622,7 +634,9 @@ budgets per color and no color-swapping exists yet. None of these
 caveats resolves the observation, and this chapter offers no
 resolution and no strength claim: the probe is evidence that the
 ladder's load-bearing assumption needs the real gate, which chapter
-07 pre-registers and runs. The MANUAL grading test in this chapter is
+07 pre-registers but does not execute — the acceptance chapter
+records the registered bar and states plainly that the reference has
+not run it. The MANUAL grading test in this chapter is
 deliberately smaller than that gate — four pinned seeds, a direction
 assertion, no margin — a smoke signal, not a measurement.
 
@@ -636,9 +650,10 @@ assertion, no margin — a smoke signal, not a measurement.
   sample time, weighted source mixing, and the `selfplayexport`
   binary — chapter 06.
 - Corpus verification (`selfplayverify`), the determinism, legality,
-  grading, corpus, and integration gates, and the first corpora's
-  quality report — chapter 07. The grading observation above is that
-  chapter's pre-registered work, not this chapter's.
+  corpus, and integration gates, the grading gate's pre-registration
+  (recorded there as registered, not executed), and the first
+  corpora's quality report — chapter 07. The grading observation
+  above is that chapter's pre-registered work, not this chapter's.
 - Candidate-versus-baseline promotion matches and any network in the
   generator — the AlphaZero loop, not this tutorial (design spec
   S7 and §8 non-goals).
