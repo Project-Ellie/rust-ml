@@ -4,7 +4,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/engine", "crates/cli", "crates/mcts", "crates/train", "crates/patterns",
-    "crates/testkit", "crates/baseline", "crates/player", "crates/net"]
+    "crates/testkit", "crates/baseline", "crates/player", "crates/net", "crates/selfplay"]
 
 [workspace.package]
 version = "0.1.0"

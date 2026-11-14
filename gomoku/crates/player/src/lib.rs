@@ -98,7 +98,7 @@ impl Default for PlayerOptions {
 }
 
 /// Why the player voluntarily conceded, not an engine adjudication.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ResignReason {
     /// Every checked top-ranked candidate has a verified opponent VCF.
     VerifiedOpponentVcf {

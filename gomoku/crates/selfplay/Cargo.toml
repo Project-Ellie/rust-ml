@@ -1,0 +1,15 @@
+[package]
+name = "selfplay"
+description = "Synchronous baseline self-play game runner."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+baseline = { path = "../baseline" }
+engine = { path = "../engine" }
+player = { path = "../player" }
+rand = "0.10.3"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
