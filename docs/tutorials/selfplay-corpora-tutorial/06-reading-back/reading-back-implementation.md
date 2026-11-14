@@ -83,8 +83,10 @@ stuck for more than twenty minutes, or after the chapter is complete.
 The chapter-05 slice — the verified starting state — holds the
 following. Selfplay paths are under
 [`gomoku/crates/selfplay/`](../../../../gomoku/crates/selfplay/);
-the crate does not exist on `main` until the learner lands it chapter
-by chapter.
+chapter 01's game-runner slice has landed on `main` (4c8d7f6); the
+chapter 02–07 files — including this chapter's — land as the learner
+works those chapters, and until then they exist only in the read-only
+reference worktree.
 
 - [`src/record.rs`](../../../../gomoku/crates/selfplay/src/record.rs)
   (chapters 02–03) carries `GameRecord` with its `header`, `plies`,

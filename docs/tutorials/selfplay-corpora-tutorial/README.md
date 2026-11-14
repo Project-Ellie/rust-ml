@@ -10,9 +10,9 @@ each other at declared simulation budgets, and in which every game is
 stored in the project's durable game-record format. The record carries
 per-ply visit distributions, root-value estimates, sparse priors, the
 game outcome, and machine-verified endgame certificates. It is the
-same format the milestone-5 replay buffer will consume. The tutorial is
-being written as a primer plus seven chapters. Each chapter will
-have four papers: a chapter paper, a design paper, an implementation
+same format the milestone-5 replay buffer will consume. The tutorial
+ships a primer plus seven chapters. Each chapter has
+four papers: a chapter paper, a design paper, an implementation
 plan, and a solution. The `selfplay` crate lands on `main` chapter
 by chapter as the learner works them. A verified reference
 implementation exists in a separate read-only worktree and serves
@@ -212,11 +212,11 @@ reference. The worktree is deleted once the tutorial is complete on
 | 04 | [Diversity and grading](04-diversity-and-grading/diversity-and-grading.md) | Tournament opening lists, the exploration schedule (temperature 1 with root Dirichlet noise (Silver et al. 2017) for the opening plies, then greedy), the pairing matrix, seed discipline with deduplication, the `selfplaygen` binary. | [design](04-diversity-and-grading/diversity-and-grading-design.md) · [implementation plan](04-diversity-and-grading/diversity-and-grading-implementation.md) · [solution](04-diversity-and-grading/diversity-and-grading-solution.md) |
 | 05 | [Certified endgames](05-certified-endgames/certified-endgames.md) | Suffix detection from the seat's own TSS proof, the 100 % `verify_line` soundness gate, anchor-seed extraction, the `selfplayanchors` binary. | [design](05-certified-endgames/certified-endgames-design.md) · [implementation plan](05-certified-endgames/certified-endgames-implementation.md) · [solution](05-certified-endgames/certified-endgames-solution.md) |
 | 06 | [Reading back](06-reading-back/reading-back.md) | Replay-to-sample derivation, the holdout split, D4 augmentation at sample time, weighted source mixing, the `selfplayexport` binary. | [design](06-reading-back/reading-back-design.md) · [implementation plan](06-reading-back/reading-back-implementation.md) · [solution](06-reading-back/reading-back-solution.md) |
-| 07 | [Acceptance](07-acceptance/acceptance.md) | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · implementation plan *(planned)* · solution *(planned)* |
+| 07 | [Acceptance](07-acceptance/acceptance.md) | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · [implementation plan](07-acceptance/acceptance-implementation.md) · [solution](07-acceptance/acceptance-solution.md) |
 
-The chapter links 01–07 are live, as are the companion-paper links
-for chapters 01–06 and chapter 07's design paper. Chapter 07's
-implementation plan and solution remain planned documents. The order
+The chapter links 01–07 are live, as are all companion-paper links:
+30 documents in total — this README, the primer, and seven
+four-paper sets. The order
 is the dependency chain: a game before its record, the
 record before the search data inside it, recorded games before
 diversity at scale, corpora before the certificates they carry, and
@@ -224,7 +224,7 @@ everything before reading back and acceptance.
 
 ## Status
 
-- 2026-11-13 — the tutorial is **being written**. This README, the
+- 2026-11-14 — the tutorial is **written**. This README, the
   [primer](00-selfplay-primer.md), the chapter-1 four-paper set
   ([chapter](01-the-game-runner/the-game-runner.md),
   [design](01-the-game-runner/the-game-runner-design.md),
@@ -254,12 +254,14 @@ everything before reading back and acceptance.
   ([chapter](06-reading-back/reading-back.md),
   [design](06-reading-back/reading-back-design.md),
   [implementation plan](06-reading-back/reading-back-implementation.md),
-  [solution](06-reading-back/reading-back-solution.md)) are
-  written, and the chapter-7 paper
-  ([acceptance](07-acceptance/acceptance.md)) with its
-  [design paper](07-acceptance/acceptance-design.md) is written; the
-  implementation plan and solution remain
-  planned. Chapter 01 is learner-worked and has landed on `main`:
+  [solution](06-reading-back/reading-back-solution.md)), and the
+  chapter-7 four-paper set
+  ([chapter](07-acceptance/acceptance.md),
+  [design](07-acceptance/acceptance-design.md),
+  [implementation plan](07-acceptance/acceptance-implementation.md),
+  [solution](07-acceptance/acceptance-solution.md)) are
+  written — no planned paper remains. Chapter 01 is
+  learner-worked and has landed on `main`:
   the `selfplay` crate exists with the game runner (`Game`,
   `Opening`, and the chapter's test specification); chapters 02–07
   have not been worked yet. The reference implementation is

@@ -142,7 +142,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-11-11 — update this section as work lands)
+## Current status (verified 2026-11-14 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -299,11 +299,20 @@ playing-strength probe is retired. The AlphaZero loop direction
 synthetic tactical set + retained external supplements), then phase-2
 candidate self-play into the replay buffer; promotion means beating
 the baseline at an equal simulation budget. Selfplay-corpora status:
-the full paper set is written (primer, chapter sets 01–06, the
-chapter-07 paper; 07's companions remain planned); chapter 01 (the
-game runner) is learner-worked and landed on `main` — the `selfplay`
-crate plays Swap2 games between budget-seated baseline `AiPlayer`s
-and records every ply. The queued client
+the full paper set is written — all 30 tutorial documents of the
+[selfplay-corpora-tutorial](tutorials/selfplay-corpora-tutorial/README.md)
+(README + primer + seven four-paper sets); chapter 01 (the game
+runner) is learner-worked and landed on `main` (4c8d7f6) — the
+`selfplay` crate plays Swap2 games between budget-seated baseline
+`AiPlayer`s and records every ply — while chapters 02–07 are not yet
+learner-worked. Chapter-07 verified acceptance (reference build):
+`cargo test -p selfplay` 50 passed / 4 ignored (deduplicated counts),
+`cargo test --workspace` 852 passed / 11 ignored across 63 unique
+suites, byte-identical regeneration, 48/48 games replayed (1,860
+plies), 47/47 anchors verified, the export/`nettrain` smokes
+historical. The grading gate stays pre-registered, not executed: the
+report-only probe inversion and the per-seed divergence remain
+unresolved observations — no strength conclusion. The queued client
 model-integration tutorial (journal-aware model picker) follows.
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.

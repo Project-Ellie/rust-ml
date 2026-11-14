@@ -44,7 +44,7 @@ and has completed chapter 06.
 | **Anchor seed** | `AnchorSeed { game_index, from_ply, line }`: a (position, forcing move, ±1) triple extracted from a certified suffix; the input format of the milestone-4 puzzle anchor set. |
 | **Baseline-X** | The hand-written baseline evaluator behind the `mcts::Evaluator` seam, orchestrated by `player::AiPlayer`, running X search simulations per move decision. The simulation budget is the strength parameter. |
 | **Certified suffix** | `CertifiedSuffix { from_ply, line }`: a terminal segment of a game in which every attacker move belongs to a machine-verified forced-win line produced by the engine's threat-space search (TSS) prover. |
-| **Claim labels** | The project's provenance labels ([docs/12-gomoku-architecture.md](../../../12-gomoku-architecture.md)): **[measured]** marks numbers recorded in the reference's acceptance logs; **[experiment]** marks a free parameter or bar to be settled by measurement; **[derived]** marks a value computed from cited or measured values; **[invention]** marks a design choice of this track. |
+| **Claim labels** | The project's provenance labels, from three sources: the [architecture document](../../../12-gomoku-architecture.md)'s head defines **[experiment]** (a free parameter or bar to be settled by measurement) and **[derived]** (a value computed from cited or measured values); the [design spec](../../../specs/2026-11-11-selfplay-corpora-design.md) introduces **[invention]**, a design choice of this track; and **[measured]** — a number recorded in the reference's acceptance logs — is the convention of the tutorial [hand-off](../../../specs/2026-11-11-selfplay-corpora-tutorial-handoff.md) and the reference's acceptance evidence. |
 | **Corpus** | A set of game records produced at one declared pairing, stored as shards plus a manifest. |
 | **Game record** | `GameRecord`: the durable serialization of one complete game — a header (seed, seat pairing, evaluator identity, the Swap2 opening), the ordered post-opening `plies`, the `outcome`, and an optional certified suffix. Chapter 02 fixed the format. |
 | **Holdout split** | The train/holdout partition of the `train` crate: a sample is held out iff its canonical position's Zobrist key modulo 100 is below 10. Content-based, so holdout metrics stay comparable across sources. |
@@ -194,10 +194,11 @@ per target (deduplicated) or count raw result lines — never mix the
 two methods. The same caveat applies to the workspace totals quoted in
 the gates section below.
 
-All four tests share one fabricated record, built by the
+The three record-based tests share one fabricated record, built by the
 `certified_record()` helper that chapter 05's binary tests introduced
 (alongside the `TestDir` temporary-directory helper and the `mv`
-coordinate shorthand). No game is played. The fixture's Swap2 opening
+coordinate shorthand); the empty-corpus test creates no record. No
+game is played. The fixture's Swap2 opening
 places stones at `(5, 5)`, `(10, 10)`, `(5, 6)` with the answer "take
 Black" and generated provenance; the six post-opening plies are
 `(10, 11)`, `(5, 7)`, `(10, 12)`, `(5, 8)`, `(10, 13)`, `(5, 9)` —
@@ -932,8 +933,8 @@ generate, verify, extract, all inside a temporary directory.
   the measured acceptance evidence the gates quote and the open
   questions carried honestly.
 - [docs/12-gomoku-architecture.md](../../../12-gomoku-architecture.md) —
-  §12 the soundness gate, the determinism policy, and the claim-label
-  convention this chapter's glossary defines.
+  the document head's claim-label convention; §12 the soundness gate
+  and the determinism policy.
 - [docs/14-openings-and-supervised-curriculum.md](../../../14-openings-and-supervised-curriculum.md) —
   §3 the Swap2 procedure and the tournament opening lists; decision D6
   the training mixture the verified corpora feed.
@@ -980,13 +981,13 @@ generate, verify, extract, all inside a temporary directory.
 
 **Companion papers:**
 
-- [acceptance-design.md](acceptance-design.md) *(planned)* — the
+- [acceptance-design.md](acceptance-design.md) — the
   conceptual story: acceptance proves the stored data contract, not
   the player.
 - [acceptance-implementation.md](acceptance-implementation.md)
-  *(planned)* — the hiding layer: low-level construction instructions,
+  — the hiding layer: low-level construction instructions,
   signatures in prose, method bodies never.
-- [acceptance-solution.md](acceptance-solution.md) *(planned)* — the
+- [acceptance-solution.md](acceptance-solution.md) — the
   annotated reference snippets.
 
 **External sources:**

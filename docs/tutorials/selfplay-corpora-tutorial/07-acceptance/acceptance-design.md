@@ -41,8 +41,8 @@ determinism (byte-identical shards across process restarts), legality
 re-verified), the first corpus's quality report, and the integration
 smoke. The fifth gate — whether simulation budget grades strength —
 is pre-registered but not executed at the registered scale, because
-the only graded measurement on record inverted the expectation and
-that observation stands unresolved. The intended reader has read the
+the larger of the two graded measurements on record inverted the
+expectation and that observation stands unresolved. The intended reader has read the
 chapter paper and wants the reasoning behind its artifacts before
 building them.
 
@@ -54,7 +54,7 @@ building them.
 | **Anchor seed** | `AnchorSeed { game_index, from_ply, line }`: a (position, forcing move, ±1) triple extracted from a certified suffix; the input format of the milestone-4 puzzle anchor set. |
 | **Baseline-X** | The hand-written baseline evaluator behind the `mcts::Evaluator` seam, orchestrated by `player::AiPlayer`, running X search simulations per move decision. The simulation budget is the strength parameter. |
 | **Certified suffix** | `CertifiedSuffix { from_ply, line }`: a terminal segment of a game in which every attacker move belongs to a machine-verified forced-win line produced by the engine's threat-space search prover. |
-| **Claim labels** | The project's provenance labels ([docs/12-gomoku-architecture.md](../../../12-gomoku-architecture.md)): **[measured]** marks numbers recorded in the reference's acceptance logs; **[derived]** marks a value computed from cited or measured values; **[experiment]** marks a free parameter or bar to be settled by measurement; **[invention]** marks a design choice of this track; **[paper]** marks a statement from a cited paper. Statements about code behavior carry no label: they are *source-grounded*, meaning they describe the cited source file's actual text and can be checked against it. |
+| **Claim labels** | The project's provenance labels, from three sources. The [architecture document](../../../12-gomoku-architecture.md)'s head defines **[paper]** (a statement from a cited paper), **[derived]** (a value computed from cited values), and **[experiment]** (a free parameter or bar to be settled by measurement). The [design spec](../../../specs/2026-11-11-selfplay-corpora-design.md) introduces **[invention]**, a design choice of this track. **[measured]** — a number recorded in the reference's acceptance logs — is the convention of the tutorial [hand-off](../../../specs/2026-11-11-selfplay-corpora-tutorial-handoff.md) and the reference's acceptance evidence. Statements about code behavior carry no label: they are *source-grounded*, meaning they describe the cited source file's actual text and can be checked against it. |
 | **Corpus** | A set of game records produced at one declared pairing, stored as shard files plus a manifest in one directory. |
 | **Deduplicated count** | A test count taken per target: each suite contributes its own tests once. Contrasts with the raw result-line count; the two differ because one test re-runs its own binary in child processes. |
 | **Elo-style rating** | A relative-strength rating computed from match results. The tutorial produces none, deliberately. |
@@ -121,10 +121,12 @@ this chapter needs it.
   built the `selfplaygen` generator whose corpora this chapter
   verifies, and established the release-mode discipline for
   everything that plays games and the MANUAL-test discipline for slow
-  measurements. Its three open observations — the grading probe that
-  inverted the expectation, the per-seed divergence on the pinned
-  grading seeds, the rejected piskvork opening list — are this
-  chapter's inheritance.
+  measurements. Its three open observations — the rejected piskvork
+  opening list, debug builds too slow for game-playing verification,
+  and the grading probe that inverted the expectation — are this
+  chapter's inheritance, together with one further observation the
+  chapter-04 slice handed over: the per-seed divergence of the four
+  pinned 16-vs-1 grading seeds from the reference's pinned comment.
 - [Chapter 05 — certified endgames](../05-certified-endgames/certified-endgames.md)
   and its
   [design paper](../05-certified-endgames/certified-endgames-design.md) —
@@ -153,9 +155,9 @@ The [design spec](../../../specs/2026-11-11-selfplay-corpora-design.md)
 numbers and §7 the open questions. The
 [hand-off](../../../specs/2026-11-11-selfplay-corpora-tutorial-handoff.md)
 lists the measured numbers the chapters quote. The
-[wiki's system design](../../../12-gomoku-architecture.md) §12 locks
-the determinism policy and the claim-label convention this paper's
-glossary defines.
+[wiki's system design](../../../12-gomoku-architecture.md) defines
+the claim labels [paper], [derived], and [experiment] in its document
+head and locks the determinism policy in §12.
 
 ### Reference provenance
 
@@ -170,9 +172,12 @@ provenance, deleted with the worktree once the tutorial is complete
 on `main`, with the load-bearing numbers preserved in the hand-off
 and quoted in the chapters. This paper distinguishes three
 provenance classes throughout: what lives on `main` (the `engine`,
-`train`, and `net` sources, cited as links), what exists only in the
-read-only reference worktree until the learner builds it (the whole
-`selfplay` crate, including this chapter's binary, cited as paths,
+`train`, and `net` sources, cited as links — plus chapter 01's
+game-runner slice of the `selfplay` crate, landed by the learner),
+what exists only in the
+read-only reference worktree until the learner builds it (the
+`selfplay` crate's later files, chapters 02–07, including this
+chapter's binary, cited as paths,
 not links), and what is scratch measurement provenance (the
 acceptance logs, quoted with attribution and never re-run by the
 learner). The solution papers quote the reference; they are
@@ -404,8 +409,8 @@ fields, in the report's order:
   on.
 - `min_plies`, `max_plies`, `mean_plies`, `median_plies` — the length
   summary. The median of an even count is the mean of the two middle
-  values, so it can end in `.5` (the measured corpus: 48 games,
-  median 27.0).
+  values, so it can end in `.5`; the measured 48-game corpus's two
+  middle values were 26 and 28, hence median (26 + 28)/2 = 27.0.
 - `length_histogram_plies` — the exact length frequencies as a map
   from ply count to game count. Exact frequencies, not bins: a bin
   boundary would be an opinion, and the corpus gate's job is to
@@ -508,7 +513,7 @@ sequenceDiagram
 
     Op->>CLI: one corpus flag with a directory
     CLI->>Pa: the argument list
-    alt a flag is missing or unknown
+    alt a flag is missing or unknown or lacks its value
         Pa-->>CLI: a named parse error
         CLI-->>Op: message and usage line on stderr then exit two
     else the corpus flag carries a value
@@ -522,7 +527,7 @@ sequenceDiagram
             loop one pass per record in corpus order
                 CLI->>Vf: game index and record
                 Vf->>Eng: the opening ceremony then every recorded move
-                Eng-->>Vf: the replayed terminal board
+                Eng-->>Vf: the replayed final board
                 Vf->>Vf: the engine status must match the recorded outcome
                 alt an opening fails or a move is illegal or the outcome disagrees
                     Vf-->>CLI: a named error with the game index and ply
@@ -718,7 +723,9 @@ this tutorial.
 ### Gate 4 — the first corpus [measured]
 
 Build the first corpus at a declared pairing and report the numbers.
-The measured corpus: 48 games, baseline-32 vs baseline-32, seeds
+Every percentage and every games/hour rate quoted in this subsection
+is [derived] from the quoted counts. The measured corpus: 48 games,
+baseline-32 vs baseline-32, seeds
 100000–100047, the three committed Gomocup freestyle lists, shard
 capacity 16, one release process. Wall time 122.68 s — **1 408.54
 games/hour**, mean 2.56 s per game — writing three shards, 200 KiB
@@ -733,15 +740,15 @@ quality report is the verifier's JSON (the reference worktree's
 bar was pre-registered, so the first corpus establishes the baseline;
 game length min 7, median 27.0, mean 38.75, max 222 post-opening
 plies, with the longest game the only draw; 10 of 48 games
-(20.83 % [derived]) ended within 16 plies — a clear short tactical
+(20.83 %) ended within 16 plies — a clear short tactical
 tail, but 38 of 48 (79.17 %) lasted longer, so this small corpus
 does not support saying that *most* games end inside the ~16-ply
 prediction; opening diversity 28 of the 36 offers in the pool, the
 most frequent single offer 4 of 48 times (8.33 %), list totals
 2024: 23, 2025: 15, 2026: 10; Swap2 answers take Black 20, take
 White 17, add two with final choice Black 6, add two with final
-choice White 5; certified suffixes 47 of 48 games (97.92 %
-[derived]), all re-verified under gate 2. **Status: met** — the gate
+choice White 5; certified suffixes 47 of 48 games (97.92 %),
+all re-verified under gate 2. **Status: met** — the gate
 is a report; no bars beyond generation and verification were
 pre-registered.
 
@@ -896,7 +903,7 @@ are recorded so the choices are not relitigated silently.
 | Treat the summary's `certified_suffixes` count as proof of certificate validity | A count of records that *carry* a suffix says nothing about soundness: a forged or corrupt suffix counts too. Only `verify_line` re-verification establishes validity, which is why the legality gate quotes the anchor pass's 47/47, not the verifier's 47, for the certificate claim. | The count-versus-re-verify split in `Summary::from_records` and `extract_anchor_seeds` |
 | Trust the manifest, or cross-check it against the shards | The verifier reads the shards only; every report number derives from the decoded records, so the report cannot agree with a manifest the data contradicts. The stronger alternative — an actual manifest-versus-shard cross-check — is implemented nowhere in the tutorial and stands as an open hardening gap, recorded in chapters 02 and 07, not a gate this design satisfies. | Chapter 02's corrected honesty boundary; the chapter's walkthrough §2 |
 | Silently overwrite capstone or acceptance outputs | Every writer in the pipeline refuses rather than replaces: the corpus writer refuses a non-empty output directory by default, the export refuses with no opt-in, and the anchor extractor fails with `File exists (os error 17)` when its `--out` exists. An acceptance artifact, once quoted, must be traceable to one deliberate invocation. | Chapter 02's overwrite discipline; chapter 06's stricter refusal; the chapter's capstone boundary experiment |
-| Convert the grading probe or the grading smoke into an Elo-style rating or any strength claim | A 20-game unregistered probe and a four-seed direction sanity check cannot carry a rating; one inverted and the other diverged per seed. The design pre-registers a 50-game protocol with a fixed bar precisely so the eventual measurement has a stated meaning — and even that bar detects a large effect or its absence, not a rating. | The design spec §5 grading gate; chapter 04's pinned MANUAL comment ("a cheap sanity check does not become a flaky Elo estimate") |
+| Convert the grading probe or the grading smoke into an Elo-style rating or any strength claim | A 20-game unregistered probe and a four-seed direction sanity check cannot carry a rating; one inverted and the other diverged per seed. The design pre-registers a 50-game protocol with a fixed bar precisely so the eventual measurement has a stated meaning — and even that bar detects a large effect or its absence, not a rating. | The design spec §5 grading gate; chapter 04's pinned comment in `tests/grading.rs` ("Pinning avoids turning a cheap sanity check into a flaky Elo estimate") |
 | A `--limit` flag for partial verification | A verified prefix is not a verified corpus; the flag invites quoting the partial as the whole. Limiting work is a generation-time decision (`selfplaygen --games`). | The one-flag parse design |
 | Binned length histogram | A bin boundary is an opinion; the corpus gate reports, it does not interpret. The exact frequency map costs nothing at corpus scale. | The `length_histogram_plies` field semantics |
 
@@ -981,7 +988,7 @@ measured corpus supplied.
 | Name | Kind | Role |
 |------|------|------|
 | `TestDir` | helper struct | The temporary directory with `Drop` cleanup; named `selfplayanchors-test-<pid>-<nanos>` — the fixture named in the flake observation. |
-| `certified_record` | helper function | The fabricated six-ply record with a one-move certified suffix that all four chapter-07 tests share; no game is played. |
+| `certified_record` | helper function | The fabricated six-ply record with a one-move certified suffix, shared by the three record-based chapter-07 tests; the empty-corpus test creates no record. No game is played. |
 | `mv` | helper function | The coordinate shorthand for building moves. |
 | `selfplayverify_*` | four tests | The binary's whole specification: empty corpus, illegal move, outcome disagreement, JSON report. |
 
@@ -1119,9 +1126,9 @@ playing strength.
   gates with their measured evidence, the open observations, and the
   capstone.
 - [acceptance-implementation.md](acceptance-implementation.md)
-  *(planned)* — the hiding layer: low-level construction
+  — the hiding layer: low-level construction
   instructions, signatures in prose, method bodies never.
-- [acceptance-solution.md](acceptance-solution.md) *(planned)* — the
+- [acceptance-solution.md](acceptance-solution.md) — the
   annotated reference snippets.
 
 **This track:**
@@ -1166,8 +1173,8 @@ playing strength.
   the measured acceptance evidence the gates quote and the open
   questions carried honestly.
 - [docs/12-gomoku-architecture.md](../../../12-gomoku-architecture.md) —
-  §12 the determinism policy and the claim-label convention this
-  paper's glossary defines.
+  the document head's claim-label convention ([paper], [derived],
+  [experiment]); §12 the determinism policy.
 - [docs/14-openings-and-supervised-curriculum.md](../../../14-openings-and-supervised-curriculum.md) —
   §3 the Swap2 procedure and the tournament opening lists whose paths
   key the report's `opening_offers` map.
@@ -1193,8 +1200,11 @@ playing strength.
 - [`gomoku/crates/net/src/bin/nettrain.rs`](../../../../gomoku/crates/net/src/bin/nettrain.rs) —
   the integration gate's unchanged consumer.
 
-**Source (in the read-only reference worktree; lands on `main` as the
-track is worked):**
+**Source (lands on `main` as the track is worked; until then it
+lives only in the read-only reference worktree):** chapter 01's
+`src/game.rs` and `src/opening.rs` have landed on `main` with the
+learner-worked game runner; the chapter 02–07 files below, including
+this chapter's binary, land as those chapters are worked.
 
 - `gomoku/crates/selfplay/src/bin/selfplayverify.rs` — new: the
   verifier binary (`parse_corpus`, `verify_record`, `Summary`,
