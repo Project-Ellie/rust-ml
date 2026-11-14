@@ -18,6 +18,10 @@ data/gomocup-games/games/
 data/karesis-gomoku/files/
 data/puzzles/files/
 
+# Generated training artifacts — local-only
+data/check-points/
+data/synthetic/
+
 # paper/ LaTeX build products
 paper/*.aux
 paper/*.bbl
