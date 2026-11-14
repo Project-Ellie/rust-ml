@@ -24,7 +24,7 @@ game records** (`--game <file.psq>`, Piskvork parser, cursor at the end
 position, full study + overlays); acceptance becomes **09**. New reference
 tasks: **T8 puzzles** and **T9 game records**; T0 and T5 are rebuilt
 without legacy code (T0 deletes `ui.rs`/`input.rs`/`board.rs`/`puzzle.rs`
-instead of moving them; T5's `main.rs` has no legacy dispatch). Tests use
+instead of moving them; T5's `lib.rs` has no legacy dispatch). Tests use
 committed fixtures under `crates/cli/tests/fixtures/`. See the spec's
 same-dated amendments for the authoritative decisions.
 

@@ -39,7 +39,7 @@ Read [the design paper](../00-design.md) first. Its section
 contain all the logic; this file only validates and dispatches.
 
 Chapter 01 deleted the legacy hotseat/puzzle UI (owner decision,
-2026-10-17: the study table is the single CLI) and left `main.rs` as
+2026-10-17: the study table is the single CLI) and left `lib.rs` as
 a clap skeleton with nothing to dispatch to. Chapters 02–04 built the
 session core; sub-chapters a–e built the table on top of it. This
 sub-chapter is the last one: it connects the user to the table.
@@ -73,7 +73,7 @@ session phase, so `play` only sets `swap2: true` on the
 
 ### The binary is wiring
 
-`main.rs` has no session logic. It reads flags, rejects impossible
+`lib.rs` has no session logic. It reads flags, rejects impossible
 combinations, assembles one `SessionInit`, and calls `study::run`.
 That is the whole file. When a test of this sub-chapter fails, the
 defect is a wrong `SessionInit` or a wrong exit code — every other
@@ -307,7 +307,7 @@ cargo fmt --all -- --check
 ```
 
 Plus the transcript capture and diff from sub-chapter a's checklist.
-Sessiondemo does not use `main.rs`; both diffs must be empty.
+Sessiondemo does not use `lib.rs`; both diffs must be empty.
 
 One manual check beyond the gates, in a real terminal:
 

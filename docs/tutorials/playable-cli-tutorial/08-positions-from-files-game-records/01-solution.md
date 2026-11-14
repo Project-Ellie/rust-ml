@@ -3,7 +3,7 @@
 > This file quotes the target state your work should produce for
 > chapter 08, verbatim. New files and every file with substantive edits
 > are quoted whole. Files already quoted in chapter 07's solution
-> (`session.rs`, `main.rs`, `sessiondemo.rs`, `render.rs`, `lib.rs`,
+> (`session.rs`, `lib.rs`, `sessiondemo.rs`, `render.rs`, `lib.rs`,
 > `tests/session.rs`) are quoted again at their chapter-08 state —
 > each chapter's solution is self-contained. Target state verified
 > against the tutorial's reference build, commit `3bf0544`.

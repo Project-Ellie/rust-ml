@@ -404,7 +404,7 @@ fn player_color(color: PlayerColor) -> Color {
 }
 ```
 
-A note on size: `main.rs` is 270 lines, past the chapter's
+A note on size: `lib.rs` is 270 lines, past the chapter's
 approximate 250-line budget. The bulk is clap declarations and their
 doc text, which is the user-facing surface of this sub-chapter. The
 file holds one concern — wiring — which is the budget's stated
@@ -803,7 +803,7 @@ From `gomoku/`, after the sub-chapter:
 * `cargo clippy --all-targets -- -D warnings` — clean.
 * `cargo fmt --all -- --check` — clean.
 * Both demo transcripts are byte-identical to before. Sessiondemo
-  does not import `main.rs`; the repl code is untouched.
+  does not import `lib.rs`; the repl code is untouched.
 * Manual smoke tests through the built binary (line mode, piped):
   `play --no-swap2` plays and quits at EOF; the bare invocation runs
   the full ceremony and then accepts game moves;

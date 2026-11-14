@@ -35,7 +35,7 @@ constructor, the study commands, and the `--puzzle` flag are the next
 three sub-chapters.
 
 The parser is a library slice. It touches no files, no terminal, and no
-network. `main.rs` and `sessiondemo` will read the pack text later and
+network. `lib.rs` and `sessiondemo` will read the pack text later and
 hand it to `PuzzlePack::from_json`.
 
 ## Intention

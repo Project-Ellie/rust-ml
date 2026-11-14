@@ -36,7 +36,7 @@ render.rs    side-panel line: Puzzle: <i+1> of <count> · <attacker> to move
 ```
 
 The core/shell doctrine is unchanged: parsing lives in the library
-behind `SessionInit`, file I/O lives in `main.rs` and `sessiondemo`, and
+behind `SessionInit`, file I/O lives in `lib.rs` and `sessiondemo`, and
 events remain the only output of the core. Tests never touch `data/`:
 a committed mini fixture under `crates/cli/tests/fixtures/` carries
 every test.

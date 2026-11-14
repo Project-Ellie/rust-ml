@@ -20,7 +20,7 @@ lists the new puzzle commands in the help text.
 | **Puzzle flag** | The `--puzzle <PACK.json>` argument of the `play` subcommand. |
 | **Index flag** | The `--index <N>` argument, zero-based, that selects one puzzle from the pack. |
 | **`PlayArgs`** | The clap struct that holds all flags for the `play` subcommand. |
-| **`build_puzzle_init`** | The function in `main.rs` that reads a pack file, parses it, and builds a `SessionInit`. |
+| **`build_puzzle_init`** | The function in `lib.rs` that reads a pack file, parses it, and builds a `SessionInit`. |
 | **`PuzzleStudy`** | The context carried by `SessionInit` that holds the pack path, the current index, and the parsed pack. |
 | **Exit code 2** | The convention for usage and data errors in this binary, matching clap's own error code. |
 | **`data/puzzles/`** | The directory the puzzle packs live in; missing-pack errors point here. |
@@ -33,7 +33,7 @@ This sub-chapter is the last slice of chapter 07: it exposes puzzles
 through the command line and renders the loaded puzzle in the side
 panel.
 
-The core/shell doctrine is unchanged. File I/O lives in `main.rs`; the
+The core/shell doctrine is unchanged. File I/O lives in `lib.rs`; the
 `cli` library receives a parsed `PuzzlePack` through
 `SessionInit::puzzle` and never touches the filesystem again.
 

@@ -113,7 +113,7 @@ the `SessionInit` is the source of truth for resets.
 ## Decision 5 — The session keeps the whole pack
 
 `SessionInit::puzzle` takes the *parsed* pack, not a path. The core
-never touches the filesystem (core/shell doctrine): `main.rs` and
+never touches the filesystem (core/shell doctrine): `lib.rs` and
 `sessiondemo` read the file once at startup, and `next` / `prev` need
 no further I/O. The pack path is kept in `PuzzleStudy` only for display
 and error messages.
@@ -144,7 +144,7 @@ unknown keys.
 
 Decided (2026-10-31, with the owner): the `--puzzle` flag gains an
 optional value. A bare `gomoku play --puzzle` opens the native OS file
-dialog — one blocking [`rfd`](https://docs.rs/rfd) call in `main.rs`,
+dialog — one blocking [`rfd`](https://docs.rs/rfd) call in `lib.rs`,
 running before the TUI starts — while `--puzzle pack.json` keeps the
 07d contract byte-for-byte so scripts, `sessiondemo`, and tests never
 see a dialog. Cancelling the dialog prints `no pack selected` and

@@ -10,7 +10,7 @@ at the puzzle corpus, filtered to `.json` files. The valued form
 their explicit paths and never see a dialog. Cancelling the dialog is
 a quiet exit, not an error.
 
-The dialog is one shell-layer function in `main.rs`, built on the
+The dialog is one shell-layer function in `lib.rs`, built on the
 `rfd` crate. The library is untouched. The dialog opens before the
 study table starts, so the terminal needs no suspend/resume handling.
 
@@ -21,8 +21,8 @@ study table starts, so the terminal needs no suspend/resume handling.
 | **Picker** | The native OS file dialog opened by a bare `--puzzle` flag. On macOS it is `NSOpenPanel`; on Linux, GTK3 or the XDG portal; on Windows, the COM dialog. |
 | **Optional-value flag** | A clap flag that may appear with or without a value. `--puzzle` means "ask me"; `--puzzle pack.json` means "use this". |
 | **`Option<Option<PathBuf>>`** | The clap idiom for an optional-value flag: `None` = flag absent, `Some(None)` = bare flag, `Some(Some(path))` = valued flag. |
-| **`pick_puzzle_pack`** | The `main.rs` function that builds and runs the `rfd` dialog. The only function in the project that touches `rfd`. |
-| **`resolve_pack_path`** | The `main.rs` function that turns the parsed flag into a path, calling the picker only for a bare flag. Generic over the picker, so tests stub it. |
+| **`pick_puzzle_pack`** | The `lib.rs` function that builds and runs the `rfd` dialog. The only function in the project that touches `rfd`. |
+| **`resolve_pack_path`** | The `lib.rs` function that turns the parsed flag into a path, calling the picker only for a bare flag. Generic over the picker, so tests stub it. |
 | **Cancel** | Closing the dialog without a selection. Resolves to no path; the binary prints one line and exits 0. |
 | **Blocking dialog** | `rfd::FileDialog::pick_file` blocks the calling thread until the dialog closes. Correct here: the binary has nothing else to do at startup, and the project bans async runtimes. |
 
@@ -35,11 +35,11 @@ shape for scripts and tests, but a human who studies puzzles daily
 should not type corpus paths. This sub-chapter adds the chooser.
 
 The core/shell doctrine is unchanged — and sharpened. File I/O already
-lives in `main.rs`; a GUI dialog is I/O of the same kind, so it lives
+lives in `lib.rs`; a GUI dialog is I/O of the same kind, so it lives
 there too, in exactly one function. The `cli` library, `sessiondemo`,
 and every test keep working with explicit paths only.
 
-The sub-chapter also adds the first unit tests inside `main.rs`. The
+The sub-chapter also adds the first unit tests inside `lib.rs`. The
 reason is a constraint, not a preference: an integration test cannot
 run a bare `--puzzle`, because that would open a real dialog on the
 test machine. So the parse shape and the picker seam are tested where
@@ -67,7 +67,7 @@ The learner enables this user-facing behavior:
 
 The tests are ordered along the execution path: parse shape first,
 then the resolution seam. All of them live in a new `#[cfg(test)] mod
-tests` at the bottom of `main.rs` — the binary target's first unit
+tests` at the bottom of `lib.rs` — the binary target's first unit
 tests, run by `cargo test -p cli` like any other.
 
 ### Parse shape

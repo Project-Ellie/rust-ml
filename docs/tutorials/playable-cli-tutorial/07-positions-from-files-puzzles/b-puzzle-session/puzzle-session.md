@@ -8,7 +8,7 @@ pack), the `SessionInit::puzzle` constructor, the `puzzle` field on
 `SessionInit` and `SessionCore`, a `puzzle()` accessor, and reset logic
 that returns the session to the initially loaded puzzle. The only
 ripple outside `session.rs` is the `puzzle: None` field in every
-existing `SessionInit` struct literal — in `main.rs`, `tests/actor.rs`,
+existing `SessionInit` struct literal — in `lib.rs`, `tests/actor.rs`,
 and `tests/study.rs`.
 
 The sub-chapter's lesson is that a puzzle is a position, not a mode.

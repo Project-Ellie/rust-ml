@@ -45,7 +45,7 @@ git-ignored and regenerated with `data/gomocup-games/fetch.sh`.
 
 The design constraints are the amendment's, unchanged from chapter 07:
 a record is not a game mode but a starting position (a whole main line
-of them); parsing lives in the library, file I/O in `main.rs` and
+of them); parsing lives in the library, file I/O in `lib.rs` and
 `sessiondemo`; a missing file exits 2 pointing at the corpus's
 fetch.sh; tests use a committed fixture, never `data/`.
 

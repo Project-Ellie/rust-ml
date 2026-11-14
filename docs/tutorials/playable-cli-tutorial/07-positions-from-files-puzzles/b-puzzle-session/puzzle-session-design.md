@@ -44,7 +44,7 @@ would in any other position.
 `SessionInit::puzzle` takes the parsed `PuzzlePack`, not a path. The
 core stores the entire pack in `PuzzleStudy` so that sub-chapter 07c
 can implement `NextPuzzle` and `PrevPuzzle` without further file I/O.
-This follows the core/shell doctrine: `main.rs` and `sessiondemo` read
+This follows the core/shell doctrine: `lib.rs` and `sessiondemo` read
 the file once at startup; the library never touches the filesystem.
 
 ## Decision 3 — `pack_path` is kept only for display and errors

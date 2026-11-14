@@ -25,7 +25,7 @@ and the study commands. This sub-chapter is the surface: the command
 line that loads a pack and the panel that shows which puzzle is open.
 
 The core/shell doctrine says the library must not do I/O. The puzzle
-file is therefore read and parsed in `main.rs`, and the parsed pack is
+file is therefore read and parsed in `lib.rs`, and the parsed pack is
 handed to `SessionInit::puzzle`.
 
 ## Decision 1 — `--puzzle` belongs to `play`, not `selfplay`

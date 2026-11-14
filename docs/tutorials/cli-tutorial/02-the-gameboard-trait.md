@@ -108,7 +108,7 @@ fn both_boards_agree_through_the_trait() {
 ## Steps
 
 1. Write `board.rs` against the contract (trait, wrappers, factory).
-2. In `main.rs`: pick an engine by name from `--engine naive|fast`
+2. In `lib.rs`: pick an engine by name from `--engine naive|fast`
    (default `fast`), build it via `board_for`, print its `name()`,
    `status()`, and `to_move()` — *through* the trait object.
 3. Wire the test above; run it.

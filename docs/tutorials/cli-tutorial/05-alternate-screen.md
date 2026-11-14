@@ -75,7 +75,7 @@ moved down by two. Row 23 is the *bottom* row of a 24-row terminal:
 parking the prompt on 22 and letting the echo land on 23 is the
 tightest layout that still cannot scroll.
 
-`main.rs` gains `--plain` to keep the chapter-4 loop as a fallback,
+`lib.rs` gains `--plain` to keep the chapter-4 loop as a fallback,
 and the run becomes:
 
 ```rust

@@ -5,7 +5,7 @@
 This paper records the decisions behind the native file picker for
 `--puzzle`. A bare flag opens an OS file dialog at the puzzle corpus;
 a valued flag keeps the 07d behavior exactly. The dialog is one
-blocking `rfd` call in `main.rs`, made before the TUI starts, and
+blocking `rfd` call in `lib.rs`, made before the TUI starts, and
 cancelling it is a quiet exit 0 — not an error.
 
 ## Glossary
@@ -13,7 +13,7 @@ cancelling it is a quiet exit 0 — not an error.
 | Term | Definition |
 |------|------------|
 | **`rfd`** | The Rusty File Dialogs crate: native open/save dialogs on macOS, Linux, and Windows. |
-| **`pick_puzzle_pack`** | The single `main.rs` function that names `rfd`. |
+| **`pick_puzzle_pack`** | The single `lib.rs` function that names `rfd`. |
 | **`resolve_pack_path`** | The flag-to-path resolution, generic over the picker so tests stub it. |
 | **Exit code 0** | Success — including a cancelled dialog. |
 | **Exit code 2** | Usage and data errors, matching clap's own convention. |
@@ -111,7 +111,7 @@ it belongs: on the valued path, where a named file is missing.
 ## Decision 8 — One helper, two sources
 
 `pick_puzzle_pack` is a thin call over a generic `pick_file(title,
-directory, extensions)` helper in `main.rs`. Chapter 08's `--game`
+directory, extensions)` helper in `lib.rs`. Chapter 08's `--game`
 reuses that helper with the `.psq` filter and the
 `data/gomocup-games/` directory when its own optional-value slice
 lands — the game-record flag gains a bare form on the same terms
