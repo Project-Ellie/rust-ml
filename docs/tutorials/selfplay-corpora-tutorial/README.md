@@ -212,11 +212,11 @@ reference. The worktree is deleted once the tutorial is complete on
 | 04 | [Diversity and grading](04-diversity-and-grading/diversity-and-grading.md) | Tournament opening lists, the exploration schedule (temperature 1 with root Dirichlet noise (Silver et al. 2017) for the opening plies, then greedy), the pairing matrix, seed discipline with deduplication, the `selfplaygen` binary. | [design](04-diversity-and-grading/diversity-and-grading-design.md) · [implementation plan](04-diversity-and-grading/diversity-and-grading-implementation.md) · [solution](04-diversity-and-grading/diversity-and-grading-solution.md) |
 | 05 | [Certified endgames](05-certified-endgames/certified-endgames.md) | Suffix detection from the seat's own TSS proof, the 100 % `verify_line` soundness gate, anchor-seed extraction, the `selfplayanchors` binary. | [design](05-certified-endgames/certified-endgames-design.md) · [implementation plan](05-certified-endgames/certified-endgames-implementation.md) · [solution](05-certified-endgames/certified-endgames-solution.md) |
 | 06 | [Reading back](06-reading-back/reading-back.md) | Replay-to-sample derivation, the holdout split, D4 augmentation at sample time, weighted source mixing, the `selfplayexport` binary. | [design](06-reading-back/reading-back-design.md) · [implementation plan](06-reading-back/reading-back-implementation.md) · [solution](06-reading-back/reading-back-solution.md) |
-| 07 | [Acceptance](07-acceptance/acceptance.md) | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · [implementation plan](07-acceptance/acceptance-implementation.md) · [solution](07-acceptance/acceptance-solution.md) |
+| 07 | [Acceptance](07-acceptance/acceptance.md) | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · implementation plan *(planned)* · solution *(planned)* |
 
 The chapter links 01–07 are live, as are the companion-paper links
-for chapters 01–06. Chapter 07's companion papers (design,
-implementation plan, solution) remain planned documents. The order
+for chapters 01–06 and chapter 07's design paper. Chapter 07's
+implementation plan and solution remain planned documents. The order
 is the dependency chain: a game before its record, the
 record before the search data inside it, recorded games before
 diversity at scale, corpora before the certificates they carry, and
@@ -256,8 +256,9 @@ everything before reading back and acceptance.
   [implementation plan](06-reading-back/reading-back-implementation.md),
   [solution](06-reading-back/reading-back-solution.md)) are
   written, and the chapter-7 paper
-  ([acceptance](07-acceptance/acceptance.md)) is written; its
-  companion papers (design, implementation plan, solution) remain
+  ([acceptance](07-acceptance/acceptance.md)) with its
+  [design paper](07-acceptance/acceptance-design.md) is written; the
+  implementation plan and solution remain
   planned. Chapter 01 is learner-worked and has landed on `main`:
   the `selfplay` crate exists with the game runner (`Game`,
   `Opening`, and the chapter's test specification); chapters 02–07
