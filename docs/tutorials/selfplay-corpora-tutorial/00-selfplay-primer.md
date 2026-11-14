@@ -493,7 +493,7 @@ Chapter 04 also lands the corpus generator binary `selfplaygen`:
 declared pairings, declared seed ranges, declared output — a corpus
 per invocation.
 
-### 4.5 Chapter 05 — certified endgames (planned: [certified-endgames.md](05-certified-endgames/certified-endgames.md))
+### 4.5 Chapter 05 — certified endgames ([certified-endgames.md](05-certified-endgames/certified-endgames.md))
 
 Each seat's TSS probe already proves forced wins during play (10 000
 nodes / 30 plies budget). When the probe fires and the forced line is
