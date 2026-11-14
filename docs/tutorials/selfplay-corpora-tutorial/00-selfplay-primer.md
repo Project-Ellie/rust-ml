@@ -512,7 +512,7 @@ carry a certified suffix, not all, and quiet endings and draws carry
 none. Absence of a certificate is "no anchor data", not a negative
 label.
 
-### 4.6 Chapter 06 — reading back (planned: [reading-back.md](06-reading-back/reading-back.md))
+### 4.6 Chapter 06 — reading back ([reading-back.md](06-reading-back/reading-back.md))
 
 The read path turns game records into training samples (decision S2's
 discipline): draw a random game, replay it through the engine to a

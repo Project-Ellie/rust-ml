@@ -211,15 +211,15 @@ reference. The worktree is deleted once the tutorial is complete on
 | 03 | [Recording the search](03-recording-the-search/recording-the-search.md) | Sparse per-ply visit records (the policy target π), sparse top-k priors, root-value estimates, sign conventions. | [design](03-recording-the-search/recording-the-search-design.md) · [implementation plan](03-recording-the-search/recording-the-search-implementation.md) · [solution](03-recording-the-search/recording-the-search-solution.md) |
 | 04 | [Diversity and grading](04-diversity-and-grading/diversity-and-grading.md) | Tournament opening lists, the exploration schedule (temperature 1 with root Dirichlet noise (Silver et al. 2017) for the opening plies, then greedy), the pairing matrix, seed discipline with deduplication, the `selfplaygen` binary. | [design](04-diversity-and-grading/diversity-and-grading-design.md) · [implementation plan](04-diversity-and-grading/diversity-and-grading-implementation.md) · [solution](04-diversity-and-grading/diversity-and-grading-solution.md) |
 | 05 | [Certified endgames](05-certified-endgames/certified-endgames.md) | Suffix detection from the seat's own TSS proof, the 100 % `verify_line` soundness gate, anchor-seed extraction, the `selfplayanchors` binary. | [design](05-certified-endgames/certified-endgames-design.md) · [implementation plan](05-certified-endgames/certified-endgames-implementation.md) · [solution](05-certified-endgames/certified-endgames-solution.md) |
-| 06 | [Reading back](06-reading-back/reading-back.md) *(planned)* | Replay-to-sample derivation, the holdout split, D4 augmentation at sample time, weighted source mixing, the `selfplayexport` binary. | [design](06-reading-back/reading-back-design.md) · [implementation plan](06-reading-back/reading-back-implementation.md) · [solution](06-reading-back/reading-back-solution.md) |
+| 06 | [Reading back](06-reading-back/reading-back.md) | Replay-to-sample derivation, the holdout split, D4 augmentation at sample time, weighted source mixing, the `selfplayexport` binary. | [design](06-reading-back/reading-back-design.md) · [implementation plan](06-reading-back/reading-back-implementation.md) · [solution](06-reading-back/reading-back-solution.md) |
 | 07 | [Acceptance](07-acceptance/acceptance.md) *(planned)* | The determinism, legality, grading, corpus, and integration gates; the first corpora and their quality report; the `selfplayverify` binary. | [design](07-acceptance/acceptance-design.md) · [implementation plan](07-acceptance/acceptance-implementation.md) · [solution](07-acceptance/acceptance-solution.md) |
 
-The chapter links 01–05 and their companion-paper links are live.
-The chapter links 06–07 and their companion-paper links name planned
+The chapter links 01–06 and their companion-paper links are live.
+The chapter link 07 and its companion-paper links name planned
 documents (marked *(planned)*), consistently with the primer's
 per-chapter headings. The README, the primer, and all chapter-1
-through chapter-5 paper links are live; the chapter paper sets 6–7
-remain planned. The order
+through chapter-6 paper links are live; the chapter paper set 7
+remains planned. The order
 is the dependency chain: a game before its record, the
 record before the search data inside it, recorded games before
 diversity at scale, corpora before the certificates they carry, and
@@ -252,8 +252,13 @@ everything before reading back and acceptance.
   ([chapter](05-certified-endgames/certified-endgames.md),
   [design](05-certified-endgames/certified-endgames-design.md),
   [implementation plan](05-certified-endgames/certified-endgames-implementation.md),
-  [solution](05-certified-endgames/certified-endgames-solution.md)) are
-  written; the chapter paper sets 6–7 remain planned. Nothing is learner-worked: the `selfplay` crate
+  [solution](05-certified-endgames/certified-endgames-solution.md)), and the
+  chapter-6 four-paper set
+  ([chapter](06-reading-back/reading-back.md),
+  [design](06-reading-back/reading-back-design.md),
+  [implementation plan](06-reading-back/reading-back-implementation.md),
+  [solution](06-reading-back/reading-back-solution.md)) are
+  written; the chapter paper set 7 remains planned. Nothing is learner-worked: the `selfplay` crate
   does not exist on `main`, and no chapter has landed. The reference implementation is
   built and gate-verified in the read-only reference worktree
   described above: the workspace gates are green, the `selfplay` suite
