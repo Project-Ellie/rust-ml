@@ -3,7 +3,7 @@
 
 use crate::game::{Game, Outcome};
 use crate::opening::Opening;
-use crate::schedule::ExplocationSchedule;
+use crate::schedule::ExplorationSchedule;
 use engine::{Move, SearchBudget};
 use player::{GuardConfig, OwnTssConfig, PlayerOptions};
 use serde::{Deserialize, Serialize};
@@ -42,7 +42,7 @@ pub struct GuardSettings {
     /// Whether candidate refutation probes are enabled
     pub enabled: bool,
     /// Maximum candates inspected after move selection
-    pub max_candiates: usize,
+    pub max_candidates: usize,
     /// Maximum threat-space nodes explored per candiate.
     pub max_nodes: u32,
     /// Maximum reputation depth in plies
@@ -57,7 +57,7 @@ impl From<GuardConfig> for GuardSettings {
         } = config.budget;
         Self {
             enabled: config.enabled,
-            max_candiates: config.max_candidates,
+            max_candidates: config.max_candidates,
             max_nodes,
             max_depth,
         }
@@ -108,7 +108,7 @@ pub struct SeatPairing {
     /// Base config for white
     pub white: SeatConfig,
     /// Per-ply selection schedule
-    pub exploration: ExplocationSchedule,
+    pub exploration: ExplorationSchedule,
 }
 
 /// the certified vcf sequence
@@ -180,7 +180,7 @@ impl From<&Game> for GameRecord {
                 config: SeatPairing {
                     black: game.black_options.into(),
                     white: game.white_options.into(),
-                    exploration: ExplocationSchedule::default(),
+                    exploration: ExplorationSchedule::default(),
                 },
                 evaluator: format!("baseline@{}", env!("CARGO_PKG_VERSION")),
                 opening: game.opening.clone(),

@@ -12,7 +12,7 @@ pub const EXPLORATION_PLIES: usize = 10;
 
 /// Serializable exploration schedule parameters
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct ExplocationSchedule {
+pub struct ExplorationSchedule {
     /// the exploration window's length
     pub plies: usize,
 
@@ -20,20 +20,20 @@ pub struct ExplocationSchedule {
     pub temperature: f32,
 
     /// Dirichlet noise mix fraction at the search root.
-    pub noise_eplilon: f32,
+    pub noise_epsilon: f32,
 
     /// Dirichlet noise concentration parameter.
     pub noise_alpha: f32,
 }
 
-impl Default for ExplocationSchedule {
+impl Default for ExplorationSchedule {
     /// Setings from Silver et al. 2017
     fn default() -> Self {
         Self {
             plies: EXPLORATION_PLIES,
             temperature: 1.0,
             noise_alpha: 0.3,
-            noise_eplilon: 0.25,
+            noise_epsilon: 0.25,
         }
     }
 }
