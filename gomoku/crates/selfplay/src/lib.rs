@@ -8,8 +8,12 @@
 
 pub mod anchor;
 pub mod corpus;
+pub mod export;
 pub mod game;
 pub mod generate;
+pub mod mix;
 pub mod opening;
 pub mod record;
+pub mod sample;
+pub mod sampler;
 pub mod schedule;
