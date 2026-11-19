@@ -1,10 +1,10 @@
 //! game
 
 use crate::opening::{GeneratedOpening, Opening, OpeningSource};
-use crate::record::CertifiedSuffix;
+use crate::record::{CertifiedSuffix, RECORDED_PRIOR_TOP_K};
 use baseline::{BaselineEvaluator, Device};
 use engine::{Color, Move, PlayError, Status};
-use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason};
+use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason, SearchStats};
 use rand::{SeedableRng, rngs::StdRng};
 use thiserror::Error;
 
@@ -15,10 +15,21 @@ pub struct PlySearch {
     pub side_to_move: Color,
     /// Raw visit counts
     pub visits: Vec<(Move, u32)>,
-    /// All root priors after optional Dirichlet noise, in descending order.
+    /// Top root priors after optional Dirichlet noise, in descending order.
     pub prior: Vec<(Move, f32)>,
     /// The searched root's value estimate from the `side_to_move`'s perspective.
     pub root_value: f32,
+}
+
+impl From<SearchStats> for PlySearch {
+    fn from(stats: SearchStats) -> Self {
+        Self {
+            side_to_move: stats.side_to_move,
+            visits: stats.visits.into_iter().filter(|(_, n)| *n > 0).collect(),
+            prior: stats.prior.into_iter().take(RECORDED_PRIOR_TOP_K).collect(),
+            root_value: stats.value,
+        }
+    }
 }
 
 /// One played move and the search data available when it was chosen.
@@ -146,16 +157,7 @@ pub fn play_game_with_opening(
         let decision = seat.decide(&board, options, &mut rng)?;
         match decision.action {
             DecisionAction::Play(mv) => {
-                // Chapter-1 slot conversion, inline: keep only positive-count
-                // visit entries and carry the prior through untruncated.
-                // Chapter 3 replaces this with `PlySearch::from` and the
-                // recorded top-k prior.
-                let search = decision.search.map(|stats| PlySearch {
-                    side_to_move: stats.side_to_move,
-                    visits: stats.visits.into_iter().filter(|(_, n)| *n > 0).collect(),
-                    prior: stats.prior,
-                    root_value: stats.value,
-                });
+                let search = decision.search.map(PlySearch::from);
                 board.play(mv).map_err(|source| GameError::Play {
                     ply: plies.len(),
                     mv,

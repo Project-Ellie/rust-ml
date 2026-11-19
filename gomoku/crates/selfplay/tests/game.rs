@@ -1,8 +1,9 @@
 use engine::{Color, Move, Status};
-use player::PlayerOptions;
+use player::{PlayerOptions, SearchStats};
 use rand::prelude::StdRng;
-use selfplay::game::{Outcome, WinReason, play_game, play_game_with_opening};
+use selfplay::game::{Outcome, PlySearch, WinReason, play_game, play_game_with_opening};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance, OpeningSource};
+use selfplay::record::RECORDED_PRIOR_TOP_K;
 use std::time::Instant;
 
 fn mv(r: u8, c: u8) -> Move {
@@ -22,6 +23,53 @@ impl OpeningSource for FixedOpening {
     fn opening(&mut self, _rng: &mut StdRng) -> Opening {
         self.0.clone()
     }
+}
+
+#[test]
+fn ply_search_preserves_the_side_to_move_root_value_sign() {
+    let black = SearchStats {
+        side_to_move: Color::Black,
+        visits: Vec::new(),
+        prior: Vec::new(),
+        value: 0.875,
+    };
+    let white = SearchStats {
+        side_to_move: Color::White,
+        visits: Vec::new(),
+        prior: Vec::new(),
+        value: -0.625,
+    };
+
+    let black_slot = PlySearch::from(black);
+    let white_slot = PlySearch::from(white);
+
+    assert_eq!(black_slot.side_to_move, Color::Black);
+    assert_eq!(black_slot.root_value, 0.875);
+    assert_eq!(white_slot.side_to_move, Color::White);
+    assert_eq!(white_slot.root_value, -0.625);
+}
+
+#[test]
+fn ply_search_truncates_prior_to_top_16_without_reordering() {
+    let input_prior: Vec<_> = (0..20)
+        .map(|i| (mv((i / 15) as u8, (i % 15) as u8), 1.0 - 0.01 * i as f32))
+        .collect();
+    let expected_prefix = input_prior
+        .clone()
+        .into_iter()
+        .take(RECORDED_PRIOR_TOP_K)
+        .collect::<Vec<_>>();
+    let stats = SearchStats {
+        side_to_move: Color::Black,
+        visits: vec![(mv(0, 0), 1)],
+        prior: input_prior,
+        value: 0.0,
+    };
+
+    let slot = PlySearch::from(stats);
+
+    assert_eq!(RECORDED_PRIOR_TOP_K, 16);
+    assert_eq!(slot.prior, expected_prefix);
 }
 
 #[test]

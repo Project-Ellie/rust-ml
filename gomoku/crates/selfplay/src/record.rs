@@ -11,6 +11,15 @@ use serde::{Deserialize, Serialize};
 /// Current durable game-record layout version.
 pub const GAME_RECORD_FORMAT_VERSION: u16 = 1;
 
+/// Maximum number of root prior entries stored in a durable record.
+///
+/// This sparse audit width is a selfplay-corpora format invention
+/// ([design spec](../../../docs/specs/2026-11-11-selfplay-corpora-design.md) §3.2);
+/// k = 16 is an **[experiment]** parameter, not an AlphaZero or architecture-document constant.
+/// The complete prior remains recomputable from the position and the deterministic baseline
+/// evaluator, so the truncation is safe.
+pub const RECORDED_PRIOR_TOP_K: usize = 16;
+
 /// Serializable own-side TSS probe settings for one seeat
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TssProbeSettings {
@@ -142,7 +151,7 @@ pub struct RecordedPly {
     pub mv: Move,
     /// Sparse raw root visits
     pub visits: Vec<(Move, u32)>,
-    /// All root priors after Dirichlet noise, in descending order;
+    /// Up to [`RECORDED_PRIOR_TOP_K`] root priors after Dirichlet noise, in descending order;
     /// empty when search did not run.
     pub prior: Vec<(Move, f32)>,
     /// Root value estimate from the recording side-to-move's perspective.
