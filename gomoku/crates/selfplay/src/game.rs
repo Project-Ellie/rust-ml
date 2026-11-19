@@ -1,6 +1,7 @@
 //! game
 
 use crate::opening::{GeneratedOpening, Opening, OpeningSource};
+use crate::record::CertifiedSuffix;
 use baseline::{BaselineEvaluator, Device};
 use engine::{Color, Move, PlayError, Status};
 use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason};
@@ -44,6 +45,8 @@ pub struct Game {
     pub plies: Vec<PlyRecord>,
     /// Terminal winner or draw
     pub outcome: Outcome,
+    /// The game might have ended with a TSS sequence
+    pub certified_suffix: Option<CertifiedSuffix>,
 }
 
 /// How a game was won
@@ -177,6 +180,7 @@ pub fn play_game_with_opening(
         opening,
         plies,
         outcome,
+        certified_suffix: None,
     })
 }
 

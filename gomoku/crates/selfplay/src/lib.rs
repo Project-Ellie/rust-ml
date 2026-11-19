@@ -6,5 +6,8 @@
 
 #![deny(missing_docs)]
 
+pub mod corpus;
 pub mod game;
 pub mod opening;
+pub mod record;
+pub mod schedule;

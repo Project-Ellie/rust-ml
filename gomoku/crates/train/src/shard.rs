@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io;
 use std::path::Path;
 
 use crate::collect::Quotas;
@@ -64,9 +64,9 @@ pub fn write_dataset(
     counts.insert("quiet".to_string(), 0);
 
     let mut shards: Vec<String> = Vec::new();
-    let mut shard_index = 0;
-    let mut shard_count = 0;
-    let mut writer: Option<BufWriter<File>> = None;
+    // let mut shard_index = 0;
+    // let mut shard_count = 0;
+    // let mut writer: Option<BufWriter<File>> = None;
 
     for sample in samples {
         match sample.value {
@@ -75,42 +75,12 @@ pub fn write_dataset(
             0.0 => *counts.get_mut("quiet").expect("quiet key inserted above") += 1,
             _ => {}
         }
-
-        if shard_count == SHARD_SIZE {
-            if let Some(mut w) = writer.take() {
-                w.flush()?;
-            }
-            shard_index += 1;
-            shard_count = 0;
-        }
-
-        if writer.is_none() {
-            let name = format!("shard-{shard_index:03}.bin");
-            let path = out_dir.join(&name);
-            let file = File::options().write(true).create_new(true).open(&path)?;
-            shards.push(name);
-            writer = Some(BufWriter::new(file));
-        }
-
-        let bytes = bincode::serde::encode_to_vec(sample, bincode::config::standard())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-        let len = bytes.len();
-        if len > u32::MAX as usize {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Encoded Sample exceeds u32 length limit.",
-            ));
-        }
-
-        let w = writer.as_mut().expect("Writer opened above.");
-        w.write_all(&(len as u32).to_le_bytes())?;
-        w.write_all(&bytes)?;
-        shard_count += 1;
     }
 
-    if let Some(mut w) = writer.take() {
-        w.flush()?
+    for (shard_index, chunk) in samples.chunks(SHARD_SIZE).enumerate() {
+        let name = format!("shard-{shard_index:03}.bin");
+        crate::storage::write_shard(chunk, &out_dir.join(&name))?;
+        shards.push(name);
     }
 
     let manifest = Manifest {

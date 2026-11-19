@@ -21,5 +21,6 @@ pub mod playout;
 pub mod sample;
 pub mod shard;
 pub mod split;
+pub mod storage;
 
 pub use sample::Sample;

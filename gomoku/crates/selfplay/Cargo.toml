@@ -9,7 +9,9 @@ license.workspace = true
 baseline = { path = "../baseline" }
 engine = { path = "../engine" }
 player = { path = "../player" }
+train = { path = "../train" }
 rand = "0.10.3"
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 

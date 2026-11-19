@@ -7,23 +7,10 @@
 
 use crate::label::{TacticalClass, classify};
 use crate::sample::Sample;
-use bincode::serde::decode_from_slice;
 use engine::Move;
-use std::fs::{self, File};
-use std::io::{self, BufReader, Read};
+use std::fs;
+use std::io;
 use std::path::Path;
-
-/// Number of bytes in the length-delimited frame prefix.
-///
-/// This mirrors the framing written by [`crate::shard::write_dataset`].
-const LENGTH_PREFIX_BYTES: usize = 4;
-
-/// Maximum allowed length for a single length-delimited shard record.
-///
-/// A [`Sample`] bincode payload is tiny; this cap is a guard against a
-/// corrupted length prefix forcing a huge allocation. It is intentionally
-/// much larger than any legitimate record.
-const MAX_RECORD_LEN: usize = 1 << 20; // 1 MiB
 
 /// Soundness violations detected by [`check_soundness`].
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -76,49 +63,17 @@ pub fn read_dataset(dir: &Path) -> io::Result<Vec<Sample>> {
 
     let mut samples = Vec::new();
     for path in shard_paths {
-        let file = File::open(&path)?;
-        let mut reader = BufReader::new(file);
-        read_shard(&mut reader, &mut samples)?;
+        samples.extend(crate::storage::read_shard(&path)?);
     }
 
     Ok(samples)
-}
-
-fn read_shard(reader: &mut impl Read, samples: &mut Vec<Sample>) -> io::Result<()> {
-    let mut len_buf = [0u8; LENGTH_PREFIX_BYTES];
-    loop {
-        // Distinguish a clean end from a torn prefix: the first read
-        // returns 0 only when no bytes remain; 1–3 leftover bytes mean
-        // a truncated record, and the follow-up read_exact propagates
-        // the UnexpectedEof instead of accepting it as end-of-shard.
-        match reader.read(&mut len_buf)? {
-            0 => break,
-            n => reader.read_exact(&mut len_buf[n..])?,
-        }
-        let len = u32::from_le_bytes(len_buf) as usize;
-        if len > MAX_RECORD_LEN {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("shard record length {len} exceeds maximum allowed {MAX_RECORD_LEN}"),
-            ));
-        }
-        let mut bytes = vec![0u8; len];
-        reader.read_exact(&mut bytes)?;
-
-        let (sample, _): (Sample, usize) =
-            decode_from_slice(&bytes, bincode::config::standard())
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        samples.push(sample);
-    }
-
-    Ok(())
 }
 
 /// Engine-truth check for a single sample.
 ///
 /// * Rebuilds the board via [`Sample::board`].
 /// * Verifies policy masses sum to 1 within [`MASS_TOLERANCE`].
-/// * Classifies the position via [`crate::label::classify`].
+/// * Classifies the position via [`classify`].
 /// * Verifies the value target matches the tactical class
 ///   (`+1.0` win, `-1.0` block, `0.0` quiet).
 /// * For [`TacticalClass::Win`], the policy argmax must be in
@@ -201,6 +156,7 @@ mod tests {
     use super::*;
     use crate::collect::{Quotas, collect};
     use crate::shard::write_dataset;
+    use crate::storage::MAX_RECORD_LEN;
     use engine::immediate_wins;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
