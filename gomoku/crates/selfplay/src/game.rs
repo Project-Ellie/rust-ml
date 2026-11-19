@@ -4,7 +4,7 @@ use crate::opening::{GeneratedOpening, Opening, OpeningSource};
 use crate::record::{CertifiedSuffix, RECORDED_PRIOR_TOP_K};
 use crate::schedule::ExplorationSchedule;
 use baseline::{BaselineEvaluator, Device};
-use engine::{Color, Move, PlayError, Status};
+use engine::{Color, Move, PlayError, Proof, Status};
 use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason, SearchStats};
 use rand::{SeedableRng, rngs::StdRng};
 use thiserror::Error;
@@ -57,7 +57,7 @@ pub struct Game {
     pub plies: Vec<PlyRecord>,
     /// Terminal winner or draw
     pub outcome: Outcome,
-    /// The game might have ended with a TSS sequence
+    /// Latest own-side proof whose line was followed to completion during play.
     pub certified_suffix: Option<CertifiedSuffix>,
 }
 
@@ -88,6 +88,54 @@ impl Game {
     /// Iterate over the ordered move list, excluding opening stones.
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> + '_ {
         self.plies.iter().map(|ply| ply.mv)
+    }
+}
+
+// The player supplies the exact proof that selected the move. Re-proving here
+// could choose a different line and would duplicate the probe's work.
+
+#[derive(Default)]
+struct SuffixTracker {
+    pending: Option<PendingSuffix>,
+    certified: Option<CertifiedSuffix>,
+}
+
+struct PendingSuffix {
+    suffix: CertifiedSuffix,
+    next: usize,
+}
+
+impl SuffixTracker {
+    fn begin(&mut self, ply: usize, own_proof: Option<Proof>) {
+        let Some(proof) = own_proof else {
+            return;
+        };
+        let from_ply = u16::try_from(ply).expect("a game has at most 225 plies");
+        self.pending = Some(PendingSuffix {
+            suffix: CertifiedSuffix {
+                from_ply,
+                line: proof.line,
+            },
+            next: 0,
+        });
+    }
+
+    fn observe(&mut self, mv: Move) {
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        if pending.suffix.line.get(pending.next) != Some(&mv) {
+            self.pending = None;
+            return;
+        }
+        pending.next += 1;
+        if pending.next == pending.suffix.line.len() {
+            self.certified = self.pending.take().map(|pending| pending.suffix);
+        }
+    }
+
+    fn finish(self) -> Option<CertifiedSuffix> {
+        self.certified
     }
 }
 
@@ -135,6 +183,7 @@ pub fn play_game_with_opening(
     let mut black = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
     let mut white = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
     let mut plies = Vec::new();
+    let mut tracker = SuffixTracker::default();
     let schedule = ExplorationSchedule::default();
 
     let outcome = loop {
@@ -160,12 +209,14 @@ pub fn play_game_with_opening(
         let decision = seat.decide(&board, &effective_options, &mut rng)?;
         match decision.action {
             DecisionAction::Play(mv) => {
+                tracker.begin(plies.len(), decision.own_proof);
                 let search = decision.search.map(PlySearch::from);
                 board.play(mv).map_err(|source| GameError::Play {
                     ply: plies.len(),
                     mv,
                     source,
                 })?;
+                tracker.observe(mv);
 
                 plies.push(PlyRecord { mv, search })
             }
@@ -185,7 +236,7 @@ pub fn play_game_with_opening(
         opening,
         plies,
         outcome,
-        certified_suffix: None,
+        certified_suffix: tracker.finish(),
     })
 }
 
@@ -206,4 +257,83 @@ pub fn play_game(
     white_options: PlayerOptions,
 ) -> Result<Game, GameError> {
     play_game_with_opening(seed, black_options, white_options, &mut GeneratedOpening)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use baseline::{BaselineEvaluator, Device};
+    use engine::Board;
+    use player::{AiPlayer, OwnTssConfig, PlayerOptions};
+    use rand::{SeedableRng, rngs::StdRng};
+
+    /// The win-in-3 VCF fixture from the engine prover tests: Black to move
+    /// forces a win starting with (7, 7).
+    fn vcf_fixture() -> Board {
+        let mut board = Board::new();
+        for (row, col) in [
+            (7, 4),
+            (7, 3),
+            (7, 5),
+            (0, 0),
+            (7, 6),
+            (0, 2),
+            (6, 6),
+            (0, 4),
+            (8, 8),
+            (0, 6),
+        ] {
+            board.play(Move::new(row, col).unwrap()).unwrap();
+        }
+        board
+    }
+
+    #[test]
+    fn followed_own_tss_proof_becomes_a_certified_suffix() {
+        let mut board = vcf_fixture();
+        let mut player = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
+        let options = PlayerOptions {
+            own: OwnTssConfig::baseline(),
+            ..PlayerOptions::default()
+        };
+        let decision = player
+            .decide(&board, &options, &mut StdRng::seed_from_u64(8))
+            .unwrap();
+        let expected_line = decision
+            .own_proof
+            .as_ref()
+            .expect("the VCF fixture has a proof")
+            .line
+            .clone();
+
+        let mut tracker = SuffixTracker::default();
+        tracker.begin(0, decision.own_proof);
+        for mv in &expected_line {
+            board
+                .play(*mv)
+                .expect("verified proof moves replay legally");
+            tracker.observe(*mv);
+        }
+
+        let suffix = tracker.finish().expect("the complete line certifies");
+        assert_eq!(suffix.from_ply, 0);
+        assert_eq!(suffix.line, expected_line);
+    }
+
+    #[test]
+    fn departing_from_the_proof_line_leaves_the_suffix_uncertified() {
+        let board = vcf_fixture();
+        let proof = engine::prove_shortest_forced_win(
+            &board,
+            board.to_move(),
+            OwnTssConfig::baseline().budget,
+        )
+        .expect("the VCF fixture has a proof");
+
+        let mut tracker = SuffixTracker::default();
+        tracker.begin(0, Some(proof));
+        tracker.observe(Move::new(14, 14).unwrap());
+
+        assert!(tracker.finish().is_none());
+    }
 }

@@ -400,6 +400,7 @@ fn own_proof_plays_the_shortest_certified_line() {
         .unwrap();
 
     assert_eq!(decision.action, DecisionAction::Play(shortest.line[0]));
+    assert_eq!(decision.own_proof, Some(shortest));
     assert!(decision.search.is_none());
 }
 

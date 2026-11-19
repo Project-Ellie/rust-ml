@@ -154,6 +154,10 @@ pub struct Decision {
     pub action: DecisionAction,
     /// Real search stats; absent only for the certified own-proof bypass.
     pub search: Option<SearchStats>,
+    /// Exact verified own-side proof that selected this move, if the
+    /// TSS probe fired. Ordinary searches and resignations retain no own-side
+    /// proof.
+    pub own_proof: Option<engine::Proof>,
     /// Selection diagnostics; absent when no proposal was sampled.
     pub guard: Option<GuardDiagnostics>,
     /// Original evidence for a new resignation; absent for every play,
@@ -253,7 +257,9 @@ impl AiPlayer {
     ///
     /// A certified own forced win plays the first move of the shortest verified
     /// line found within budget and returns immediately without consuming RNG,
-    /// calling the evaluator, or constructing search statistics. Otherwise
+    /// calling the evaluator, or constructing search statistics. The decision
+    /// retains that exact proof in `own_proof` for downstream suffix auditing.
+    /// Otherwise
     /// the order is search, optional heuristic resignation, optional root
     /// noise, then temperature selection over the root edges (zero
     /// temperature breaks visit ties by prior). Noise is deliberately applied
@@ -288,13 +294,14 @@ impl AiPlayer {
         if options.own.enabled {
             // One direct engine probe per decision, never cached: AiPlayer
             // holds no state besides the evaluator.
-            if let Some(mv) =
+            if let Some((mv, proof)) =
                 engine::prove_shortest_forced_win(board, board.to_move(), options.own.budget)
-                    .and_then(|proof| certified_own_move(board, &proof))
+                    .and_then(|proof| certified_own_move(board, &proof).map(|mv| (mv, proof)))
             {
                 return Ok(Decision {
                     action: DecisionAction::Play(mv),
                     search: None,
+                    own_proof: Some(proof),
                     guard: Some(GuardDiagnostics::new(mv, GuardOutcome::ProvenWin)),
                     resignation: None,
                 });
@@ -315,6 +322,7 @@ impl AiPlayer {
                     candidates: candidates.len(),
                 }),
                 search: Some(SearchStats::from_searched(&tree, root, board)),
+                own_proof: None,
                 guard: None,
                 resignation: Some(ResignationEvidence {
                     options: *options,
@@ -344,6 +352,7 @@ impl AiPlayer {
         Ok(Decision {
             action: DecisionAction::Play(mv),
             search: Some(SearchStats::from_searched(&tree, root, board)),
+            own_proof: None,
             guard: Some(guard),
             resignation: None,
         })
