@@ -2,6 +2,7 @@
 
 use crate::opening::{GeneratedOpening, Opening, OpeningSource};
 use crate::record::{CertifiedSuffix, RECORDED_PRIOR_TOP_K};
+use crate::schedule::ExplorationSchedule;
 use baseline::{BaselineEvaluator, Device};
 use engine::{Color, Move, PlayError, Status};
 use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason, SearchStats};
@@ -46,9 +47,9 @@ pub struct PlyRecord {
 pub struct Game {
     /// Seed of the single RNG stream used for opening an move selection.
     pub seed: u64,
-    /// Base options for black, preserved verbatim in the record
+    /// Base options for Black; exploration adjusts selection settings per ply.
     pub black_options: PlayerOptions,
-    /// Base options for white, preserved verbatim in the record
+    /// Base options for White; exploration adjusts selection settings per ply.
     pub white_options: PlayerOptions,
     /// Full Swap2 description and its provenenance
     pub opening: Opening,
@@ -134,6 +135,7 @@ pub fn play_game_with_opening(
     let mut black = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
     let mut white = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
     let mut plies = Vec::new();
+    let schedule = ExplorationSchedule::default();
 
     let outcome = loop {
         match board.status() {
@@ -154,7 +156,8 @@ pub fn play_game_with_opening(
             Color::White => (&mut white, &white_options),
         };
 
-        let decision = seat.decide(&board, options, &mut rng)?;
+        let effective_options = schedule.options_for_ply(*options, plies.len());
+        let decision = seat.decide(&board, &effective_options, &mut rng)?;
         match decision.action {
             DecisionAction::Play(mv) => {
                 let search = decision.search.map(PlySearch::from);
@@ -192,6 +195,7 @@ pub fn play_game_with_opening(
 /// [`BaselineEvaluator`] on [`Device::flex`]. There is no I/O, threading, or
 /// GPU work. The supplied base options are preserved in the returned game;
 /// `PlayerOptions::default()` disables resignation for ordinary corpus runs.
+/// The chapter-4 exploration schedule adjusts only selection settings per ply.
 ///
 /// # Errors
 /// Returns an error if the generated opening, a player decision, or a selected

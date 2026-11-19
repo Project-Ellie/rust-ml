@@ -80,7 +80,10 @@ pub struct SeatConfig {
     pub simulations: u32,
     /// PUCT exploration constant
     pub c_puct: f32,
-    /// sampling temperature
+    /// Base visit-count sampling temperature.
+    ///
+    /// The pairing's exploration schedule overrides this on every ply
+    /// (zero after the opening window).
     pub temperature: f32,
     /// Dirichlet noise mix fraction
     pub noise_epsilon: f32,

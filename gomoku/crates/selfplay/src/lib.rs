@@ -8,6 +8,7 @@
 
 pub mod corpus;
 pub mod game;
+pub mod generate;
 pub mod opening;
 pub mod record;
 pub mod schedule;
