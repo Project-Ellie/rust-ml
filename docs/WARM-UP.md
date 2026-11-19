@@ -142,7 +142,7 @@ Fixed glossary (tutorial README has the full version):
 - **Differential testing**: the fast engine must agree with the naive
   `reference.rs` oracle on every ply of 10k random games + undo walks.
 
-## Current status (verified 2026-11-14 — update this section as work lands)
+## Current status (verified 2026-11-19 — update this section as work lands)
 
 **Milestone 1 (engine) COMPLETE.** Done:
 
@@ -287,7 +287,7 @@ sections.
 
 The tutorial queue (owner-locked 2026-11-08, amended 2026-11-11): the
 net tutorial (phase-0 supervised training on the synthetic data) DONE,
-now the selfplay-corpora tutorial is being worked — strength-graded
+selfplay-corpora tutorial DONE (2026-11-19) — strength-graded
 baseline-vs-baseline self-play records, spec
 [docs/specs/2026-11-11-selfplay-corpora-design.md](specs/2026-11-11-selfplay-corpora-design.md):
 store-games record format (the milestone-5 replay-buffer format),
@@ -299,20 +299,30 @@ playing-strength probe is retired. The AlphaZero loop direction
 synthetic tactical set + retained external supplements), then phase-2
 candidate self-play into the replay buffer; promotion means beating
 the baseline at an equal simulation budget. Selfplay-corpora status:
-the full paper set is written — all 30 tutorial documents of the
+COMPLETE (2026-11-19) — the full paper set of the
 [selfplay-corpora-tutorial](tutorials/selfplay-corpora-tutorial/README.md)
-(README + primer + seven four-paper sets); chapter 01 (the game
-runner) is learner-worked and landed on `main` (4c8d7f6) — the
-`selfplay` crate plays Swap2 games between budget-seated baseline
-`AiPlayer`s and records every ply — while chapters 02–07 are not yet
-learner-worked. Chapter-07 verified acceptance (reference build):
+is written (README + primer + seven four-paper sets) and all seven
+chapters are landed on `main`: 01 the game runner (4c8d7f6), 02
+recording games (5d8a87b), 03 recording the search (04e5103), 04
+diversity and grading (09f367c), 05 certified endgames (1038780), 06
+reading back (3c8d9fa), 07 acceptance (3f7a5aa). The `selfplay` crate
+plays Swap2 games between budget-seated baseline `AiPlayer`s and
+records every ply; `selfplaygen` generates seeded, Zobrist-deduped
+corpora from tournament opening lists; `selfplayanchors` extracts
+verified anchor seeds; `selfplayexport` replays corpora into `train`
+Sample shards; `selfplayverify` replays every record through the
+engine and reports JSON quality statistics. Landed-code convention:
+pub modules + module-path imports instead of the tutorial plans'
+crate-root re-export checkpoints. Landed build:
 `cargo test -p selfplay` 50 passed / 4 ignored (deduplicated counts),
+matching the reference acceptance numbers below. Chapter-07 verified
+acceptance (reference build):
 `cargo test --workspace` 852 passed / 11 ignored across 63 unique
 suites, byte-identical regeneration, 48/48 games replayed (1,860
 plies), 47/47 anchors verified, the export/`nettrain` smokes
-historical. The grading gate stays pre-registered, not executed: the
-report-only probe inversion and the per-seed divergence remain
-unresolved observations — no strength conclusion. The queued client
+historical. The grading gate stays pre-registered, not executed
+(owner ruling 2026-11-19: the inversion is not being researched —
+no strength conclusion). The queued client
 model-integration tutorial (journal-aware model picker) follows.
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.
