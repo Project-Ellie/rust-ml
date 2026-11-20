@@ -41,6 +41,7 @@ pub fn execute(core: &mut SessionCore, command: Command) -> Result<SharedShellRe
             })
         }
         Command::LoadModel { path } => execute_load_model(core, path),
+        Command::ListModels { root } => execute_list_models(root),
         other => core
             .execute(other)
             .map(|events| SharedShellReply {
@@ -59,7 +60,7 @@ fn execute_load_model(
     core: &mut SessionCore,
     path: std::path::PathBuf,
 ) -> Result<SharedShellReply, String> {
-    let evaluator = crate::net_eval::NetEvaluator::load(&path)
+    let evaluator = neteval::NetEvaluator::load(&path)
         .map_err(|e| format!("could not load model from {}: {e}", path.display()))?;
     core.install_net_model(evaluator.into_model());
     Ok(SharedShellReply {
@@ -77,6 +78,46 @@ fn execute_load_model(
     _core: &mut SessionCore,
     _path: std::path::PathBuf,
 ) -> Result<SharedShellReply, String> {
+    Err("net support is not compiled in (cli feature 'net')".to_string())
+}
+
+/// Default root for the `models` listing (the training output
+/// convention; git-ignored bulk data).
+#[cfg(feature = "net")]
+const DEFAULT_CHECKPOINT_ROOT: &str = "data/check-points";
+
+/// List the loadable `nettrain` run directories under `root`
+/// (default: [`DEFAULT_CHECKPOINT_ROOT`]), most recent first.
+#[cfg(feature = "net")]
+fn execute_list_models(root: Option<std::path::PathBuf>) -> Result<SharedShellReply, String> {
+    let root = root.unwrap_or_else(|| DEFAULT_CHECKPOINT_ROOT.into());
+    let infos = neteval::picker::scan(&root);
+    let message = if infos.is_empty() {
+        format!("no nettrain run directories under {}", root.display())
+    } else {
+        let mut lines = format!("nettrain runs under {}:", root.display());
+        for info in &infos {
+            let cfg = &info.journal.model_config;
+            lines.push_str(&format!(
+                "\n  {}  {}ch x {}blocks  seed={}  {:?}",
+                info.dir.display(),
+                cfg.channels,
+                cfg.num_blocks,
+                info.journal.seed,
+                info.journal.stop_reason,
+            ));
+        }
+        lines
+    };
+    Ok(SharedShellReply {
+        message: Some(message),
+        ..SharedShellReply::default()
+    })
+}
+
+/// Without the `net` feature the command is a plain error.
+#[cfg(not(feature = "net"))]
+fn execute_list_models(_root: Option<std::path::PathBuf>) -> Result<SharedShellReply, String> {
     Err("net support is not compiled in (cli feature 'net')".to_string())
 }
 
@@ -148,6 +189,44 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(feature = "net")]
+    #[test]
+    fn models_command_lists_run_directories() {
+        let mut core = SessionCore::new(SessionInit::hotseat());
+        let root = scratch();
+        std::fs::create_dir_all(root.join("run-a")).unwrap();
+        write_tiny_run(&root.join("run-a"));
+
+        let reply = execute(
+            &mut core,
+            Command::ListModels {
+                root: Some(root.clone()),
+            },
+        )
+        .unwrap();
+        let message = reply.message.unwrap();
+        assert!(message.contains("run-a"), "got: {message}");
+        assert!(message.contains("8ch x 1blocks"), "got: {message}");
+
+        // Missing root: friendly empty message, not an error.
+        let missing = root.join("no-such-dir");
+        let reply = execute(
+            &mut core,
+            Command::ListModels {
+                root: Some(missing.clone()),
+            },
+        )
+        .unwrap();
+        assert!(
+            reply
+                .message
+                .unwrap()
+                .contains("no nettrain run directories"),
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[cfg(feature = "net")]

@@ -1,0 +1,12 @@
+[package]
+name = "neteval"
+description = "A trained net model behind the mcts::Evaluator seam, plus a journal-aware checkpoint picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+burn = { workspace = true, features = ["flex"] }
+engine = { path = "../engine" }
+mcts = { path = "../mcts" }
+net = { path = "../net", default-features = false, features = ["flex"] }

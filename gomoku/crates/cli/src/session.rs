@@ -479,9 +479,10 @@ impl SessionCore {
             Command::Reveal => self.execute_reveal(),
             Command::NextPuzzle => self.execute_puzzle_nav(1),
             Command::PrevPuzzle => self.execute_puzzle_nav(-1),
-            Command::Save { .. } | Command::Load { .. } | Command::LoadModel { .. } => {
-                Err(CommandError::ShellOnly)
-            }
+            Command::Save { .. }
+            | Command::Load { .. }
+            | Command::LoadModel { .. }
+            | Command::ListModels { .. } => Err(CommandError::ShellOnly),
         }
     }
 
@@ -986,7 +987,7 @@ impl SessionCore {
         // evaluator kind (runtime-only v1 overlay).
         #[cfg(feature = "net")]
         if let Some(model) = net {
-            return Box::new(crate::net_eval::NetEvaluator::from_model(model.clone()));
+            return Box::new(neteval::NetEvaluator::from_model(model.clone()));
         }
         let _ = net;
         match kind {

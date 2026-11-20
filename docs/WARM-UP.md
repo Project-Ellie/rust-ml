@@ -322,8 +322,17 @@ suites, byte-identical regeneration, 48/48 games replayed (1,860
 plies), 47/47 anchors verified, the export/`nettrain` smokes
 historical. The grading gate stays pre-registered, not executed
 (owner ruling 2026-11-19: the inversion is not being researched —
-no strength conclusion). The queued client
-model-integration tutorial (journal-aware model picker) follows.
+no strength conclusion). The client
+model-integration tutorial (journal-aware model picker) is RETIRED
+(2026-11-20, owner ruling: the tutorial ambition is abandoned) and
+replaced by regular feature work — issue #1, design
+[2026-11-20-net-integration-design.md](specs/2026-11-20-net-integration-design.md).
+Milestone A landed: the `neteval` crate (extracted from
+`cli::net_eval`; journal-aware `NetEvaluator` on plain Flex — the
+last-move planes stay zero, matching training, which rebuilds boards
+via `Board::from_position`) plus `neteval::picker` (journal-aware run
+directory scan) and the study-table `models [DIR]` listing command.
+Verified end to end against a real 200-step tiny `nettrain` run.
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.
 

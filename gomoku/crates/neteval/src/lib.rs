@@ -3,14 +3,20 @@
 //! [`NetEvaluator`] loads a checkpoint written by `nettrain` — a run
 //! directory holding `model.mpk` and `run.json` — and evaluates
 //! positions for MCTS. The run journal supplies the `ModelConfig`, so
-//! a single directory path is enough. This is the minimal precursor of
-//! the client model-integration tutorial (the journal-aware model
-//! picker), deliberately small.
+//! a single directory path is enough. The [`picker`] module lists such
+//! run directories for model-selection UIs.
 //!
-//! v1 limitation: the `mcts::EvalRequest` seam carries only the two
-//! engine planes (me/you). The network's last-move planes (net
-//! tutorial chapter 1) are zero-filled, so the model plays without
-//! seeing the most recent move.
+//! Input planes: the network's four 17×17 input planes are `me`,
+//! `you`, and two last-move history planes. Training rebuilds every
+//! sample board via `Board::from_position` (`net::batcher`), which
+//! carries no move history, so the history planes are zero in ALL
+//! training data. This evaluator zero-fills them at inference for the
+//! same reason — consistent with training, by design. Revisit only if
+//! `train::Sample` ever grows a move history.
+
+#![deny(missing_docs)]
+
+pub mod picker;
 
 use std::path::Path;
 
@@ -64,7 +70,8 @@ impl mcts::Evaluator for NetEvaluator {
     fn evaluate(&mut self, req: EvalRequest) -> EvalResult {
         // NCHW: plane 0 = me, plane 1 = you (engine::encode semantics,
         // identical to net::planes::assemble); planes 2/3 (last moves)
-        // stay zero — the EvalRequest seam does not carry history.
+        // stay zero — they are zero in all training data as well (see
+        // the crate docs).
         let mut data = vec![0.0f32; 4 * EXT * EXT];
         for (i, (&me, &you)) in req.planes.me.iter().zip(req.planes.you.iter()).enumerate() {
             data[i] = f32::from(me);
@@ -98,6 +105,7 @@ mod tests {
     use net::report::StopReason;
     use net::train::TrainConfig;
     use std::path::PathBuf;
+    use std::time::UNIX_EPOCH;
 
     /// Write a tiny trained-model run directory (untrained weights).
     pub(crate) fn write_tiny_run(dir: &Path) {
@@ -117,10 +125,10 @@ mod tests {
 
     pub(crate) fn scratch_dir(tag: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("cli-net-{tag}-{}-{nanos}", std::process::id()))
+        std::env::temp_dir().join(format!("neteval-{tag}-{}-{nanos}", std::process::id()))
     }
 
     #[test]

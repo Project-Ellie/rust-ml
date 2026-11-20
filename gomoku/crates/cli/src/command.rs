@@ -109,6 +109,13 @@ pub enum Command {
         /// Literal run-directory path
         path: PathBuf,
     },
+    /// List the loadable `nettrain` run directories under a root,
+    /// most recently modified first. Served by the shell; runtime-only,
+    /// never serialized.
+    ListModels {
+        /// Root directory; `None` defaults to `data/check-points`.
+        root: Option<PathBuf>,
+    },
 }
 
 /// Phase of a Swap2 opening ceremony.
@@ -469,6 +476,15 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
         return Ok(Command::LoadModel {
             path: std::path::PathBuf::from(remainder),
         });
+    }
+    if verb.eq_ignore_ascii_case("models") {
+        let remainder = trimmed[split..].trim();
+        let root = if remainder.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(remainder))
+        };
+        return Ok(Command::ListModels { root });
     }
 
     let lower = trimmed.to_ascii_lowercase();
@@ -953,5 +969,24 @@ mod tests {
         );
         assert!(parse("model").is_err());
         assert!(parse("model \t").is_err());
+    }
+
+    #[test]
+    fn models_command_parses_an_optional_root() {
+        assert_eq!(parse("models").unwrap(), Command::ListModels { root: None });
+        assert_eq!(parse("MODELS").unwrap(), Command::ListModels { root: None });
+        assert_eq!(
+            parse("models data/check-points").unwrap(),
+            Command::ListModels {
+                root: Some("data/check-points".into())
+            }
+        );
+        // Like save/load/model: internal spaces kept.
+        assert_eq!(
+            parse("models My Runs").unwrap(),
+            Command::ListModels {
+                root: Some("My Runs".into())
+            }
+        );
     }
 }

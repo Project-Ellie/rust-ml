@@ -115,6 +115,8 @@ mode:
 | `decision event E` | report one earlier event (all indices are one-based) |
 | `new` | reset to the opening |
 | `save PATH` / `load PATH` | save or replace a standalone study |
+| `model DIR` | load a trained nettrain run directory as the evaluator of every AI seat (feature `net`) |
+| `models [DIR]` | list loadable nettrain runs under DIR (default `data/check-points`), most recent first |
 | `h`, `help`, `?` | show help |
 | `q`, `quit`, `exit` | leave |
 

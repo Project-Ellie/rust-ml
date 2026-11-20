@@ -1413,6 +1413,7 @@ dependencies = [
  "engine",
  "mcts",
  "net",
+ "neteval",
  "player",
  "proptest",
  "rand 0.10.3",
@@ -4339,6 +4340,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "train",
+]
+
+[[package]]
+name = "neteval"
+version = "0.1.0"
+dependencies = [
+ "burn",
+ "engine",
+ "mcts",
+ "net",
 ]
 
 [[package]]
