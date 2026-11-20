@@ -59,9 +59,9 @@ impl Default for OwnTssConfig {
     }
 }
 
-/// Default number of top-ranked root candidates a heuristic resignation
-/// checks; see [`PlayerOptions::resignation_candidates`].
-pub const DEFAULT_RESIGNATION_CANDIDATES: usize = 10;
+/// Default number of top-ranked root candidates checked by resignation
+/// admission and the defensive guard; see [`PlayerOptions::candidate_checks`].
+pub const DEFAULT_CANDIDATE_CHECKS: usize = 10;
 
 /// Search and move-selection settings for one decision.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -83,10 +83,15 @@ pub struct PlayerOptions {
     /// Enable heuristic resignation after verified top-candidate refutations;
     /// disabled by default. Unchecked lower-ranked moves may still defend.
     pub resign: bool,
-    /// Number of top-ranked root candidates checked before conceding,
-    /// clamped to the legal move count. Zero checks no candidate, so no
-    /// candidate set can be certified and resignation never triggers.
-    pub resignation_candidates: usize,
+    /// Number of top-ranked root candidates checked by BOTH the heuristic
+    /// resignation admission and the defensive guard, clamped to the legal
+    /// move count. One shared figure (unified 2026-11-20 after a split-cap
+    /// loss): the guard's former separate cap let it fall back to an untested
+    /// move outside its own limit while genuine defenders sat inside the
+    /// resignation count. Zero checks no candidate, so no candidate set can
+    /// be certified: resignation never triggers, and an enabled guard returns
+    /// its proposal unchecked.
+    pub candidate_checks: usize,
 }
 
 impl Default for PlayerOptions {
@@ -101,7 +106,7 @@ impl Default for PlayerOptions {
             own: OwnTssConfig::disabled(),
             guard: GuardConfig::disabled(),
             resign: false,
-            resignation_candidates: DEFAULT_RESIGNATION_CANDIDATES,
+            candidate_checks: DEFAULT_CANDIDATE_CHECKS,
         }
     }
 }
@@ -135,7 +140,7 @@ pub struct ResignationEvidence {
     /// Exact effective settings supplied for this decision.
     pub options: PlayerOptions,
     /// Checked candidates in admission order, at most
-    /// `options.resignation_candidates` and the legal move count.
+    /// `options.candidate_checks` and the legal move count.
     pub candidates: Vec<RefutedCandidate>,
 }
 
@@ -278,9 +283,11 @@ impl AiPlayer {
     /// substitute the returned move, but the search statistics always describe
     /// the real proposal search, never the guard's hypothetical probes. An
     /// unrefuted candidate is unknown, not certified safe. Resignation checks
-    /// the top `min(options.resignation_candidates, legal_count)` candidates
-    /// with the baseline guard budget before any RNG draws; a zero count
-    /// checks nothing and never resigns. Every checked successor must have a
+    /// the top `min(options.candidate_checks, legal_count)` candidates
+    /// with the baseline guard budget before any RNG draws; the enabled
+    /// guard checks the same number of candidates after selection. A zero
+    /// count checks nothing: resignation never fires and the guard returns
+    /// its proposal unchecked. Every checked successor must have a
     /// verified opponent VCF; unknown cancels resignation. Lower-ranked moves
     /// may still defend, so
     /// this opt-in concession is not an all-legal-moves loss proof. The
@@ -329,7 +336,7 @@ impl AiPlayer {
             && let Some(candidates) = resign::consider(
                 board,
                 tree.node(root).edges(),
-                options.resignation_candidates,
+                options.candidate_checks,
                 engine::prove_forced_win,
             )
         {
@@ -362,6 +369,7 @@ impl AiPlayer {
             board,
             proposal,
             tree.node(root).edges(),
+            options.candidate_checks,
             options.guard,
             engine::prove_forced_win,
         );
@@ -494,12 +502,12 @@ mod tests {
     }
 
     #[test]
-    fn resignation_candidate_count_defaults_to_ten_and_custom_counts_are_honored() {
+    fn candidate_check_count_defaults_to_ten_and_custom_counts_are_honored() {
         use rand::{SeedableRng, rngs::StdRng};
-        assert_eq!(DEFAULT_RESIGNATION_CANDIDATES, 10);
+        assert_eq!(DEFAULT_CANDIDATE_CHECKS, 10);
         assert_eq!(
-            PlayerOptions::default().resignation_candidates,
-            DEFAULT_RESIGNATION_CANDIDATES
+            PlayerOptions::default().candidate_checks,
+            DEFAULT_CANDIDATE_CHECKS
         );
         let mv = |r, c| Move::new(r, c).unwrap();
         let board = Board::from_position(
@@ -512,7 +520,7 @@ mod tests {
             let options = PlayerOptions {
                 simulations: 3,
                 resign: true,
-                resignation_candidates: count,
+                candidate_checks: count,
                 ..PlayerOptions::default()
             };
             let mut ai = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.4)));
@@ -532,7 +540,7 @@ mod tests {
                 );
                 let evidence = decision.resignation.expect("resignation evidence");
                 assert_eq!(evidence.candidates.len(), expected);
-                assert_eq!(evidence.options.resignation_candidates, count);
+                assert_eq!(evidence.options.candidate_checks, count);
             }
         }
     }

@@ -71,7 +71,6 @@ fn baseline_guard_is_opt_in_with_fixed_experiment_work_bounds() {
     assert_eq!(PlayerOptions::default().guard, GuardConfig::disabled());
     let baseline = GuardConfig::baseline();
     assert!(baseline.enabled);
-    assert_eq!(baseline.max_candidates, 5);
     assert_eq!(
         baseline.budget,
         SearchBudget {
@@ -192,14 +191,9 @@ fn blocking_one_of_two_distinct_opponent_lines_is_refuted_in_favor_of_own_immedi
     let proposal = mv(0, 0); // a1: the evaluator's top prior; visits are all zero.
     let remaining_win = mv(0, 10); // k1: the distinct vertical line.
     let winning = mv(9, 5); // f10: Black completes b10-f10.
-    let guard = GuardConfig {
-        enabled: true,
-        max_candidates: 2,
-        budget: SearchBudget {
-            max_nodes: 1_000,
-            max_depth: 10,
-        },
-    };
+    let guard = GuardConfig::baseline();
+    let mut guarded_options = options(guard);
+    guarded_options.candidate_checks = 2;
     assert_eq!(
         engine::immediate_wins(&board, Color::White)
             .iter()
@@ -232,7 +226,7 @@ fn blocking_one_of_two_distinct_opponent_lines_is_refuted_in_favor_of_own_immedi
         top: proposal,
         next: winning,
     }))
-    .decide(&board, &options(guard), &mut guarded_rng)
+    .decide(&board, &guarded_options, &mut guarded_rng)
     .unwrap();
     assert_eq!(plain.action, DecisionAction::Play(proposal));
     assert_eq!(
@@ -325,18 +319,16 @@ fn zero_node_probe_is_unknown_even_with_opponent_immediate_win() {
 }
 
 #[test]
-fn cap_falls_back_to_unchecked_block_not_refuted_original() {
+fn count_falls_back_to_unchecked_block_not_refuted_original() {
     let board = single_threat();
     let block = mv(7, 7);
-    let guard = GuardConfig {
-        max_candidates: 1,
-        ..GuardConfig::baseline()
-    };
+    let mut options = options(GuardConfig::baseline());
+    options.candidate_checks = 1;
     let decision = AiPlayer::new(Box::new(PreferPair {
         top: mv(0, 0),
         next: block,
     }))
-    .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
+    .decide(&board, &options, &mut StdRng::seed_from_u64(1))
     .unwrap();
     assert_eq!(decision.action, DecisionAction::Play(block));
     let guard = decision.guard.as_ref().expect("play has diagnostics");
@@ -346,14 +338,12 @@ fn cap_falls_back_to_unchecked_block_not_refuted_original() {
 }
 
 #[test]
-fn zero_candidate_cap_keeps_original_unchecked() {
+fn zero_candidate_count_keeps_original_unchecked() {
     let board = single_threat();
-    let guard = GuardConfig {
-        max_candidates: 0,
-        ..GuardConfig::baseline()
-    };
+    let mut options = options(GuardConfig::baseline());
+    options.candidate_checks = 0;
     let decision = AiPlayer::new(Box::new(Prefer(mv(0, 0))))
-        .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
+        .decide(&board, &options, &mut StdRng::seed_from_u64(1))
         .unwrap();
     assert_eq!(decision.action, DecisionAction::Play(mv(0, 0)));
     let guard = decision.guard.as_ref().expect("play has diagnostics");
@@ -371,15 +361,16 @@ fn every_legal_move_really_refuted_reports_all_refuted_and_original_fallback() {
     );
     let original = board.clone();
     let guard = GuardConfig {
-        max_candidates: board.empty_moves().count(),
         budget: SearchBudget {
             max_nodes: 1,
             max_depth: 1,
         },
         ..GuardConfig::baseline()
     };
+    let mut options = options(guard);
+    options.candidate_checks = board.empty_moves().count();
     let decision = AiPlayer::new(Box::new(UniformEvaluator::new(0.0)))
-        .decide(&board, &options(guard), &mut StdRng::seed_from_u64(1))
+        .decide(&board, &options, &mut StdRng::seed_from_u64(1))
         .unwrap();
     let diagnostics = decision.guard.as_ref().expect("play has diagnostics");
     assert_eq!(diagnostics.outcome, GuardOutcome::AllRefuted);

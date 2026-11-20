@@ -67,12 +67,18 @@ struct OwnRecord {
 #[serde(deny_unknown_fields)]
 struct GuardRecord {
     enabled: bool,
-    max_candidates: usize,
+    /// Load-only vestige of the guard's pre-unification candidate cap.
+    /// Records written before the guard and resignation counts were unified
+    /// carry this key; `deny_unknown_fields` would otherwise reject them.
+    /// The unified `candidate_checks` supersedes it, so it is never written
+    /// and never consulted.
+    #[serde(rename = "max_candidates", default, skip_serializing)]
+    legacy_max_candidates: usize,
     budget: BudgetRecord,
 }
 /// v3 records predate the configurable candidate count; their concessions
 /// were written under the fixed top-five rule.
-fn legacy_resignation_candidates() -> usize {
+fn legacy_candidate_checks() -> usize {
     5
 }
 
@@ -87,8 +93,12 @@ struct OptionsRecord {
     own: OwnRecord,
     guard: GuardRecord,
     resign: bool,
-    #[serde(default = "legacy_resignation_candidates")]
-    resignation_candidates: usize,
+    /// One shared candidate count for resignation admission and the guard.
+    /// Records written before the unification stored `resignation_candidates`;
+    /// records predating the configurable count stored neither and were
+    /// written under the fixed top-five rule.
+    #[serde(alias = "resignation_candidates", default = "legacy_candidate_checks")]
+    candidate_checks: usize,
 }
 
 impl OptionsRecord {
@@ -105,11 +115,11 @@ impl OptionsRecord {
             },
             guard: GuardRecord {
                 enabled: options.guard.enabled,
-                max_candidates: options.guard.max_candidates,
+                legacy_max_candidates: 0,
                 budget: options.guard.budget.into(),
             },
             resign: options.resign,
-            resignation_candidates: options.resignation_candidates,
+            candidate_checks: options.candidate_checks,
         }
     }
 
@@ -122,7 +132,6 @@ impl OptionsRecord {
         };
         let guard = GuardConfig {
             enabled: self.guard.enabled,
-            max_candidates: self.guard.max_candidates,
             budget: (&self.guard.budget).into(),
         };
         let (expected_own, expected_guard) = match config.evaluator {
@@ -154,7 +163,7 @@ impl OptionsRecord {
             own,
             guard,
             resign: self.resign,
-            resignation_candidates: self.resignation_candidates,
+            candidate_checks: self.candidate_checks,
         })
     }
 }
@@ -260,8 +269,8 @@ impl EventRecord {
         // Legacy annotations predate the configurable count and were written
         // under the fixed top-five rule.
         let cap = match &self.evidence {
-            EvidenceRecord::Original { options, .. } => options.resignation_candidates,
-            EvidenceRecord::LegacyUnavailable {} => legacy_resignation_candidates(),
+            EvidenceRecord::Original { options, .. } => options.candidate_checks,
+            EvidenceRecord::LegacyUnavailable {} => legacy_candidate_checks(),
         }
         .min(225);
         if self.candidates == 0 || self.candidates > cap || (!is_latest && !self.resumed) {
@@ -303,7 +312,7 @@ impl EventRecord {
         // evidence is bounded precisely against its restored options later.
         let cap = match &self.evidence {
             EvidenceRecord::Original { .. } => 225,
-            EvidenceRecord::LegacyUnavailable {} => legacy_resignation_candidates(),
+            EvidenceRecord::LegacyUnavailable {} => legacy_candidate_checks(),
         };
         if board.status() != Status::Ongoing
             || self.by != board.to_move()
@@ -320,7 +329,7 @@ impl EventRecord {
                 candidates,
             } => {
                 let options = options.restore(&search.config)?;
-                if self.candidates != legal_count.min(options.resignation_candidates)
+                if self.candidates != legal_count.min(options.candidate_checks)
                     || search.edges.len() != legal_count
                     || search.side_to_move != self.by
                     || !search.value.is_finite()

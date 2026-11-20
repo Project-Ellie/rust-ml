@@ -50,8 +50,6 @@ impl From<OwnTssConfig> for TssProbeSettings {
 pub struct GuardSettings {
     /// Whether candidate refutation probes are enabled
     pub enabled: bool,
-    /// Maximum candates inspected after move selection
-    pub max_candidates: usize,
     /// Maximum threat-space nodes explored per candiate.
     pub max_nodes: u32,
     /// Maximum reputation depth in plies
@@ -66,7 +64,6 @@ impl From<GuardConfig> for GuardSettings {
         } = config.budget;
         Self {
             enabled: config.enabled,
-            max_candidates: config.max_candidates,
             max_nodes,
             max_depth,
         }
@@ -95,14 +92,16 @@ pub struct SeatConfig {
     pub guard: GuardSettings,
     /// whether heuristic resignation is enabled
     pub resign: bool,
-    /// Number of top-ranked candidates checked before conceding. Records
-    /// predate the configurable count and default to the current baseline.
-    #[serde(default = "default_resignation_candidates")]
-    pub resignation_candidates: usize,
+    /// Number of top-ranked candidates checked by resignation admission and
+    /// the defensive guard. Records written before the count was unified
+    /// stored `resignation_candidates`; records predating the configurable
+    /// count default to the current baseline.
+    #[serde(alias = "resignation_candidates", default = "default_candidate_checks")]
+    pub candidate_checks: usize,
 }
 
-fn default_resignation_candidates() -> usize {
-    player::DEFAULT_RESIGNATION_CANDIDATES
+fn default_candidate_checks() -> usize {
+    player::DEFAULT_CANDIDATE_CHECKS
 }
 
 impl From<PlayerOptions> for SeatConfig {
@@ -116,7 +115,7 @@ impl From<PlayerOptions> for SeatConfig {
             tss_probe: options.own.into(),
             guard: options.guard.into(),
             resign: options.resign,
-            resignation_candidates: options.resignation_candidates,
+            candidate_checks: options.candidate_checks,
         }
     }
 }

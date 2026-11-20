@@ -546,7 +546,7 @@ impl SessionCore {
             noise_epsilon: effective_config.noise_epsilon,
             noise_alpha: 0.3,
             resign: effective_config.resign,
-            resignation_candidates: player::DEFAULT_RESIGNATION_CANDIDATES,
+            candidate_checks: player::DEFAULT_CANDIDATE_CHECKS,
             own: match effective_config.evaluator {
                 EvaluatorKind::Baseline => player::OwnTssConfig::baseline(),
                 EvaluatorKind::Tactics => player::OwnTssConfig::disabled(),

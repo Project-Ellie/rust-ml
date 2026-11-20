@@ -10,14 +10,13 @@ use mcts::Edge;
 /// Bounded defensive refutation experiment, not a wall-clock deadline.
 ///
 /// Disabled by default. A missing proof means unknown, never safety. The
-/// candidate cap bounds hypothetical checks; each probe has its own node/depth
-/// budget. Proof verification is also required and is not a timed operation.
+/// shared candidate count ([`crate::PlayerOptions::candidate_checks`])
+/// bounds hypothetical checks; each probe has its own node/depth budget.
+/// Proof verification is also required and is not a timed operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GuardConfig {
     /// Whether to inspect ordinary search candidates after selection.
     pub enabled: bool,
-    /// Maximum candidate checks, including the original proposal. Zero skips all.
-    pub max_candidates: usize,
     /// Per-candidate opponent prover work caps, not a wall-clock deadline.
     pub budget: SearchBudget,
 }
@@ -32,13 +31,12 @@ impl GuardConfig {
         }
     }
 
-    /// [experiment] Baseline defaults: five candidates, 1,000 nodes / 10 plies
-    /// per opponent probe. These are work bounds, not a response-time guarantee.
+    /// [experiment] Baseline defaults: 1,000 nodes / 10 plies per opponent
+    /// probe. These are work bounds, not a response-time guarantee.
     #[must_use]
     pub const fn baseline() -> Self {
         Self {
             enabled: true,
-            max_candidates: 5,
             budget: SearchBudget {
                 max_nodes: 1_000,
                 max_depth: 10,
@@ -64,7 +62,7 @@ pub enum GuardOutcome {
     Unrefuted,
     /// The checked candidate immediately won for us or drew the game.
     Terminal,
-    /// Candidate cap reached; selected move is untested, not certified safe.
+    /// Candidate count reached; selected move is untested, not certified safe.
     BudgetExhausted,
     /// Every legal candidate was individually refuted; original move retained.
     /// This is not a proof that the root position is lost.
@@ -101,6 +99,7 @@ pub(crate) fn choose(
     board: &Board,
     proposal: Move,
     edges: &[Edge],
+    candidates: usize,
     config: GuardConfig,
     mut probe: impl FnMut(&Board, Color, SearchBudget) -> Option<Proof>,
 ) -> (Move, GuardDiagnostics) {
@@ -109,7 +108,7 @@ pub(crate) fn choose(
         return (proposal, diagnostics);
     }
     diagnostics.outcome = GuardOutcome::BudgetExhausted;
-    if config.max_candidates == 0 {
+    if candidates == 0 {
         return (proposal, diagnostics);
     }
     let mut ranked: Vec<_> = edges.iter().collect();
@@ -122,19 +121,19 @@ pub(crate) fn choose(
             })
             .then_with(|| a.mv.index().cmp(&b.mv.index()))
     });
-    let candidates = std::iter::once(proposal).chain(
+    let ordered = std::iter::once(proposal).chain(
         ranked
             .into_iter()
             .map(|edge| edge.mv)
             .filter(|&mv| mv != proposal),
     );
-    for candidate in candidates {
+    for candidate in ordered {
         if diagnostics.refuted.contains(&candidate) {
             continue;
         }
         // All previously checked candidates were refuted. The next ranked
-        // candidate is untested, so the cap must not send us back to a loser.
-        if diagnostics.checked == config.max_candidates {
+        // candidate is untested, so the count must not send us back to a loser.
+        if diagnostics.checked == candidates {
             return (candidate, diagnostics);
         }
         let mut after = board.clone();
@@ -227,14 +226,20 @@ mod tests {
             },
             ..GuardConfig::baseline()
         };
-        let (chosen, diagnostics) =
-            choose(&board, proposal, &edges, config, |after, side, budget| {
+        let (chosen, diagnostics) = choose(
+            &board,
+            proposal,
+            &edges,
+            5,
+            config,
+            |after, side, budget| {
                 seen.push(*after.moves().last().unwrap());
                 assert_eq!(side, after.to_move());
                 assert_eq!(side, Color::White);
                 assert_eq!(budget, config.budget);
                 engine::prove_forced_win(after, side, budget)
-            });
+            },
+        );
         assert_eq!(seen, [proposal, mv(0, 3), mv(0, 1), mv(0, 2), mv(0, 0)]);
         assert_eq!(diagnostics.refuted, seen);
         assert_eq!(diagnostics.checked, 5);
@@ -276,6 +281,7 @@ mod tests {
                 &board,
                 proposal,
                 &edges,
+                5,
                 GuardConfig::baseline(),
                 |_, _, _| {
                     calls += 1;
@@ -291,23 +297,18 @@ mod tests {
     }
 
     #[test]
-    fn disabled_and_zero_cap_never_call_probe() {
+    fn disabled_and_zero_count_never_call_probe() {
         let board = two_ended_four();
         let proposal = mv(0, 0);
         let edges = edges(&board);
-        for (config, outcome) in [
-            (GuardConfig::disabled(), GuardOutcome::Disabled),
-            (
-                GuardConfig {
-                    max_candidates: 0,
-                    ..GuardConfig::baseline()
-                },
-                GuardOutcome::BudgetExhausted,
-            ),
+        for (candidates, config, outcome) in [
+            (5, GuardConfig::disabled(), GuardOutcome::Disabled),
+            (0, GuardConfig::baseline(), GuardOutcome::BudgetExhausted),
         ] {
-            let (chosen, diagnostics) = choose(&board, proposal, &edges, config, |_, _, _| {
-                panic!("no probe allowed")
-            });
+            let (chosen, diagnostics) =
+                choose(&board, proposal, &edges, candidates, config, |_, _, _| {
+                    panic!("no probe allowed")
+                });
             assert_eq!(chosen, proposal);
             assert_eq!(diagnostics.outcome, outcome);
             assert_eq!(diagnostics.checked, 0);
@@ -328,6 +329,7 @@ mod tests {
             &board,
             proposal,
             &edges(&board),
+            5,
             GuardConfig::baseline(),
             |_, _, _| panic!("terminal candidate must not be probed"),
         );
@@ -367,6 +369,7 @@ mod tests {
             &board,
             proposal,
             &edges(&board),
+            5,
             GuardConfig::baseline(),
             |_, _, _| panic!("draw must not be probed"),
         );

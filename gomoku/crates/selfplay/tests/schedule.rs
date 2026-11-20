@@ -21,7 +21,7 @@ fn first_ten_plies_explore_then_selection_is_deterministic_without_changing_budg
         own: OwnTssConfig::baseline(),
         guard: GuardConfig::baseline(),
         resign: true,
-        resignation_candidates: 7,
+        candidate_checks: 7,
     };
 
     let schedule = ExplorationSchedule::default();
@@ -34,7 +34,7 @@ fn first_ten_plies_explore_then_selection_is_deterministic_without_changing_budg
         assert_eq!(effective.own, OwnTssConfig::baseline());
         assert_eq!(effective.guard, GuardConfig::baseline());
         assert!(effective.resign);
-        assert_eq!(effective.resignation_candidates, 7);
+        assert_eq!(effective.candidate_checks, 7);
         assert_eq!(effective.temperature, 1.0);
         assert_eq!(effective.noise_epsilon, 0.25);
         assert_eq!(effective.noise_alpha, 0.3);
@@ -47,7 +47,7 @@ fn first_ten_plies_explore_then_selection_is_deterministic_without_changing_budg
         assert_eq!(effective.own, OwnTssConfig::baseline());
         assert_eq!(effective.guard, GuardConfig::baseline());
         assert!(effective.resign);
-        assert_eq!(effective.resignation_candidates, 7);
+        assert_eq!(effective.candidate_checks, 7);
         assert_eq!(effective.temperature, 0.0);
         assert_eq!(effective.noise_epsilon, 0.0);
     }

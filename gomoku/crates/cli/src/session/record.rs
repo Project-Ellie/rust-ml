@@ -325,7 +325,7 @@ mod tests {
             ("/evidence/options/resign", json!(false)),
             ("/evidence/options/own/enabled", json!(true)),
             ("/evidence/options/own/budget/max_depth", json!(29)),
-            ("/evidence/options/guard/max_candidates", json!(4)),
+            ("/evidence/options/guard/enabled", json!(true)),
             ("/evidence/options/guard/budget/max_nodes", json!(999)),
         ];
         let mut invalids: Vec<(String, Value)> = cases
@@ -535,17 +535,14 @@ mod tests {
         let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
         let event = &mut value["history"]["nodes"][0]["resignations"][0];
         assert_eq!(event["candidates"], json!(10));
-        assert_eq!(
-            event["evidence"]["options"]["resignation_candidates"],
-            json!(10)
-        );
+        assert_eq!(event["evidence"]["options"]["candidate_checks"], json!(10));
         // Rewrite the export into the pre-configurable-count v3 shape: no
         // stored count, and the historical fixed-size candidate list.
         event["candidates"] = json!(5);
         event["evidence"]["options"]
             .as_object_mut()
             .unwrap()
-            .remove("resignation_candidates");
+            .remove("candidate_checks");
         let candidates = event["evidence"]["candidates"].as_array_mut().unwrap();
         assert_eq!(candidates.len(), 10);
         candidates.truncate(5);
@@ -553,8 +550,34 @@ mod tests {
         let restored = &loaded.resignation_events()[0];
         assert_eq!(restored.summary.candidates, 5);
         let audit = restored.audit.as_ref().unwrap();
-        assert_eq!(audit.evidence.options.resignation_candidates, 5);
+        assert_eq!(audit.evidence.options.candidate_checks, 5);
         assert_eq!(audit.evidence.candidates.len(), 5);
+    }
+
+    #[test]
+    fn v3_records_with_split_guard_and_resignation_counts_load_unified() {
+        use serde_json::json;
+        let core = real_concession(EvaluatorKind::Tactics);
+        let text = core.export_record_json().unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let event = &mut value["history"]["nodes"][0]["resignations"][0];
+        // Rewrite the export into the pre-unification v3 shape: the count was
+        // stored as `resignation_candidates` and the guard carried its own
+        // `max_candidates` cap.
+        let options = event["evidence"]["options"].as_object_mut().unwrap();
+        let count = options.remove("candidate_checks").unwrap();
+        assert_eq!(count, json!(10));
+        options.insert("resignation_candidates".into(), count);
+        options["guard"]
+            .as_object_mut()
+            .unwrap()
+            .insert("max_candidates".into(), json!(5));
+        let loaded = SessionCore::import_record_json(&value.to_string()).unwrap();
+        let restored = &loaded.resignation_events()[0];
+        assert_eq!(restored.summary.candidates, 10);
+        let audit = restored.audit.as_ref().unwrap();
+        assert_eq!(audit.evidence.options.candidate_checks, 10);
+        assert_eq!(audit.evidence.candidates.len(), 10);
     }
 
     #[test]

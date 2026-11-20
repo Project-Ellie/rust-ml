@@ -187,7 +187,8 @@ seats later assigned with `release`.
 After a real search, before noise or sampling, the player ranks candidates
 by visits, then prior, then move index. With `--resign`, it checks at most
 ten top candidates (all if fewer than ten empty cells remain); the count is
-the player's configurable `resignation_candidates` option. Each
+the player's configurable `candidate_checks` option, the same count the
+defensive guard uses for its refutation probes. Each
 successor must have an opponent VCF certificate accepted by the existing
 engine verifier. Each probe uses the existing 1,000-node / 10-ply guard
 budget; unknown or exhausted results cancel the concession. An own
