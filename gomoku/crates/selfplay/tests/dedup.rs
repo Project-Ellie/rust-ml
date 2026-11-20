@@ -3,6 +3,7 @@ use player::PlayerOptions;
 use selfplay::game::{Game, Outcome};
 use selfplay::generate::generate_games_with;
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
+use selfplay::schedule::ExplorationSchedule;
 
 fn mv(row: u8, col: u8) -> Move {
     Move::new(row, col).expect("test coordinates on board")
@@ -18,6 +19,7 @@ fn fabricated_game(seed: u64) -> Result<Game, selfplay::game::GameError> {
 
     Ok(Game {
         seed,
+        schedule: ExplorationSchedule::default(),
         black_options: PlayerOptions::default(),
         white_options: PlayerOptions::default(),
         opening,

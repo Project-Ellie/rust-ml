@@ -19,6 +19,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::record::{GAME_RECORD_FORMAT_VERSION, GameRecord, SeatPairing};
 
+/// The per-seat evaluator identities behind a corpus, recorded when any
+/// seat ran something other than the shared baseline evaluator.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeatEvaluators {
+    /// Black's evaluator descriptor, e.g. `net:first-corpus@0.1.0`.
+    pub black: String,
+    /// White's evaluator descriptor.
+    pub white: String,
+}
+
 /// Provenance summary of one corpus, serialized as `manifest.json`.
 ///
 /// The shards are the data; the manifest is the provenance. It is a
@@ -39,6 +49,12 @@ pub struct Manifest {
     pub shards: Vec<String>,
     /// Workspace package version at generation time.
     pub workspace_version: String,
+    /// Per-seat evaluator identities; `None` for pure-baseline corpora.
+    ///
+    /// JSON-only, so skipping the absent field keeps baseline manifests
+    /// byte-identical and lets older manifests parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluators: Option<SeatEvaluators>,
 }
 
 /// The explicit choice for handling a non-empty output directory.
@@ -55,13 +71,16 @@ pub enum OverwritePolicy {
 }
 
 /// Options for [`write_corpus_with_options`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorpusWriteOptions {
     /// Maximum number of games in one shard; a maximum, not a padding
     /// requirement — the last shard may be short.
     pub shard_capacity: usize,
     /// How to handle a non-empty output directory.
     pub overwrite: OverwritePolicy,
+    /// Per-seat evaluator identities recorded into the manifest; `None` for
+    /// pure-baseline corpora.
+    pub evaluators: Option<SeatEvaluators>,
 }
 
 /// Write game records to fixed-capacity length-delimited bincode shards and
@@ -149,6 +168,7 @@ pub fn write_corpus_with_options(
         game_count: records.len(),
         shards,
         workspace_version: env!("CARGO_PKG_VERSION").to_owned(),
+        evaluators: options.evaluators.clone(),
     };
     let file = File::options()
         .write(true)
@@ -180,6 +200,7 @@ pub fn write_corpus(
         CorpusWriteOptions {
             shard_capacity,
             overwrite: OverwritePolicy::Refuse,
+            evaluators: None,
         },
     )
 }

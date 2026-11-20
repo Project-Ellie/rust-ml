@@ -1,12 +1,13 @@
 use engine::{Color, Move};
 use player::PlayerOptions;
 use selfplay::corpus::{
-    CorpusWriteOptions, OverwritePolicy, read_corpus, read_manifest, write_corpus,
+    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, read_corpus, read_manifest, write_corpus,
     write_corpus_with_options,
 };
 use selfplay::game::{Game, Outcome, PlyRecord, PlySearch, WinReason};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
 use selfplay::record::{CertifiedSuffix, GAME_RECORD_FORMAT_VERSION, GameRecord};
+use selfplay::schedule::ExplorationSchedule;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -87,6 +88,7 @@ fn minimal_game(seed: u64) -> Game {
 
     Game {
         seed,
+        schedule: ExplorationSchedule::default(),
         black_options: PlayerOptions {
             simulations: 1,
             ..PlayerOptions::default()
@@ -258,6 +260,7 @@ fn explicit_overwrite_replaces_the_previous_corpus() {
         CorpusWriteOptions {
             shard_capacity: 2,
             overwrite: OverwritePolicy::Allow,
+            evaluators: None,
         },
     )
     .expect("explicit overwrite");
@@ -281,6 +284,7 @@ fn invalid_explicit_overwrite_preserves_the_existing_corpus() {
         CorpusWriteOptions {
             shard_capacity: 0,
             overwrite: OverwritePolicy::Allow,
+            evaluators: None,
         },
     )
     .expect_err("zero shard capacity is invalid");
@@ -330,4 +334,61 @@ fn identical_seeds_produce_byte_identical_corpora_across_process_restarts() {
         let second_bytes = std::fs::read(second.path().join(shard)).expect("second shard");
         assert_eq!(first_bytes, second_bytes, "{shard} must be byte-identical");
     }
+}
+
+#[test]
+fn per_seat_evaluator_pairing_lives_in_the_evaluator_string() {
+    let game = minimal_game(7);
+
+    let plain = GameRecord::from_game(&game);
+    assert!(plain.header.evaluator.starts_with("baseline@"));
+
+    let mixed =
+        GameRecord::from_game_with_evaluators(&game, "net:first-corpus@0.1.0", "baseline@0.1.0");
+    assert_eq!(
+        mixed.header.evaluator,
+        "black=net:first-corpus@0.1.0 white=baseline@0.1.0"
+    );
+    // Everything else about the record is untouched.
+    assert_eq!(mixed.header.config, plain.header.config);
+    assert_eq!(mixed.plies, plain.plies);
+}
+
+#[test]
+fn manifest_records_seat_evaluators_only_when_declared() {
+    let records: Vec<GameRecord> = (0..2)
+        .map(|seed| GameRecord::from_game(&minimal_game(seed)))
+        .collect();
+
+    // Baseline corpora keep their previous manifest bytes: no new keys.
+    let plain_dir = TestDir::new("manifest-plain");
+    let plain = write_corpus(&records, plain_dir.path(), 1).expect("plain corpus writes");
+    assert_eq!(plain.evaluators, None);
+    let json = std::fs::read_to_string(plain_dir.path().join("manifest.json")).expect("manifest");
+    assert!(!json.contains("evaluators"));
+
+    // Net-seated corpora declare their per-seat evaluators in the manifest.
+    let net_dir = TestDir::new("manifest-net");
+    let manifest = write_corpus_with_options(
+        &records,
+        net_dir.path(),
+        CorpusWriteOptions {
+            shard_capacity: 1,
+            overwrite: OverwritePolicy::Refuse,
+            evaluators: Some(SeatEvaluators {
+                black: "net:first-corpus@0.1.0".to_owned(),
+                white: "baseline@0.1.0".to_owned(),
+            }),
+        },
+    )
+    .expect("net corpus writes");
+    let evaluators = manifest.evaluators.clone().expect("evaluators recorded");
+    assert_eq!(evaluators.black, "net:first-corpus@0.1.0");
+    assert_eq!(evaluators.white, "baseline@0.1.0");
+
+    // Older manifests without the field still parse.
+    let read_back = read_manifest(plain_dir.path()).expect("plain manifest reads");
+    assert_eq!(read_back, plain);
+    let read_back = read_manifest(net_dir.path()).expect("net manifest reads");
+    assert_eq!(read_back, manifest);
 }

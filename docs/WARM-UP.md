@@ -333,6 +333,19 @@ last-move planes stay zero, matching training, which rebuilds boards
 via `Board::from_position`) plus `neteval::picker` (journal-aware run
 directory scan) and the study-table `models [DIR]` listing command.
 Verified end to end against a real 200-step tiny `nettrain` run.
+Net-seat self-play landed (2026-11-20, issue #2): `selfplaygen` gains
+`--black-net`/`--white-net <RUN_DIR>` (any mix of baseline and trained
+net seats) and `--exploration-plies <N>`; the game runner takes
+per-seat evaluator factories (`play_game_with_seats`,
+`generate_games_with_seats`). Provenance: net-seated records carry the
+seat pairing in the header's free-form `evaluator` string
+(`black=... white=...`) and the manifest gains an optional JSON-only
+`evaluators` block — the bincode record layout is untouched, so
+baseline corpora from before this change still read back (verified on
+`data/corpora/800-vs-1200-200`). Owner's first trained net
+(`data/check-points/first-corpus`, default 128ch×10, 20k steps on the
+100-game baseline corpus) is accepted in gomoku-gui and ready to
+generate phase-2 corpora.
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.
 

@@ -10,6 +10,7 @@ use selfplay::corpus::write_corpus;
 use selfplay::game::{Game, Outcome, PlyRecord, WinReason};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
 use selfplay::record::{CertifiedSuffix, GameRecord};
+use selfplay::schedule::ExplorationSchedule;
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
 
@@ -49,6 +50,7 @@ fn mv(row: u8, col: u8) -> Move {
 fn certified_record() -> GameRecord {
     let game = Game {
         seed: 17,
+        schedule: ExplorationSchedule::default(),
         black_options: PlayerOptions::default(),
         white_options: PlayerOptions::default(),
         opening: Opening::new(

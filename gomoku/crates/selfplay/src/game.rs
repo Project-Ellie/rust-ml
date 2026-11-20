@@ -5,6 +5,7 @@ use crate::record::{CertifiedSuffix, RECORDED_PRIOR_TOP_K};
 use crate::schedule::ExplorationSchedule;
 use baseline::{BaselineEvaluator, Device};
 use engine::{Color, Move, PlayError, Proof, Status};
+use mcts::Evaluator;
 use player::{AiPlayer, DecisionAction, DecisionError, PlayerOptions, ResignReason, SearchStats};
 use rand::{SeedableRng, rngs::StdRng};
 use thiserror::Error;
@@ -51,6 +52,8 @@ pub struct Game {
     pub black_options: PlayerOptions,
     /// Base options for White; exploration adjusts selection settings per ply.
     pub white_options: PlayerOptions,
+    /// The per-ply exploration schedule the game was played under.
+    pub schedule: ExplorationSchedule,
     /// Full Swap2 description and its provenenance
     pub opening: Opening,
     /// Played moves in order, with their available search metadata
@@ -164,8 +167,9 @@ pub enum GameError {
 
 /// Play one game using an injectable opening source.
 ///
-/// Tournament-list sources can implement [`OpeningSource`] later without
-/// changing the game loop. The source and both players share one seeded
+/// Both seats run the baseline evaluator under the default exploration
+/// schedule; use [`play_game_with_seats`] to inject evaluators or a
+/// custom schedule. The source and both players share one seeded
 /// [`StdRng`], making the seed the complete identity of the game.
 ///
 /// # Errors
@@ -177,14 +181,45 @@ pub fn play_game_with_opening(
     white_options: PlayerOptions,
     opening_source: &mut impl OpeningSource,
 ) -> Result<Game, GameError> {
+    play_game_with_seats(
+        seed,
+        black_options,
+        white_options,
+        ExplorationSchedule::default(),
+        opening_source,
+        Box::new(BaselineEvaluator::new(Device::flex())),
+        Box::new(BaselineEvaluator::new(Device::flex())),
+    )
+}
+
+/// Play one game with explicit seat evaluators and exploration schedule.
+///
+/// `black_evaluator`/`white_evaluator` stand behind each seat's
+/// [`AiPlayer`]; everything else — the shared seeded RNG, the own-TSS probe
+/// and guard from the seat options, the per-ply schedule — behaves exactly
+/// as in [`play_game_with_opening`]. The evaluators are part of the game's
+/// provenance; callers should record their identity through
+/// [`crate::record::GameRecord::from_game_with_evaluators`].
+///
+/// # Errors
+/// Returns an error if the opening, a player decision, or a selected move is
+/// rejected by the engine.
+pub fn play_game_with_seats(
+    seed: u64,
+    black_options: PlayerOptions,
+    white_options: PlayerOptions,
+    schedule: ExplorationSchedule,
+    opening_source: &mut impl OpeningSource,
+    black_evaluator: Box<dyn Evaluator>,
+    white_evaluator: Box<dyn Evaluator>,
+) -> Result<Game, GameError> {
     let mut rng = StdRng::seed_from_u64(seed);
     let opening = opening_source.opening(&mut rng);
     let mut board = opening.board()?;
-    let mut black = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
-    let mut white = AiPlayer::new(Box::new(BaselineEvaluator::new(Device::flex())));
+    let mut black = AiPlayer::new(black_evaluator);
+    let mut white = AiPlayer::new(white_evaluator);
     let mut plies = Vec::new();
     let mut tracker = SuffixTracker::default();
-    let schedule = ExplorationSchedule::default();
 
     let outcome = loop {
         match board.status() {
@@ -233,6 +268,7 @@ pub fn play_game_with_opening(
         seed,
         black_options,
         white_options,
+        schedule,
         opening,
         plies,
         outcome,

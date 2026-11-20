@@ -4,6 +4,7 @@ use selfplay::anchor::{AnchorError, AnchorSeed, extract_anchor_seeds};
 use selfplay::game::{Game, Outcome, PlyRecord, WinReason};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
 use selfplay::record::{CertifiedSuffix, GameRecord};
+use selfplay::schedule::ExplorationSchedule;
 
 fn mv(row: u8, col: u8) -> Move {
     Move::new(row, col).unwrap()
@@ -16,6 +17,7 @@ fn mv(row: u8, col: u8) -> Move {
 fn fabricated_record() -> GameRecord {
     let game = Game {
         seed: 17,
+        schedule: ExplorationSchedule::default(),
         black_options: PlayerOptions::default(),
         white_options: PlayerOptions::default(),
         opening: Opening::new(

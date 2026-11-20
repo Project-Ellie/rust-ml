@@ -1,9 +1,12 @@
 use engine::{Color, Move, Status};
 use player::{PlayerOptions, SearchStats};
 use rand::prelude::StdRng;
-use selfplay::game::{Outcome, PlySearch, WinReason, play_game, play_game_with_opening};
+use selfplay::game::{
+    Outcome, PlySearch, WinReason, play_game, play_game_with_opening, play_game_with_seats,
+};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance, OpeningSource};
-use selfplay::record::RECORDED_PRIOR_TOP_K;
+use selfplay::record::{GameRecord, RECORDED_PRIOR_TOP_K};
+use selfplay::schedule::ExplorationSchedule;
 use std::time::Instant;
 
 fn mv(r: u8, c: u8) -> Move {
@@ -100,6 +103,62 @@ fn injectable_opening_executes_the_add_two_swap2_branch() {
 
     assert_eq!(game.opening, opening);
     assert_eq!(game.plies.len(), 10);
+}
+
+fn baseline_evaluator() -> Box<dyn mcts::Evaluator> {
+    Box::new(baseline::BaselineEvaluator::new(baseline::Device::flex()))
+}
+
+#[test]
+fn injected_baseline_seats_reproduce_the_default_game() {
+    let expected = play_game(11, options(1), options(1)).expect("default game completes");
+    let actual = play_game_with_seats(
+        11,
+        options(1),
+        options(1),
+        ExplorationSchedule::default(),
+        &mut selfplay::opening::GeneratedOpening,
+        baseline_evaluator(),
+        baseline_evaluator(),
+    )
+    .expect("injected game completes");
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn a_custom_exploration_window_is_applied_and_recorded() {
+    let schedule = ExplorationSchedule {
+        plies: 0,
+        ..ExplorationSchedule::default()
+    };
+    let game = play_game_with_seats(
+        11,
+        options(1),
+        options(1),
+        schedule,
+        &mut selfplay::opening::GeneratedOpening,
+        baseline_evaluator(),
+        baseline_evaluator(),
+    )
+    .expect("schedule-less game completes");
+
+    assert_eq!(game.schedule, schedule);
+    let record = GameRecord::from_game(&game);
+    assert_eq!(record.header.config.exploration, schedule);
+
+    // With the exploration window closed, the same seed replays identically.
+    let replay = play_game_with_seats(
+        11,
+        options(1),
+        options(1),
+        schedule,
+        &mut selfplay::opening::GeneratedOpening,
+        baseline_evaluator(),
+        baseline_evaluator(),
+    )
+    .expect("replay completes");
+    assert_eq!(replay, game);
 }
 
 #[test]

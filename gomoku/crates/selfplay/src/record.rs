@@ -189,6 +189,20 @@ impl GameRecord {
     pub fn from_game(game: &Game) -> Self {
         Self::from(game)
     }
+
+    /// Convert a finished game, recording the per-seat evaluator pairing in
+    /// the header's free-form evaluator descriptor.
+    ///
+    /// Use when a seat runs something other than the shared baseline
+    /// evaluator — for example a trained net loaded by `neteval`. The record
+    /// layout is unchanged; only the `evaluator` string differs, e.g.
+    /// `black=net:first-corpus@0.1.0 white=baseline@0.1.0`.
+    #[must_use]
+    pub fn from_game_with_evaluators(game: &Game, black: &str, white: &str) -> Self {
+        let mut record = Self::from(game);
+        record.header.evaluator = format!("black={black} white={white}");
+        record
+    }
 }
 
 impl From<&Game> for GameRecord {
@@ -200,7 +214,7 @@ impl From<&Game> for GameRecord {
                 config: SeatPairing {
                     black: game.black_options.into(),
                     white: game.white_options.into(),
-                    exploration: ExplorationSchedule::default(),
+                    exploration: game.schedule,
                 },
                 evaluator: format!("baseline@{}", env!("CARGO_PKG_VERSION")),
                 opening: game.opening.clone(),

@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 baseline = { path = "../baseline" }
 engine = { path = "../engine" }
+mcts = { path = "../mcts" }
+neteval = { path = "../neteval" }
 player = { path = "../player" }
 train = { path = "../train" }
 rand = "0.10.3"

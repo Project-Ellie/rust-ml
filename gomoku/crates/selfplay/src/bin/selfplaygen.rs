@@ -4,20 +4,29 @@
 //! with disjoint `--seed-base` ranges are the parallelism model.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
+use baseline::{BaselineEvaluator, Device};
+use mcts::Evaluator;
+use neteval::NetEvaluator;
 use player::{OwnTssConfig, PlayerOptions};
-use selfplay::corpus::{read_corpus, read_manifest, write_corpus};
-use selfplay::generate::generate_games;
+use selfplay::corpus::{
+    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, read_corpus, read_manifest,
+    write_corpus_with_options,
+};
+use selfplay::generate::generate_games_with_seats;
 use selfplay::opening::{OpeningSource, TournamentOpenings};
 use selfplay::record::GameRecord;
+use selfplay::schedule::{EXPLORATION_PLIES, ExplorationSchedule};
 
 const USAGE: &str = "selfplaygen --out <DIR> --openings <PATH> [--openings <PATH> ...]
             [--black-sims <N>] [--white-sims <N>] [--games <N>]
             [--seed-base <N>] [--shard-capacity <N>]
+            [--black-net <RUN_DIR>] [--white-net <RUN_DIR>]
+            [--exploration-plies <N>]
 
-Generate a corpus of strength-graded baseline-vs-baseline self-play games.
+Generate a corpus of self-play games, baseline or trained-net seated.
 
 Required flags:
   --out <DIR>           output directory for the corpus
@@ -30,11 +39,20 @@ accepted; a repeated numeric flag takes its last value):
   --games <N>           number of games to generate (default: 1, >0)
   --seed-base <N>       first base seed of the contiguous range (default: 0)
   --shard-capacity <N>  maximum games per shard (default: 1000, >0)
+  --exploration-plies <N>  plies with temperature + root noise (default: 10;
+                        0 disables exploration)
+
+Seat flags:
+  --black-net <RUN_DIR> seat a trained net (nettrain run directory holding
+                        model.mpk and run.json) for Black
+  --white-net <RUN_DIR> seat a trained net for White
 
 Operational rules:
   * One process generates the base seeds seed-base through
     seed-base + games - 1.
-  * Both seats use the baseline own-TSS probe (10 000 nodes / 30 plies).
+  * Seats without --black-net/--white-net run the baseline evaluator; all
+    seats use the own-TSS probe (10 000 nodes / 30 plies).
+  * Net evaluators run on the Flex CPU backend and are reloaded per game.
   * Parallel generation is separate processes over disjoint seed ranges.";
 
 #[derive(Debug)]
@@ -44,6 +62,9 @@ struct Args {
     games: usize,
     seed_base: u64,
     shard_capacity: usize,
+    exploration_plies: usize,
+    black_net: Option<PathBuf>,
+    white_net: Option<PathBuf>,
     own_tss: OwnTssConfig,
     out_dir: PathBuf,
     opening_paths: Vec<PathBuf>,
@@ -65,6 +86,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut games: usize = 1;
     let mut seed_base: u64 = 0;
     let mut shard_capacity: usize = 1000;
+    let mut exploration_plies: usize = EXPLORATION_PLIES;
+    let mut black_net: Option<PathBuf> = None;
+    let mut white_net: Option<PathBuf> = None;
     let mut out_dir: Option<PathBuf> = None;
     let mut opening_paths = Vec::new();
 
@@ -75,6 +99,21 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--games" => games = parse_value(&arg, args.next().as_deref())?,
             "--seed-base" => seed_base = parse_value(&arg, args.next().as_deref())?,
             "--shard-capacity" => shard_capacity = parse_value(&arg, args.next().as_deref())?,
+            "--exploration-plies" => {
+                exploration_plies = parse_value(&arg, args.next().as_deref())?;
+            }
+            "--black-net" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--black-net requires a value".to_owned())?;
+                black_net = Some(PathBuf::from(value));
+            }
+            "--white-net" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--white-net requires a value".to_owned())?;
+                white_net = Some(PathBuf::from(value));
+            }
             "--out" => {
                 let value = args
                     .next()
@@ -108,6 +147,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         games,
         seed_base,
         shard_capacity,
+        exploration_plies,
+        black_net,
+        white_net,
         own_tss: OwnTssConfig::baseline(),
         out_dir,
         opening_paths,
@@ -143,6 +185,41 @@ fn run(args: &Args) -> Result<(), String> {
     run_with_opening_source(args, &mut pool)
 }
 
+/// Short provenance label for one seat: `net:<run-dir-name>` or `baseline`.
+fn seat_label(net: Option<&Path>) -> String {
+    net.map_or_else(
+        || "baseline".to_owned(),
+        |dir| {
+            let name = dir
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| dir.display().to_string());
+            format!("net:{name}")
+        },
+    )
+}
+
+/// Build the evaluator factory for one seat, validating a net seat by
+/// loading its checkpoint once up front. Net evaluators are reloaded per
+/// game — cheap next to even a single move of net-guided search.
+fn seat_factory(net: Option<&Path>) -> Result<Box<dyn FnMut() -> Box<dyn Evaluator>>, String> {
+    match net {
+        Some(dir) => {
+            NetEvaluator::load(dir).map_err(|error| {
+                format!("failed to load net checkpoint {}: {error}", dir.display())
+            })?;
+            let dir = dir.to_owned();
+            Ok(Box::new(move || {
+                Box::new(NetEvaluator::load(&dir).expect("checkpoint loaded once at startup"))
+                    as Box<dyn Evaluator>
+            }))
+        }
+        None => Ok(Box::new(|| {
+            Box::new(BaselineEvaluator::new(Device::flex())) as Box<dyn Evaluator>
+        })),
+    }
+}
+
 fn run_with_opening_source(
     args: &Args,
     opening_source: &mut impl OpeningSource,
@@ -167,23 +244,71 @@ fn run_with_opening_source(
         ..PlayerOptions::default()
     };
 
+    let schedule = ExplorationSchedule {
+        plies: args.exploration_plies,
+        ..ExplorationSchedule::default()
+    };
+    let black_factory = seat_factory(args.black_net.as_deref())?;
+    let white_factory = seat_factory(args.white_net.as_deref())?;
+
     eprintln!(
-        "Generating {} games: base seeds {}..={}, baseline-{} vs baseline-{}",
-        args.games, args.seed_base, last_seed, args.black_sims, args.white_sims
+        "Generating {} games: base seeds {}..={}, {}-{} vs {}-{}",
+        args.games,
+        args.seed_base,
+        last_seed,
+        seat_label(args.black_net.as_deref()),
+        args.black_sims,
+        seat_label(args.white_net.as_deref()),
+        args.white_sims
     );
 
-    let games = generate_games(
+    let games = generate_games_with_seats(
         (0..args.games).map(|offset| args.seed_base + offset as u64),
         black_options,
         white_options,
+        schedule,
         opening_source,
+        black_factory,
+        white_factory,
     )
     .map_err(|error| format!("generation failed: {error}"))?;
 
-    let records: Vec<GameRecord> = games.iter().map(GameRecord::from_game).collect();
+    // Per-seat descriptors are recorded as soon as any seat runs a net;
+    // pure-baseline corpora keep their previous record and manifest bytes.
+    let mixed = args.black_net.is_some() || args.white_net.is_some();
+    let baseline_descriptor = || format!("baseline@{}", env!("CARGO_PKG_VERSION"));
+    let descriptor = |net: Option<&Path>| {
+        net.map_or_else(baseline_descriptor, |dir| {
+            format!("{}@{}", seat_label(Some(dir)), env!("CARGO_PKG_VERSION"))
+        })
+    };
+    let black_descriptor = descriptor(args.black_net.as_deref());
+    let white_descriptor = descriptor(args.white_net.as_deref());
 
-    write_corpus(&records, &args.out_dir, args.shard_capacity)
-        .map_err(|error| format!("failed to write corpus: {error}"))?;
+    let records: Vec<GameRecord> = games
+        .iter()
+        .map(|game| {
+            if mixed {
+                GameRecord::from_game_with_evaluators(game, &black_descriptor, &white_descriptor)
+            } else {
+                GameRecord::from_game(game)
+            }
+        })
+        .collect();
+
+    write_corpus_with_options(
+        &records,
+        &args.out_dir,
+        CorpusWriteOptions {
+            shard_capacity: args.shard_capacity,
+            overwrite: OverwritePolicy::Refuse,
+            evaluators: mixed.then(|| SeatEvaluators {
+                black: black_descriptor.clone(),
+                white: white_descriptor.clone(),
+            }),
+        },
+    )
+    .map_err(|error| format!("failed to write corpus: {error}"))?;
 
     let read_back = read_corpus(&args.out_dir)
         .map_err(|error| format!("failed to read back corpus: {error}"))?;
@@ -263,6 +388,49 @@ mod tests {
         fn opening(&mut self, _rng: &mut StdRng) -> Opening {
             self.0.clone()
         }
+    }
+
+    #[test]
+    fn parses_net_seats_and_exploration_window() {
+        let args = parse_args(
+            [
+                "--out",
+                "corpus",
+                "--openings",
+                "list.txt",
+                "--black-net",
+                "runs/first-corpus",
+                "--white-net",
+                "runs/second",
+                "--exploration-plies",
+                "30",
+            ]
+            .map(ToOwned::to_owned)
+            .into_iter(),
+        )
+        .expect("parses");
+
+        assert_eq!(args.black_net, Some(PathBuf::from("runs/first-corpus")));
+        assert_eq!(args.white_net, Some(PathBuf::from("runs/second")));
+        assert_eq!(args.exploration_plies, 30);
+    }
+
+    #[test]
+    fn net_seats_and_exploration_window_default_off() {
+        let args = parse_args(
+            [
+                "--out".to_owned(),
+                "corpus".to_owned(),
+                "--openings".to_owned(),
+                "list.txt".to_owned(),
+            ]
+            .into_iter(),
+        )
+        .expect("parses");
+
+        assert_eq!(args.black_net, None);
+        assert_eq!(args.white_net, None);
+        assert_eq!(args.exploration_plies, EXPLORATION_PLIES);
     }
 
     #[test]
@@ -366,6 +534,9 @@ mod tests {
             games: 1,
             seed_base: 11,
             shard_capacity: 1,
+            exploration_plies: EXPLORATION_PLIES,
+            black_net: None,
+            white_net: None,
             own_tss: OwnTssConfig::disabled(),
             out_dir: dir.path().to_owned(),
             opening_paths: vec![PathBuf::from("unused.txt")],

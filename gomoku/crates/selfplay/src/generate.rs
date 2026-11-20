@@ -10,12 +10,15 @@
 
 use std::collections::HashSet;
 
+use baseline::{BaselineEvaluator, Device};
 use engine::{Board, Move};
+use mcts::Evaluator;
 use player::PlayerOptions;
 use thiserror::Error;
 
-use crate::game::{Game, GameError, play_game_with_opening};
+use crate::game::{Game, GameError, play_game_with_seats};
 use crate::opening::{OpeningAnswer, OpeningSource};
+use crate::schedule::ExplorationSchedule;
 
 /// Failure during corpus generation.
 #[derive(Debug, Error)]
@@ -122,10 +125,12 @@ where
 
 /// Generate a corpus from a base-seed iterator with the real game runner.
 ///
-/// Each accepted game's actual seed — base or derived — is preserved in the
-/// returned [`Game`] and therefore in the record header and corpus manifest.
-/// Deduplication covers the full ordered move list, opening placements
-/// included, and is scoped to this single run.
+/// Both seats run the baseline evaluator under the default exploration
+/// schedule; use [`generate_games_with_seats`] to inject evaluator
+/// factories or a custom schedule. Each accepted game's actual seed — base
+/// or derived — is preserved in the returned [`Game`] and therefore in the
+/// record header and corpus manifest. Deduplication covers the full ordered
+/// move list, opening placements included, and is scoped to this single run.
 ///
 /// # Errors
 /// Returns [`GenerateError::Game`] when the runner fails, or
@@ -140,7 +145,53 @@ pub fn generate_games<I>(
 where
     I: IntoIterator<Item = u64>,
 {
+    generate_games_with_seats(
+        base_seeds,
+        black_options,
+        white_options,
+        ExplorationSchedule::default(),
+        opening_source,
+        || Box::new(BaselineEvaluator::new(Device::flex())),
+        || Box::new(BaselineEvaluator::new(Device::flex())),
+    )
+}
+
+/// Generate a corpus with explicit seat evaluator factories and schedule.
+///
+/// The factories build one fresh evaluator per candidate game, mirroring
+/// the per-game player construction of
+/// [`play_game_with_seats`](crate::game::play_game_with_seats); a factory
+/// may simply reload its model from disk. Everything else — seed
+/// derivation, Zobrist-walk deduplication, attempt budget — is identical to
+/// [`generate_games`].
+///
+/// # Errors
+/// Returns [`GenerateError::Game`] when a candidate game fails, or
+/// [`GenerateError::DuplicateExhausted`] when a base seed cannot produce a
+/// unique game within the attempt budget.
+pub fn generate_games_with_seats<I, B, W>(
+    base_seeds: I,
+    black_options: PlayerOptions,
+    white_options: PlayerOptions,
+    schedule: ExplorationSchedule,
+    opening_source: &mut impl OpeningSource,
+    mut black_factory: B,
+    mut white_factory: W,
+) -> Result<Vec<Game>, GenerateError>
+where
+    I: IntoIterator<Item = u64>,
+    B: FnMut() -> Box<dyn Evaluator>,
+    W: FnMut() -> Box<dyn Evaluator>,
+{
     generate_games_with(base_seeds, |seed| {
-        play_game_with_opening(seed, black_options, white_options, opening_source)
+        play_game_with_seats(
+            seed,
+            black_options,
+            white_options,
+            schedule,
+            opening_source,
+            black_factory(),
+            white_factory(),
+        )
     })
 }

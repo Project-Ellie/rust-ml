@@ -5728,6 +5728,8 @@ version = "0.1.0"
 dependencies = [
  "baseline",
  "engine",
+ "mcts",
+ "neteval",
  "player",
  "rand 0.10.3",
  "serde",

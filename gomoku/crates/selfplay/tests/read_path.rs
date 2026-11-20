@@ -8,6 +8,7 @@ use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
 use selfplay::record::GameRecord;
 use selfplay::sample::{SampleError, augment_sample, position_is_holdout, replay_sample};
 use selfplay::sampler::CorpusSampler;
+use selfplay::schedule::ExplorationSchedule;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,6 +20,7 @@ fn mv(row: u8, col: u8) -> Move {
 fn six_ply_record() -> GameRecord {
     let game = Game {
         seed: 17,
+        schedule: ExplorationSchedule::default(),
         black_options: PlayerOptions::default(),
         white_options: PlayerOptions::default(),
         opening: Opening::new(
