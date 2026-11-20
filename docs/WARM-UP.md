@@ -346,6 +346,14 @@ baseline corpora from before this change still read back (verified on
 (`data/check-points/first-corpus`, default 128ch×10, 20k steps on the
 100-game baseline corpus) is accepted in gomoku-gui and ready to
 generate phase-2 corpora.
+The loop's remaining plumbing landed the same day: `selfplayexport`
+mixes several corpora by weighted round-robin (`--corpus DIR[:WEIGHT]
+repeatable, `--mix-seed`), and `arenagen` is the promotion gate —
+color-swapped pairs (same opening per pair), equal sims both seats,
+no exploration, resignation on, Wilson 95% interval on the candidate's
+score; promoted when the lower bound clears 0.5. Arena games are not
+corpus training data (the seat evaluator flips per game, which the
+per-corpus pairing provenance cannot represent honestly).
 Milestones 4–8 (TSS anchor set, selfplay service, the phased loop,
 hardening, upgrades) have not started.
 

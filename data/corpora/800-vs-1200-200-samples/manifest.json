@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "game_count": 100,
+  "sample_count": 3125,
+  "shards": [
+    "shard-000.bin"
+  ],
+  "workspace_version": "0.1.0"
+}

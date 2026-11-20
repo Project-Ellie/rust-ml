@@ -7,6 +7,7 @@
 #![deny(missing_docs)]
 
 pub mod anchor;
+pub mod arena;
 pub mod corpus;
 pub mod export;
 pub mod game;
