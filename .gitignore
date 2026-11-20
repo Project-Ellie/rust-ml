@@ -32,3 +32,9 @@ paper/*.log
 paper/*.out
 paper/*.synctex.gz
 paper/*.toc
+
+# Personal / throwaway working files — not project content
+data/puzzles/mypuzzles.json
+docs/tutorials/basics/
+gomoku/collateral/
+gomoku/crates/baseline/examples/
