@@ -59,6 +59,10 @@ impl Default for OwnTssConfig {
     }
 }
 
+/// Default number of top-ranked root candidates a heuristic resignation
+/// checks; see [`PlayerOptions::resignation_candidates`].
+pub const DEFAULT_RESIGNATION_CANDIDATES: usize = 10;
+
 /// Search and move-selection settings for one decision.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerOptions {
@@ -79,6 +83,10 @@ pub struct PlayerOptions {
     /// Enable heuristic resignation after verified top-candidate refutations;
     /// disabled by default. Unchecked lower-ranked moves may still defend.
     pub resign: bool,
+    /// Number of top-ranked root candidates checked before conceding,
+    /// clamped to the legal move count. Zero checks no candidate, so no
+    /// candidate set can be certified and resignation never triggers.
+    pub resignation_candidates: usize,
 }
 
 impl Default for PlayerOptions {
@@ -93,6 +101,7 @@ impl Default for PlayerOptions {
             own: OwnTssConfig::disabled(),
             guard: GuardConfig::disabled(),
             resign: false,
+            resignation_candidates: DEFAULT_RESIGNATION_CANDIDATES,
         }
     }
 }
@@ -125,7 +134,8 @@ pub enum DecisionAction {
 pub struct ResignationEvidence {
     /// Exact effective settings supplied for this decision.
     pub options: PlayerOptions,
-    /// Checked candidates in admission order, at most five.
+    /// Checked candidates in admission order, at most
+    /// `options.resignation_candidates` and the legal move count.
     pub candidates: Vec<RefutedCandidate>,
 }
 
@@ -268,9 +278,11 @@ impl AiPlayer {
     /// substitute the returned move, but the search statistics always describe
     /// the real proposal search, never the guard's hypothetical probes. An
     /// unrefuted candidate is unknown, not certified safe. Resignation checks
-    /// the top `min(5, legal_count)` candidates with the baseline guard budget
-    /// before any RNG draws. Every successor must have a verified opponent VCF;
-    /// unknown cancels resignation. Lower-ranked moves may still defend, so
+    /// the top `min(options.resignation_candidates, legal_count)` candidates
+    /// with the baseline guard budget before any RNG draws; a zero count
+    /// checks nothing and never resigns. Every checked successor must have a
+    /// verified opponent VCF; unknown cancels resignation. Lower-ranked moves
+    /// may still defend, so
     /// this opt-in concession is not an all-legal-moves loss proof. The
     /// returned resignation retains the original verified proofs, candidate
     /// statistics, actual probe work caps, and an exact copy of `options`.
@@ -314,8 +326,12 @@ impl AiPlayer {
         let mcts::SearchOutcome { mut tree, root } =
             mcts::search(board, &mut *self.evaluator, &config);
         if options.resign
-            && let Some(candidates) =
-                resign::consider(board, tree.node(root).edges(), engine::prove_forced_win)
+            && let Some(candidates) = resign::consider(
+                board,
+                tree.node(root).edges(),
+                options.resignation_candidates,
+                engine::prove_forced_win,
+            )
         {
             return Ok(Decision {
                 action: DecisionAction::Resign(ResignReason::VerifiedOpponentVcf {
@@ -423,7 +439,7 @@ mod tests {
         let decision = ai.decide(&board, &options, &mut rng).unwrap();
         assert_eq!(
             decision.action,
-            DecisionAction::Resign(ResignReason::VerifiedOpponentVcf { candidates: 5 })
+            DecisionAction::Resign(ResignReason::VerifiedOpponentVcf { candidates: 10 })
         );
         assert!(decision.guard.is_none());
         assert_eq!(decision.search, Some(expected));
@@ -437,7 +453,7 @@ mod tests {
                 .then_with(|| b.prior.partial_cmp(&a.prior).unwrap())
                 .then_with(|| a.mv.index().cmp(&b.mv.index()))
         });
-        assert_eq!(evidence.candidates.len(), 5);
+        assert_eq!(evidence.candidates.len(), 10);
         for (index, (candidate, edge)) in evidence.candidates.iter().zip(ranked.iter()).enumerate()
         {
             assert_eq!(candidate.ordinal, (index + 1) as u8);
@@ -475,6 +491,50 @@ mod tests {
         );
         assert_eq!(decision.guard.unwrap().outcome, GuardOutcome::Disabled);
         assert!(decision.search.is_some());
+    }
+
+    #[test]
+    fn resignation_candidate_count_defaults_to_ten_and_custom_counts_are_honored() {
+        use rand::{SeedableRng, rngs::StdRng};
+        assert_eq!(DEFAULT_RESIGNATION_CANDIDATES, 10);
+        assert_eq!(
+            PlayerOptions::default().resignation_candidates,
+            DEFAULT_RESIGNATION_CANDIDATES
+        );
+        let mv = |r, c| Move::new(r, c).unwrap();
+        let board = Board::from_position(
+            &[mv(2, 0), mv(2, 2), mv(2, 4), mv(2, 6)],
+            &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
+            Color::Black,
+        )
+        .unwrap();
+        for (count, expected) in [(3, 3), (12, 12), (0, 0)] {
+            let options = PlayerOptions {
+                simulations: 3,
+                resign: true,
+                resignation_candidates: count,
+                ..PlayerOptions::default()
+            };
+            let mut ai = AiPlayer::new(Box::new(mcts::UniformEvaluator::new(0.4)));
+            let decision = ai
+                .decide(&board, &options, &mut StdRng::seed_from_u64(1))
+                .unwrap();
+            if expected == 0 {
+                // No candidate set can be certified, so ordinary play runs.
+                assert!(matches!(decision.action, DecisionAction::Play(_)));
+                assert!(decision.resignation.is_none());
+            } else {
+                assert_eq!(
+                    decision.action,
+                    DecisionAction::Resign(ResignReason::VerifiedOpponentVcf {
+                        candidates: expected
+                    })
+                );
+                let evidence = decision.resignation.expect("resignation evidence");
+                assert_eq!(evidence.candidates.len(), expected);
+                assert_eq!(evidence.options.resignation_candidates, count);
+            }
+        }
     }
 
     #[test]

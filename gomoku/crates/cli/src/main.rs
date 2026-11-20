@@ -104,7 +104,7 @@ struct SearchArgs {
     #[arg(long, value_name = "N")]
     white_sims: Option<u32>,
 
-    /// Allow heuristic resignation if every top-five candidate is VCF-refuted.
+    /// Allow heuristic resignation if every checked top candidate is VCF-refuted.
     #[arg(long)]
     resign: bool,
 

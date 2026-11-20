@@ -546,6 +546,7 @@ impl SessionCore {
             noise_epsilon: effective_config.noise_epsilon,
             noise_alpha: 0.3,
             resign: effective_config.resign,
+            resignation_candidates: player::DEFAULT_RESIGNATION_CANDIDATES,
             own: match effective_config.evaluator {
                 EvaluatorKind::Baseline => player::OwnTssConfig::baseline(),
                 EvaluatorKind::Tactics => player::OwnTssConfig::disabled(),
@@ -1101,7 +1102,7 @@ mod tests {
                     events,
                     vec![Event::Resigned {
                         by: side,
-                        candidates: 5
+                        candidates: 10
                     }]
                 );
                 assert_eq!(core.board(), board);
@@ -1114,7 +1115,7 @@ mod tests {
                     core.snapshot().resignation,
                     Some(crate::history::Resignation {
                         by: side,
-                        candidates: 5
+                        candidates: 10
                     })
                 );
                 let info = core.search_info().unwrap();
@@ -1144,7 +1145,7 @@ mod tests {
                 self.0.set(self.0.get() + 1);
                 let mut result =
                     mcts::Evaluator::evaluate(&mut mcts::UniformEvaluator::default(), request);
-                for col in 10..15 {
+                for col in 0..15 {
                     result.policy[mv(14, col).index()] = 20.0;
                 }
                 result
@@ -1171,13 +1172,13 @@ mod tests {
         core.black_player = Some(player::AiPlayer::new(Box::new(Counted(calls.clone()))));
         assert!(matches!(
             core.execute(Command::Step).unwrap().as_slice(),
-            [Event::Resigned { candidates: 5, .. }]
+            [Event::Resigned { candidates: 10, .. }]
         ));
         let original_calls = calls.get();
         assert!(original_calls > 0);
         let original = core.export_record_json().unwrap();
         for _ in 0..10 {
-            for n in 1..=5 {
+            for n in 1..=10 {
                 let p = crate::decision::preview(&core, None, n).unwrap();
                 assert!(p.proof.line.len() >= 3);
                 let lines = crate::repl::print_decision(&core, None, Some(n));
@@ -1438,7 +1439,7 @@ mod tests {
             core.execute(Command::Step).unwrap(),
             vec![Event::Resigned {
                 by: Color::Black,
-                candidates: 5
+                candidates: 10
             }]
         );
         assert_eq!(core.board(), board);

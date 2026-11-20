@@ -6,9 +6,11 @@ use mcts::Edge;
 pub(crate) fn consider(
     board: &Board,
     edges: &[Edge],
+    candidates: usize,
     mut probe: impl FnMut(&Board, Color, SearchBudget) -> Option<Proof>,
 ) -> Option<Vec<RefutedCandidate>> {
-    if board.status() != Status::Ongoing {
+    // Zero candidates can never form a certified set: resignation never fires.
+    if candidates == 0 || board.status() != Status::Ongoing {
         return None;
     }
     if !engine::immediate_wins(board, board.to_move()).is_empty() {
@@ -34,7 +36,7 @@ pub(crate) fn consider(
             .then_with(|| b.prior.partial_cmp(&a.prior).expect("finite priors"))
             .then_with(|| a.mv.index().cmp(&b.mv.index()))
     });
-    let count = ranked.len().min(5);
+    let count = ranked.len().min(candidates);
     let mut candidates = Vec::with_capacity(count);
     let probe_budget = GuardConfig::baseline().budget;
     for (index, edge) in ranked.into_iter().take(count).enumerate() {
@@ -128,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn fewer_than_five_checks_every_legal_candidate_with_real_certificates() {
+    fn fewer_legal_moves_than_the_candidate_count_checks_every_legal_move_with_real_certificates() {
         // Dense repeating pairs, with one open White four and three empty
         // cells. The root contains no own win; either endpoint survives.
         let holes = [mv(0, 7), mv(5, 7), mv(14, 14)];
@@ -153,7 +155,7 @@ mod tests {
         assert_eq!(board.empty_moves().collect::<Vec<_>>(), holes);
         let mut checked = Vec::new();
         let mut expected = Vec::new();
-        let result = consider(&board, &edges(&board), |after, side, budget| {
+        let result = consider(&board, &edges(&board), 10, |after, side, budget| {
             let mv = *after.moves().last().unwrap();
             checked.push(mv);
             let proof = engine::prove_forced_win(after, side, budget)?;
@@ -182,7 +184,7 @@ mod tests {
         after.play(mv(0, 0)).unwrap();
         assert_eq!(after.status(), Status::Draw);
         assert_eq!(
-            consider(&board, &edges(&board), |_, _, _| panic!("draw")),
+            consider(&board, &edges(&board), 10, |_, _, _| panic!("draw")),
             None
         );
     }
@@ -193,7 +195,7 @@ mod tests {
         for bad_at in [1, 3, 5] {
             for mode in 0..10 {
                 let mut calls = 0;
-                let result = consider(&board, &edges(&board), |after, side, budget| {
+                let result = consider(&board, &edges(&board), 10, |after, side, budget| {
                     calls += 1;
                     if calls != bad_at {
                         return Some(certificate(after));
@@ -250,7 +252,7 @@ mod tests {
         let mut ranked = edges(&board);
         ranked.iter_mut().find(|e| e.mv == mv(14, 14)).unwrap().n = 1;
         let mut calls = 0;
-        let result = consider(&board, &ranked, |after, side, budget| {
+        let result = consider(&board, &ranked, 10, |after, side, budget| {
             calls += 1;
             let mut proof = engine::prove_forced_win(after, side, budget).unwrap();
             assert!(engine::verify_line(after, &proof));
@@ -269,7 +271,7 @@ mod tests {
         let board = Board::new();
         let mut calls = 0;
         assert_eq!(
-            consider(&board, &edges(&board), |_, side, _| {
+            consider(&board, &edges(&board), 10, |_, side, _| {
                 calls += 1;
                 Some(Proof {
                     winner: side,
@@ -291,14 +293,14 @@ mod tests {
         drawn.play(mv(0, 0)).unwrap();
         for board in [won, drawn] {
             assert_eq!(
-                consider(&board, &edges(&board), |_, _, _| panic!("terminal")),
+                consider(&board, &edges(&board), 10, |_, _, _| panic!("terminal")),
                 None
             );
         }
     }
 
     #[test]
-    fn own_immediate_win_anywhere_cancels_even_outside_top_five() {
+    fn own_immediate_win_anywhere_cancels_even_outside_the_checked_candidates() {
         let board = Board::from_position(
             &[mv(14, 1), mv(14, 2), mv(14, 3), mv(14, 4)],
             &[mv(7, 3), mv(7, 4), mv(7, 5), mv(7, 6)],
@@ -313,11 +315,14 @@ mod tests {
                 .iter()
                 .all(|winning| !ranked[..5].iter().any(|e| e.mv == winning))
         );
-        assert_eq!(consider(&board, &ranked, |_, _, _| panic!("own win")), None);
+        assert_eq!(
+            consider(&board, &ranked, 5, |_, _, _| panic!("own win")),
+            None
+        );
     }
 
     #[test]
-    fn invalid_roots_cancel_before_probing_even_when_bad_edge_is_outside_top_five() {
+    fn invalid_roots_cancel_before_probing_even_when_the_bad_edge_is_unchecked() {
         let board = losing_position();
         let valid = edges(&board);
         let mut incomplete = valid.clone();
@@ -336,16 +341,49 @@ mod tests {
         }
         for root in invalid {
             assert_eq!(
-                consider(&board, &root, |_, _, _| panic!("invalid root")),
+                consider(&board, &root, 5, |_, _, _| panic!("invalid root")),
                 None
             );
         }
     }
 
     #[test]
-    fn five_certified_successors_rank_visits_prior_index_including_unvisited() {
+    fn custom_candidate_counts_are_honored_in_rank_order() {
+        let board = losing_position();
+        let legal = board.empty_moves().count();
+        assert!(legal > 12);
+        for count in [3, 12] {
+            let mut checked = Vec::new();
+            let result = consider(&board, &edges(&board), count, |after, _, _| {
+                checked.push(*after.moves().last().unwrap());
+                Some(certificate(after))
+            });
+            // All edges tie at zero visits/prior, so ranking is move index order.
+            let expected: Vec<_> = board.empty_moves().take(count).collect();
+            assert_eq!(checked, expected);
+            let retained = result.expect("every checked candidate is certified");
+            assert_eq!(retained.len(), count);
+            for (index, candidate) in retained.iter().enumerate() {
+                assert_eq!(candidate.ordinal, (index + 1) as u8);
+                assert_eq!(candidate.mv, expected[index]);
+            }
+        }
+    }
+
+    #[test]
+    fn zero_candidate_count_never_resigns_and_never_probes() {
+        let board = losing_position();
+        assert_eq!(
+            consider(&board, &edges(&board), 0, |_, _, _| panic!("no probe")),
+            None
+        );
+    }
+
+    #[test]
+    fn certified_successors_rank_visits_prior_index_including_unvisited() {
         // Retain the original distinct-visit case and also exercise visited
-        // prior/index ties without excluding zero-visit candidates.
+        // prior/index ties without excluding zero-visit candidates. Five
+        // candidates exercise every tie-breaking rule with short proof lines.
         for tied_visits in [false, true] {
             let board = losing_position();
             let original = board.clone();
@@ -374,7 +412,7 @@ mod tests {
             let before = ranked.clone();
             let mut checked = Vec::new();
             let mut original_proofs = Vec::new();
-            let result = consider(&board, &ranked, |after, side, budget| {
+            let result = consider(&board, &ranked, 5, |after, side, budget| {
                 let candidate = *after.moves().last().unwrap();
                 let mut expected = board.clone();
                 expected.play(candidate).unwrap();
@@ -415,7 +453,7 @@ mod tests {
                 ]
             };
             assert_eq!(checked, expected.map(|(mv, _, _)| mv));
-            let retained = result.expect("all five candidates are certified");
+            let retained = result.expect("all checked candidates are certified");
             assert_eq!(retained.len(), 5);
             for (index, (candidate, (mv, visits, prior))) in
                 retained.iter().zip(expected).enumerate()

@@ -45,6 +45,13 @@ no engine status.
 `Vec<RefutedCandidate>` with verified proofs, and admission semantics do
 not change.
 
+> **Amendment (2026-11-20):** admission's candidate count is now
+> configurable (`PlayerOptions::resignation_candidates`, default 10; it
+> was fixed at 5 when this design was written). Every other admission
+> rule still holds, and this design consumes the candidate list
+> opaquely, so nothing below changes. See
+> [2026-11-20-resignation-hardening-design.md](2026-11-20-resignation-hardening-design.md).
+
 **`History::ensure_branch(&mut self, mv: Move) -> Result<NodeId, HistoryError>`**
 (new): validates legality at the cursor node, returns the existing
 child if the move was already explored (human variation, earlier
@@ -115,8 +122,9 @@ with "legacy previews explicitly unavailable".
 
 ## Edge cases
 
-- **Fewer than five legal moves**: branches are exactly the checked
-  candidates (admission already checks all of them in that case).
+- **Fewer legal moves than the candidate count**: branches are exactly
+  the checked candidates (admission already checks all of them in that
+  case).
 - **Candidate move already explored**: `ensure_branch` reuses the
   existing child; the variation index mapping points at it; no
   duplicate node.

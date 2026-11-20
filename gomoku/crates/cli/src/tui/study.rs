@@ -968,10 +968,14 @@ mod tests {
             .iter()
             .filter(|f| f.len() >= 19)
             .collect::<Vec<_>>();
-        assert!(frames[1].join("\n").contains("HYPOTHETICAL PREVIEW"));
-        assert!(!frames[2].join("\n").contains("HYPOTHETICAL PREVIEW"));
-        assert!(frames[3].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        // The ten-candidate report paginates into its own frame; the preview
+        // overlay follows it, and each overlay toggle replaces the preview.
+        assert!(!frames[1].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(frames[2].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(!frames[3].join("\n").contains("HYPOTHETICAL PREVIEW"));
         assert!(!frames[4].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(frames[5].join("\n").contains("HYPOTHETICAL PREVIEW"));
+        assert!(!frames[6].join("\n").contains("HYPOTHETICAL PREVIEW"));
     }
 
     #[test]

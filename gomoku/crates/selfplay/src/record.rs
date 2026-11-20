@@ -95,6 +95,14 @@ pub struct SeatConfig {
     pub guard: GuardSettings,
     /// whether heuristic resignation is enabled
     pub resign: bool,
+    /// Number of top-ranked candidates checked before conceding. Records
+    /// predate the configurable count and default to the current baseline.
+    #[serde(default = "default_resignation_candidates")]
+    pub resignation_candidates: usize,
+}
+
+fn default_resignation_candidates() -> usize {
+    player::DEFAULT_RESIGNATION_CANDIDATES
 }
 
 impl From<PlayerOptions> for SeatConfig {
@@ -108,6 +116,7 @@ impl From<PlayerOptions> for SeatConfig {
             tss_probe: options.own.into(),
             guard: options.guard.into(),
             resign: options.resign,
+            resignation_candidates: options.resignation_candidates,
         }
     }
 }

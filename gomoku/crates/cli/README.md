@@ -173,7 +173,7 @@ End of input quits the session.
 | `--black-sims N` | — | override the Black seat's simulations |
 | `--white-sims N` | — | override the White seat's simulations |
 | `--seed N` | random | seed for reproducible sessions |
-| `--resign` | false | opt in to heuristic top-five concession for either evaluator |
+| `--resign` | false | opt in to heuristic top-candidate concession for either evaluator |
 
 When neither `--temperature` nor `--noise` is given, AI-vs-AI sessions
 from an empty board use an opening schedule for the first ten plies
@@ -186,7 +186,8 @@ seats later assigned with `release`.
 
 After a real search, before noise or sampling, the player ranks candidates
 by visits, then prior, then move index. With `--resign`, it checks at most
-five top candidates (all if fewer than five empty cells remain). Each
+ten top candidates (all if fewer than ten empty cells remain); the count is
+the player's configurable `resignation_candidates` option. Each
 successor must have an opponent VCF certificate accepted by the existing
 engine verifier. Each probe uses the existing 1,000-node / 10-ply guard
 budget; unknown or exhausted results cancel the concession. An own
@@ -200,7 +201,7 @@ a stone, advancing the cursor, or changing engine status. The real search
 statistics remain available for policy and value display. Ordinary `t` /
 `tss` analysis remains available while the engine board is ongoing, even
 before takeover. It searches for the current side's forced win; it is not
-a viewer for the five candidate refutations.
+a viewer for the checked candidate refutations.
 
 At an actively conceded node, Enter, Space, and an empty line do nothing;
 typed `play` and `step` fail. `take black`, `take white`, or `take both`

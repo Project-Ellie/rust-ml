@@ -70,6 +70,12 @@ struct GuardRecord {
     max_candidates: usize,
     budget: BudgetRecord,
 }
+/// v3 records predate the configurable candidate count; their concessions
+/// were written under the fixed top-five rule.
+fn legacy_resignation_candidates() -> usize {
+    5
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OptionsRecord {
@@ -81,6 +87,8 @@ struct OptionsRecord {
     own: OwnRecord,
     guard: GuardRecord,
     resign: bool,
+    #[serde(default = "legacy_resignation_candidates")]
+    resignation_candidates: usize,
 }
 
 impl OptionsRecord {
@@ -101,6 +109,7 @@ impl OptionsRecord {
                 budget: options.guard.budget.into(),
             },
             resign: options.resign,
+            resignation_candidates: options.resignation_candidates,
         }
     }
 
@@ -134,6 +143,8 @@ impl OptionsRecord {
         }
         // Temperature/noise already describe the effective decision, including
         // automatic opening scheduling; explicit_selection need not be true.
+        // The candidate count has no seat-level counterpart: it is restored
+        // verbatim and bounds the concession-count invariant below.
         Ok(PlayerOptions {
             simulations: self.simulations,
             c_puct: self.c_puct,
@@ -143,6 +154,7 @@ impl OptionsRecord {
             own,
             guard,
             resign: self.resign,
+            resignation_candidates: self.resignation_candidates,
         })
     }
 }
@@ -245,7 +257,14 @@ impl EventRecord {
 
     /// Check cheap shapes for the whole file before any proof verification.
     pub(super) fn validate_shape(&self, is_latest: bool) -> Result<(), String> {
-        if self.candidates == 0 || self.candidates > 5 || (!is_latest && !self.resumed) {
+        // Legacy annotations predate the configurable count and were written
+        // under the fixed top-five rule.
+        let cap = match &self.evidence {
+            EvidenceRecord::Original { options, .. } => options.resignation_candidates,
+            EvidenceRecord::LegacyUnavailable {} => legacy_resignation_candidates(),
+        }
+        .min(225);
+        if self.candidates == 0 || self.candidates > cap || (!is_latest && !self.resumed) {
             return Err("invalid concession count or resume ordering".into());
         }
         if let EvidenceRecord::Original {
@@ -280,10 +299,16 @@ impl EventRecord {
     /// Restore and validate all non-proof invariants; verification is a later pass.
     pub(super) fn restore(&self, board: &Board) -> Result<ResignationEvent, String> {
         let legal_count = board.empty_moves().count();
+        // Legacy evidence tops out at the historical fixed count; original
+        // evidence is bounded precisely against its restored options later.
+        let cap = match &self.evidence {
+            EvidenceRecord::Original { .. } => 225,
+            EvidenceRecord::LegacyUnavailable {} => legacy_resignation_candidates(),
+        };
         if board.status() != Status::Ongoing
             || self.by != board.to_move()
             || self.candidates == 0
-            || self.candidates > legal_count.min(5)
+            || self.candidates > legal_count.min(cap)
         {
             return Err("invalid resignation annotation".into());
         }
@@ -294,7 +319,8 @@ impl EventRecord {
                 search,
                 candidates,
             } => {
-                if self.candidates != legal_count.min(5)
+                let options = options.restore(&search.config)?;
+                if self.candidates != legal_count.min(options.resignation_candidates)
                     || search.edges.len() != legal_count
                     || search.side_to_move != self.by
                     || !search.value.is_finite()
@@ -303,7 +329,6 @@ impl EventRecord {
                 {
                     return Err("invalid original audit root/count/value".into());
                 }
-                let options = options.restore(&search.config)?;
                 let mut seen = [false; 225];
                 let mut ranked = Vec::with_capacity(legal_count);
                 let mut total_visits = 0u64;

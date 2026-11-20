@@ -2,6 +2,12 @@
 
 Status (2026-11-07): the owner's native save/load implementation landed on `main` at `06d9598`, followed by opt-in resignation at `158b611`. The working-tree continuation and inspection corrections add original decision audits, human resumption, and version-3 persistence; all three slices and the review amendment passed independent review. Fresh final full-workspace release QA passed: 676 tests, zero failures, seven ignored, plus three doc tests; clippy, formatting, the engine-island check, and a genuine lean-CLI compile check passed. Fresh offline UI and save/load checks reproduced successful inspection, TSS analysis and human continuation. Builds used `gomoku/target/resignation-qa`, leaving the existing release executable and the owner's saved game untouched. The examples below are the original implementation proposal, not an exact transcription of current source. Existing learner code is the implementation reference; baseline fork bonuses and saved diagnostic results are outside this change.
 
+> **Narrow supersession note (2026-11-20):** the candidate count cited
+> below as `min(5, legal_count)` / "top five" is now the configurable
+> `PlayerOptions::resignation_candidates`, default 10; every other
+> admission rule is unchanged. See
+> [2026-11-20-resignation-hardening-design.md](2026-11-20-resignation-hardening-design.md).
+>
 > **Narrow supersession note:** the current implementation writes v3 original
 > concession audits (options, root statistics, and verified candidate proofs),
 > retains repeated events, and provides `decision` reports and read-only

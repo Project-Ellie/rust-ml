@@ -27,7 +27,7 @@ pub(crate) fn concession() -> SessionCore {
     });
     assert!(matches!(
         core.execute(Command::Step).unwrap().as_slice(),
-        [Event::Resigned { candidates: 5, .. }]
+        [Event::Resigned { candidates: 10, .. }]
     ));
     core
 }
@@ -47,7 +47,7 @@ fn decision_original_report_preview_and_repl_are_read_only() {
         })
         .unwrap();
         let text = report(&core, None, None).unwrap().join("\n");
-        for n in 1..=5 {
+        for n in 1..=10 {
             assert!(text.contains(&format!("Check {n}:")));
             let p = preview(&core, None, n).unwrap();
             let candidate = &core.resignation_events()[0]
@@ -68,7 +68,7 @@ fn decision_original_report_preview_and_repl_are_read_only() {
         let repl = crate::repl::process_line("decision 1", &mut core, false)
             .lines
             .join("\n");
-        assert!(repl.contains("Check 5:"));
+        assert!(repl.contains("Check 10:"));
         assert!(repl.contains("HYPOTHETICAL PREVIEW"));
     }
     assert_eq!(core.export_record_json().unwrap(), before);
@@ -139,7 +139,7 @@ fn decision_repeat_events_preserve_original_settings_across_v3() {
             )));
         }
         assert!(text.contains(&format!("Original AI config: {:?}", audit.search.config)));
-        for n in 1..=5 {
+        for n in 1..=10 {
             assert_eq!(
                 preview(&core, Some(e), n).unwrap().proof,
                 preview(&loaded, Some(e), n).unwrap().proof
@@ -150,7 +150,7 @@ fn decision_repeat_events_preserve_original_settings_across_v3() {
         (Some(0), None),
         (Some(3), None),
         (None, Some(0)),
-        (None, Some(6)),
+        (None, Some(11)),
     ] {
         assert!(
             core.execute(Command::Decision { event, candidate })

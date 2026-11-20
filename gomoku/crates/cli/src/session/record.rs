@@ -205,7 +205,7 @@ mod tests {
                         .evidence
                         .candidates
                         .len(),
-                    5
+                    10
                 );
             }
         }
@@ -525,6 +525,36 @@ mod tests {
         let restored = SessionCore::import_record_json(&text).unwrap();
         assert_eq!(restored.snapshot(), core.snapshot());
         assert!(restored.is_finished());
+    }
+
+    #[test]
+    fn v3_records_predating_the_configurable_count_load_under_the_historical_five() {
+        use serde_json::json;
+        let core = real_concession(EvaluatorKind::Tactics);
+        let text = core.export_record_json().unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let event = &mut value["history"]["nodes"][0]["resignations"][0];
+        assert_eq!(event["candidates"], json!(10));
+        assert_eq!(
+            event["evidence"]["options"]["resignation_candidates"],
+            json!(10)
+        );
+        // Rewrite the export into the pre-configurable-count v3 shape: no
+        // stored count, and the historical fixed-size candidate list.
+        event["candidates"] = json!(5);
+        event["evidence"]["options"]
+            .as_object_mut()
+            .unwrap()
+            .remove("resignation_candidates");
+        let candidates = event["evidence"]["candidates"].as_array_mut().unwrap();
+        assert_eq!(candidates.len(), 10);
+        candidates.truncate(5);
+        let loaded = SessionCore::import_record_json(&value.to_string()).unwrap();
+        let restored = &loaded.resignation_events()[0];
+        assert_eq!(restored.summary.candidates, 5);
+        let audit = restored.audit.as_ref().unwrap();
+        assert_eq!(audit.evidence.options.resignation_candidates, 5);
+        assert_eq!(audit.evidence.candidates.len(), 5);
     }
 
     #[test]
