@@ -83,6 +83,34 @@ pub struct CorpusWriteOptions {
     pub evaluators: Option<SeatEvaluators>,
 }
 
+/// Preflight the overwrite gate of [`write_corpus_with_options`] without
+/// writing anything.
+///
+/// Callers with an expensive generation phase can fail fast, before the
+/// work starts; the write path keeps its own gate as the final word, so a
+/// preflight never weakens the protection.
+///
+/// # Errors
+/// Returns `AlreadyExists` when the directory is non-empty and the policy
+/// is [`OverwritePolicy::Refuse`], or any error from inspecting the
+/// directory. With [`OverwritePolicy::Allow`] the removal itself stays in
+/// the write path; the preflight only checks inspectability.
+pub fn check_writable(out_dir: &Path, overwrite: OverwritePolicy) -> io::Result<()> {
+    match std::fs::read_dir(out_dir) {
+        Ok(mut entries) => {
+            if entries.next().transpose()?.is_some() && overwrite == OverwritePolicy::Refuse {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "refusing to write a corpus into a non-empty directory",
+                ));
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+
 /// Write game records to fixed-capacity length-delimited bincode shards and
 /// a JSON manifest, in the fixed phase order validate → gate → shards →
 /// manifest. The order is the protection.
@@ -133,22 +161,9 @@ pub fn write_corpus_with_options(
     }
 
     // Phase 2: the overwrite gate.
-    match std::fs::read_dir(out_dir) {
-        Ok(mut entries) => {
-            if entries.next().transpose()?.is_some() {
-                match options.overwrite {
-                    OverwritePolicy::Refuse => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::AlreadyExists,
-                            "refusing to write a corpus into a non-empty directory",
-                        ));
-                    }
-                    OverwritePolicy::Allow => std::fs::remove_dir_all(out_dir)?,
-                }
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
+    check_writable(out_dir, options.overwrite)?;
+    if matches!(options.overwrite, OverwritePolicy::Allow) && out_dir.try_exists()? {
+        std::fs::remove_dir_all(out_dir)?;
     }
 
     // Phase 3: the shards.

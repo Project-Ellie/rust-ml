@@ -12,8 +12,8 @@ use mcts::Evaluator;
 use neteval::NetEvaluator;
 use player::{OwnTssConfig, PlayerOptions};
 use selfplay::corpus::{
-    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, read_corpus, read_manifest,
-    write_corpus_with_options,
+    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, check_writable, read_corpus,
+    read_manifest, write_corpus_with_options,
 };
 use selfplay::generate::generate_games_with_seats;
 use selfplay::opening::{OpeningSource, TournamentOpenings};
@@ -224,6 +224,11 @@ fn run_with_opening_source(
     args: &Args,
     opening_source: &mut impl OpeningSource,
 ) -> Result<(), String> {
+    // Fail fast: generation is expensive, so the overwrite gate runs before
+    // the first game, not after the last. The write path keeps its own gate.
+    check_writable(&args.out_dir, OverwritePolicy::Refuse)
+        .map_err(|error| format!("output directory {}: {error}", args.out_dir.display()))?;
+
     let games_u64: u64 = args
         .games
         .try_into()
@@ -510,6 +515,50 @@ mod tests {
         assert!(
             error.contains("greater than zero"),
             "'{error}' missing 'greater than zero'"
+        );
+    }
+
+    #[test]
+    fn refuses_a_non_empty_output_dir_before_generating() {
+        let opening = Opening::new(
+            [mv(5, 8), mv(5, 10), mv(7, 9)],
+            OpeningAnswer::AddTwo {
+                stones: [mv(9, 8), mv(9, 10)],
+                final_choice: Color::White,
+            },
+            OpeningProvenance::Listed {
+                list: "fixed-test".to_owned(),
+                index: 0,
+            },
+        );
+        let dir = TestDir::new("preflight");
+        std::fs::create_dir_all(dir.path()).expect("dir exists");
+        std::fs::write(dir.path().join("occupied"), "prior corpus").expect("marker file");
+
+        let args = Args {
+            black_sims: 1,
+            white_sims: 1,
+            games: 1,
+            seed_base: 11,
+            shard_capacity: 1,
+            exploration_plies: EXPLORATION_PLIES,
+            black_net: None,
+            white_net: None,
+            own_tss: OwnTssConfig::disabled(),
+            out_dir: dir.path().to_owned(),
+            opening_paths: vec![PathBuf::from("unused.txt")],
+        };
+
+        let error = run_with_opening_source(&args, &mut FixedOpening(opening))
+            .expect_err("a non-empty output directory fails fast");
+        assert!(
+            error.contains("refusing to write a corpus into a non-empty directory"),
+            "'{error}' names the refusal"
+        );
+        // The gate ran before generation: the marker file is untouched.
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("occupied")).expect("marker reads"),
+            "prior corpus"
         );
     }
 

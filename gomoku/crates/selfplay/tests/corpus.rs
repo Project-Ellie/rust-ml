@@ -1,8 +1,8 @@
 use engine::{Color, Move};
 use player::PlayerOptions;
 use selfplay::corpus::{
-    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, read_corpus, read_manifest, write_corpus,
-    write_corpus_with_options,
+    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, check_writable, read_corpus,
+    read_manifest, write_corpus, write_corpus_with_options,
 };
 use selfplay::game::{Game, Outcome, PlyRecord, PlySearch, WinReason};
 use selfplay::opening::{Opening, OpeningAnswer, OpeningProvenance};
@@ -391,4 +391,21 @@ fn manifest_records_seat_evaluators_only_when_declared() {
     assert_eq!(read_back, plain);
     let read_back = read_manifest(net_dir.path()).expect("net manifest reads");
     assert_eq!(read_back, manifest);
+}
+
+#[test]
+fn check_writable_preflights_the_overwrite_gate() {
+    let missing = TestDir::new("preflight-missing");
+    check_writable(missing.path(), OverwritePolicy::Refuse).expect("a missing dir is writable");
+    check_writable(missing.path(), OverwritePolicy::Allow).expect("a missing dir allows");
+
+    let empty = TestDir::new("preflight-empty");
+    std::fs::create_dir_all(empty.path()).expect("dir exists");
+    check_writable(empty.path(), OverwritePolicy::Refuse).expect("an empty dir is writable");
+
+    std::fs::write(empty.path().join("occupied"), "data").expect("marker file");
+    let error = check_writable(empty.path(), OverwritePolicy::Refuse)
+        .expect_err("a non-empty dir is refused");
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    check_writable(empty.path(), OverwritePolicy::Allow).expect("the allow policy passes");
 }
