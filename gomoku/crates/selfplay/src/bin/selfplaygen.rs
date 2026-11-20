@@ -24,7 +24,7 @@ const USAGE: &str = "selfplaygen --out <DIR> --openings <PATH> [--openings <PATH
             [--black-sims <N>] [--white-sims <N>] [--games <N>]
             [--seed-base <N>] [--shard-capacity <N>]
             [--black-net <RUN_DIR>] [--white-net <RUN_DIR>]
-            [--exploration-plies <N>]
+            [--exploration-plies <N>] [--overwrite]
 
 Generate a corpus of self-play games, baseline or trained-net seated.
 
@@ -41,6 +41,7 @@ accepted; a repeated numeric flag takes its last value):
   --shard-capacity <N>  maximum games per shard (default: 1000, >0)
   --exploration-plies <N>  plies with temperature + root noise (default: 10;
                         0 disables exploration)
+  --overwrite           replace a non-empty output directory (default: refuse)
 
 Seat flags:
   --black-net <RUN_DIR> seat a trained net (nettrain run directory holding
@@ -65,6 +66,7 @@ struct Args {
     exploration_plies: usize,
     black_net: Option<PathBuf>,
     white_net: Option<PathBuf>,
+    overwrite: bool,
     own_tss: OwnTssConfig,
     out_dir: PathBuf,
     opening_paths: Vec<PathBuf>,
@@ -89,6 +91,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut exploration_plies: usize = EXPLORATION_PLIES;
     let mut black_net: Option<PathBuf> = None;
     let mut white_net: Option<PathBuf> = None;
+    let mut overwrite = false;
     let mut out_dir: Option<PathBuf> = None;
     let mut opening_paths = Vec::new();
 
@@ -102,6 +105,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--exploration-plies" => {
                 exploration_plies = parse_value(&arg, args.next().as_deref())?;
             }
+            "--overwrite" => overwrite = true,
             "--black-net" => {
                 let value = args
                     .next()
@@ -150,6 +154,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         exploration_plies,
         black_net,
         white_net,
+        overwrite,
         own_tss: OwnTssConfig::baseline(),
         out_dir,
         opening_paths,
@@ -226,7 +231,12 @@ fn run_with_opening_source(
 ) -> Result<(), String> {
     // Fail fast: generation is expensive, so the overwrite gate runs before
     // the first game, not after the last. The write path keeps its own gate.
-    check_writable(&args.out_dir, OverwritePolicy::Refuse)
+    let overwrite_policy = if args.overwrite {
+        OverwritePolicy::Allow
+    } else {
+        OverwritePolicy::Refuse
+    };
+    check_writable(&args.out_dir, overwrite_policy)
         .map_err(|error| format!("output directory {}: {error}", args.out_dir.display()))?;
 
     let games_u64: u64 = args
@@ -306,7 +316,7 @@ fn run_with_opening_source(
         &args.out_dir,
         CorpusWriteOptions {
             shard_capacity: args.shard_capacity,
-            overwrite: OverwritePolicy::Refuse,
+            overwrite: overwrite_policy,
             evaluators: mixed.then(|| SeatEvaluators {
                 black: black_descriptor.clone(),
                 white: white_descriptor.clone(),
@@ -436,6 +446,19 @@ mod tests {
         assert_eq!(args.black_net, None);
         assert_eq!(args.white_net, None);
         assert_eq!(args.exploration_plies, EXPLORATION_PLIES);
+        assert!(!args.overwrite);
+    }
+
+    #[test]
+    fn parses_overwrite_flag() {
+        let args = parse_args(
+            ["--out", "corpus", "--openings", "list.txt", "--overwrite"]
+                .map(ToOwned::to_owned)
+                .into_iter(),
+        )
+        .expect("parses");
+
+        assert!(args.overwrite);
     }
 
     #[test]
@@ -544,12 +567,13 @@ mod tests {
             exploration_plies: EXPLORATION_PLIES,
             black_net: None,
             white_net: None,
+            overwrite: false,
             own_tss: OwnTssConfig::disabled(),
             out_dir: dir.path().to_owned(),
             opening_paths: vec![PathBuf::from("unused.txt")],
         };
 
-        let error = run_with_opening_source(&args, &mut FixedOpening(opening))
+        let error = run_with_opening_source(&args, &mut FixedOpening(opening.clone()))
             .expect_err("a non-empty output directory fails fast");
         assert!(
             error.contains("refusing to write a corpus into a non-empty directory"),
@@ -559,6 +583,20 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dir.path().join("occupied")).expect("marker reads"),
             "prior corpus"
+        );
+
+        // With --overwrite the same run replaces the directory instead.
+        let args = Args {
+            overwrite: true,
+            ..args
+        };
+        run_with_opening_source(&args, &mut FixedOpening(opening)).expect("overwrite run succeeds");
+        assert!(!dir.path().join("occupied").exists());
+        assert_eq!(
+            read_manifest(dir.path())
+                .expect("manifest reads back")
+                .game_count,
+            1
         );
     }
 
@@ -586,6 +624,7 @@ mod tests {
             exploration_plies: EXPLORATION_PLIES,
             black_net: None,
             white_net: None,
+            overwrite: false,
             own_tss: OwnTssConfig::disabled(),
             out_dir: dir.path().to_owned(),
             opening_paths: vec![PathBuf::from("unused.txt")],
