@@ -13,6 +13,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::mix::{MixError, SourceMixer, WeightedSource};
 use crate::record::GameRecord;
 use crate::sample::{SampleError, replay_sample};
 
@@ -21,6 +22,17 @@ use crate::sample::{SampleError, replay_sample};
 /// Independent of [`GAME_RECORD_FORMAT_VERSION`](crate::record::GAME_RECORD_FORMAT_VERSION):
 /// both are 1 today by coincidence, not coupling, and evolve independently.
 pub const SAMPLE_EXPORT_FORMAT_VERSION: u16 = 1;
+
+/// One weighted corpus in a mixed export.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportSource {
+    /// Source corpus directory name.
+    pub corpus: String,
+    /// Mix weight: consecutive samples per round-robin turn.
+    pub weight: u32,
+    /// Games contributed by this source.
+    pub games: usize,
+}
 
 /// Provenance summary of one exported sample dataset, serialized as
 /// `manifest.json`.
@@ -36,6 +48,10 @@ pub struct ExportManifest {
     pub shards: Vec<String>,
     /// Workspace package version at export time, shared with the `train` reader.
     pub workspace_version: String,
+    /// The weighted corpora mixed into this dataset; `None` for a plain
+    /// single-corpus export. JSON-only, so older manifests still parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Vec<ExportSource>>,
 }
 
 /// Failure while exporting a self-play corpus to a sample dataset.
@@ -60,6 +76,17 @@ pub enum ExportError {
         #[source]
         source: SampleError,
     },
+
+    /// One weighted source corpus held no games.
+    #[error("source corpus '{corpus}' has no games")]
+    EmptySource {
+        /// The source's directory name.
+        corpus: String,
+    },
+
+    /// The weighted mixer rejected the source list.
+    #[error(transparent)]
+    Mix(#[from] MixError),
 
     /// Filesystem, framing, serialization, or manifest I/O failed.
     #[error(transparent)]
@@ -105,7 +132,83 @@ pub fn export_corpus(
         }
     }
 
-    // Phase 3: refuse a non-empty output directory.
+    write_samples(samples, records.len(), out_dir, shard_capacity, None)
+}
+
+/// Export several corpora as one weighted-mixed sample dataset.
+///
+/// Each source is `(directory name, records, weight)`. Replays are eager
+/// and validated before the disk is touched; the mixed order is the
+/// [`SourceMixer`]'s seeded weighted round-robin over the per-corpus
+/// sample streams. The manifest records the source list.
+///
+/// # Errors
+/// Returns [`ExportError::EmptySource`] when a source holds no games,
+/// [`ExportError::ZeroShardCapacity`] for a zero capacity,
+/// [`ExportError::Sample`] when a position fails to replay,
+/// [`ExportError::Mix`] for an empty or zero-weighted source list, or an
+/// I/O error from writing. The output directory is refused when non-empty.
+pub fn export_mixed(
+    sources: &[(String, Vec<GameRecord>, u32)],
+    out_dir: &Path,
+    shard_capacity: usize,
+    seed: u64,
+) -> Result<ExportManifest, ExportError> {
+    if shard_capacity == 0 {
+        return Err(ExportError::ZeroShardCapacity);
+    }
+
+    // Replay every source eagerly, before touching the disk.
+    let mut streams = Vec::with_capacity(sources.len());
+    let mut game_count = 0;
+    for (name, records, weight) in sources {
+        if records.is_empty() {
+            return Err(ExportError::EmptySource {
+                corpus: name.clone(),
+            });
+        }
+        game_count += records.len();
+        let mut samples = Vec::new();
+        for (game_index, record) in records.iter().enumerate() {
+            for ply in 0..record.plies.len() {
+                samples.push(
+                    replay_sample(record, ply).map_err(|source| ExportError::Sample {
+                        game_index,
+                        ply,
+                        source,
+                    })?,
+                );
+            }
+        }
+        streams.push(WeightedSource::new(*weight, samples.into_iter()));
+    }
+
+    let mixer = SourceMixer::new(streams, seed)?;
+    let samples: Vec<_> = mixer.collect();
+    let summary = sources
+        .iter()
+        .map(|(name, records, weight)| ExportSource {
+            corpus: name.clone(),
+            weight: *weight,
+            games: records.len(),
+        })
+        .collect();
+    write_samples(samples, game_count, out_dir, shard_capacity, Some(summary))
+}
+
+/// Write validated samples as shards plus the manifest, last.
+///
+/// Shared by [`export_corpus`] and [`export_mixed`]: the overwrite refusal
+/// runs before anything is written, and the manifest is the completion
+/// marker.
+fn write_samples(
+    samples: Vec<train::Sample>,
+    game_count: usize,
+    out_dir: &Path,
+    shard_capacity: usize,
+    sources: Option<Vec<ExportSource>>,
+) -> Result<ExportManifest, ExportError> {
+    // Refuse a non-empty output directory.
     match std::fs::read_dir(out_dir) {
         Ok(mut entries) => {
             if entries.next().transpose()?.is_some() {
@@ -132,10 +235,11 @@ pub fn export_corpus(
     // Phase 5: write the manifest, last.
     let manifest = ExportManifest {
         format_version: SAMPLE_EXPORT_FORMAT_VERSION,
-        game_count: records.len(),
+        game_count,
         sample_count: samples.len(),
         shards,
         workspace_version: env!("CARGO_PKG_VERSION").to_owned(),
+        sources,
     };
     let file = File::options()
         .write(true)
