@@ -70,6 +70,8 @@ fn a_pair_swaps_colors_on_one_seed_and_tallies() {
     assert_eq!(result.games[1].seed, 11, "a pair shares its seed");
     assert_eq!(result.games[0].candidate_color, Color::Black);
     assert_eq!(result.games[1].candidate_color, Color::White);
+    assert_eq!(result.played.len(), 2, "the played games are returned");
+    assert_eq!(result.played[0].seed, 11);
 
     let (wins, draws, losses) = result.tally();
     assert_eq!(wins + draws + losses, 2);

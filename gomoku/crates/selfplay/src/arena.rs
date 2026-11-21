@@ -5,9 +5,10 @@
 //! uses base seed `seed_base + p` for both games — same opening — with the
 //! candidate as Black in one and as White in the other. No exploration
 //! schedule, no temperature: the arena measures strength, it does not
-//! generate data. Arena games are not written as a corpus: the seat
-//! evaluator flips per game, which the per-corpus pairing provenance cannot
-//! represent honestly.
+//! generate data. A recorded arena corpus carries the seat pairing per
+//! record (the candidate's color flips per game) and leaves the manifest's
+//! seat-evaluator block empty — the truth lives per record, never averaged
+//! into a lie.
 //!
 //! The verdict is a Wilson score interval over the candidate's score
 //! (win 1, draw ½, loss 0): the candidate is promoted when the interval's
@@ -19,7 +20,7 @@ use mcts::Evaluator;
 use player::PlayerOptions;
 use thiserror::Error;
 
-use crate::game::{GameError, Outcome, play_game_with_seats};
+use crate::game::{Game, GameError, Outcome, play_game_with_seats};
 use crate::opening::OpeningSource;
 use crate::schedule::ExplorationSchedule;
 
@@ -90,6 +91,9 @@ pub struct ArenaGame {
 pub struct ArenaResult {
     /// Every game, in play order.
     pub games: Vec<ArenaGame>,
+    /// The played games, parallel to [`games`](Self::games) — for callers
+    /// that record the arena as a corpus.
+    pub played: Vec<Game>,
     /// The candidate's total score (draws count ½).
     pub score: f64,
     /// The Wilson 95% interval for the candidate's score rate.
@@ -174,6 +178,7 @@ where
         ..base_options
     };
     let mut games = Vec::with_capacity(config.games);
+    let mut played = Vec::with_capacity(config.games);
     let mut score = 0.0;
     for pair in 0..config.games / 2 {
         let seed = config.seed_base + pair as u64;
@@ -202,12 +207,14 @@ where
                 candidate_color,
                 result,
             });
+            played.push(game);
         }
     }
 
     let interval = wilson_interval(score, games.len());
     Ok(ArenaResult {
         games,
+        played,
         score,
         interval,
     })

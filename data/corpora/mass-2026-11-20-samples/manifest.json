@@ -1,0 +1,1866 @@
+{
+  "format_version": 1,
+  "game_count": 17500,
+  "sample_count": 432303,
+  "shards": [
+    "shard-000.bin",
+    "shard-001.bin",
+    "shard-002.bin",
+    "shard-003.bin",
+    "shard-004.bin",
+    "shard-005.bin",
+    "shard-006.bin",
+    "shard-007.bin",
+    "shard-008.bin",
+    "shard-009.bin",
+    "shard-010.bin",
+    "shard-011.bin",
+    "shard-012.bin",
+    "shard-013.bin",
+    "shard-014.bin",
+    "shard-015.bin",
+    "shard-016.bin",
+    "shard-017.bin",
+    "shard-018.bin",
+    "shard-019.bin",
+    "shard-020.bin",
+    "shard-021.bin",
+    "shard-022.bin",
+    "shard-023.bin",
+    "shard-024.bin",
+    "shard-025.bin",
+    "shard-026.bin",
+    "shard-027.bin",
+    "shard-028.bin",
+    "shard-029.bin",
+    "shard-030.bin",
+    "shard-031.bin",
+    "shard-032.bin",
+    "shard-033.bin",
+    "shard-034.bin",
+    "shard-035.bin",
+    "shard-036.bin",
+    "shard-037.bin",
+    "shard-038.bin",
+    "shard-039.bin",
+    "shard-040.bin",
+    "shard-041.bin",
+    "shard-042.bin",
+    "shard-043.bin",
+    "shard-044.bin",
+    "shard-045.bin",
+    "shard-046.bin",
+    "shard-047.bin",
+    "shard-048.bin",
+    "shard-049.bin",
+    "shard-050.bin",
+    "shard-051.bin",
+    "shard-052.bin",
+    "shard-053.bin",
+    "shard-054.bin",
+    "shard-055.bin",
+    "shard-056.bin",
+    "shard-057.bin",
+    "shard-058.bin",
+    "shard-059.bin",
+    "shard-060.bin",
+    "shard-061.bin",
+    "shard-062.bin",
+    "shard-063.bin",
+    "shard-064.bin",
+    "shard-065.bin",
+    "shard-066.bin",
+    "shard-067.bin",
+    "shard-068.bin",
+    "shard-069.bin",
+    "shard-070.bin",
+    "shard-071.bin",
+    "shard-072.bin",
+    "shard-073.bin",
+    "shard-074.bin",
+    "shard-075.bin",
+    "shard-076.bin",
+    "shard-077.bin",
+    "shard-078.bin",
+    "shard-079.bin",
+    "shard-080.bin",
+    "shard-081.bin",
+    "shard-082.bin",
+    "shard-083.bin",
+    "shard-084.bin",
+    "shard-085.bin",
+    "shard-086.bin",
+    "shard-087.bin",
+    "shard-088.bin",
+    "shard-089.bin",
+    "shard-090.bin",
+    "shard-091.bin",
+    "shard-092.bin",
+    "shard-093.bin",
+    "shard-094.bin",
+    "shard-095.bin",
+    "shard-096.bin",
+    "shard-097.bin",
+    "shard-098.bin",
+    "shard-099.bin",
+    "shard-100.bin",
+    "shard-101.bin",
+    "shard-102.bin",
+    "shard-103.bin",
+    "shard-104.bin",
+    "shard-105.bin"
+  ],
+  "workspace_version": "0.1.0",
+  "sources": [
+    {
+      "corpus": "1200v800-w00-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w00-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w00-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w00-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w00-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w01-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w01-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w01-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w01-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w01-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w02-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w02-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w02-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w02-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w02-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w03-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w03-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w03-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w03-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w03-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w04-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w04-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w04-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w04-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w04-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w05-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w05-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w05-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w05-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w05-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w06-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w06-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w06-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w06-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w06-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w07-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w07-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w07-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w07-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w07-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w08-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w08-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w08-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w08-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w08-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w09-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w09-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w09-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w09-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w09-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w10-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w10-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w10-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w10-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w10-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w11-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w11-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w11-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w11-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w11-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w12-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w12-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w12-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w12-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w12-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w13-c02",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w13-c12",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w13-c22",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w13-c32",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1200v800-w13-c42",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w00-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w00-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w00-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w00-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w00-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w01-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w01-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w01-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w01-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w01-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w02-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w02-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w02-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w02-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w02-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w03-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w03-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w03-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w03-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w03-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w04-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w04-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w04-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w04-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w04-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w05-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w05-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w05-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w05-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w05-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w06-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w06-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w06-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w06-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w06-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w07-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w07-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w07-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w07-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w07-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w08-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w08-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w08-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w08-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w08-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w09-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w09-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w09-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w09-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w09-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w10-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w10-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w10-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w10-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w10-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w11-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w11-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w11-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w11-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w11-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w12-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w12-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w12-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w12-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w12-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w13-c04",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w13-c14",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w13-c24",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w13-c34",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "1600v1600-w13-c44",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w00-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w00-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w00-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w00-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w00-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w01-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w01-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w01-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w01-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w01-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w02-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w02-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w02-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w02-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w02-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w03-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w03-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w03-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w03-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w03-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w04-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w04-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w04-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w04-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w04-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w05-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w05-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w05-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w05-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w05-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w06-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w06-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w06-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w06-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w06-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w07-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w07-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w07-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w07-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w07-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w08-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w08-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w08-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w08-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w08-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w09-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w09-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w09-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w09-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w09-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w10-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w10-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w10-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w10-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w10-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w11-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w11-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w11-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w11-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w11-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w12-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w12-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w12-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w12-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w12-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w13-c01",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w13-c11",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w13-c21",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w13-c31",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "400v400-w13-c41",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w00-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w00-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w00-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w00-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w00-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w01-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w01-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w01-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w01-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w01-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w02-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w02-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w02-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w02-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w02-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w03-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w03-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w03-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w03-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w03-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w04-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w04-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w04-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w04-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w04-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w05-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w05-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w05-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w05-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w05-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w06-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w06-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w06-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w06-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w06-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w07-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w07-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w07-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w07-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w07-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w08-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w08-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w08-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w08-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w08-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w09-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w09-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w09-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w09-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w09-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w10-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w10-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w10-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w10-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w10-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w11-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w11-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w11-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w11-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w11-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w12-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w12-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w12-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w12-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w12-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w13-c03",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w13-c13",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w13-c23",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w13-c33",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v1200-w13-c43",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w00-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w00-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w00-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w00-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w00-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w01-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w01-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w01-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w01-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w01-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w02-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w02-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w02-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w02-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w02-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w03-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w03-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w03-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w03-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w03-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w04-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w04-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w04-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w04-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w04-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w05-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w05-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w05-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w05-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w05-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w06-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w06-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w06-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w06-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w06-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w07-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w07-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w07-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w07-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w07-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w08-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w08-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w08-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w08-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w08-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w09-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w09-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w09-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w09-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w09-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w10-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w10-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w10-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w10-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w10-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w11-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w11-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w11-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w11-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w11-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w12-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w12-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w12-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w12-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w12-c40",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w13-c00",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w13-c10",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w13-c20",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w13-c30",
+      "weight": 1,
+      "games": 50
+    },
+    {
+      "corpus": "800v800-w13-c40",
+      "weight": 1,
+      "games": 50
+    }
+  ]
+}

@@ -7,18 +7,21 @@
 //! and are not written as a corpus.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use baseline::{BaselineEvaluator, Device};
+use engine::Color;
 use mcts::Evaluator;
 use neteval::NetEvaluator;
 use player::{GuardConfig, OwnTssConfig, PlayerOptions};
-use selfplay::arena::{ArenaConfig, GameResult, play_arena};
+use selfplay::arena::{ArenaConfig, ArenaResult, GameResult, play_arena};
+use selfplay::corpus::write_corpus;
 use selfplay::opening::TournamentOpenings;
+use selfplay::record::GameRecord;
 
 const USAGE: &str = "arenagen --net <RUN_DIR> --openings <PATH> [--openings <PATH> ...]
-            [--games <N>] [--sims <N>] [--seed-base <N>]
+            [--games <N>] [--sims <N>] [--seed-base <N>] [--record <DIR>]
 
 Play a trained-net candidate against the baseline incumbent in
 color-swapped pairs at an equal simulation budget, with no exploration.
@@ -35,6 +38,8 @@ accepted):
   --sims <N>            MCTS simulations per move for BOTH seats
                         (default: 400)
   --seed-base <N>       base seed of pair 0 (default: 0)
+  --record <DIR>        also write the games as a corpus (browsable in the
+                        GUI's Lab Explorer)
 
 Operational rules:
   * Pair p plays the same opening (seed base+p) twice, candidate once as
@@ -54,6 +59,7 @@ struct Args {
     games: usize,
     sims: u32,
     seed_base: u64,
+    record: Option<PathBuf>,
 }
 
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -62,6 +68,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut games: usize = 20;
     let mut sims: u32 = 400;
     let mut seed_base: u64 = 0;
+    let mut record: Option<PathBuf> = None;
 
     while let Some(arg) = args.next() {
         let mut value = |flag: &str| {
@@ -89,6 +96,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .parse()
                     .map_err(|error| format!("invalid --seed-base '{text}': {error}"))?;
             }
+            "--record" => record = Some(PathBuf::from(value(&arg)?)),
             other => return Err(format!("unknown flag: {other}")),
         }
     }
@@ -103,6 +111,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         games,
         sims,
         seed_base,
+        record,
     })
 }
 
@@ -200,6 +209,41 @@ fn run(args: &Args) -> Result<(), String> {
         eprintln!("Verdict: not promoted");
     }
 
+    if let Some(dir) = &args.record {
+        record_corpus(&result, &args.net, dir)?;
+    }
+
+    Ok(())
+}
+
+/// Write the arena's games as a corpus: per-record evaluator strings carry
+/// the seat pairing (the candidate's color flips per game), and the
+/// manifest's seat block stays empty rather than averaging into a lie.
+fn record_corpus(result: &ArenaResult, net: &Path, dir: &Path) -> Result<(), String> {
+    let net_name = net
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| net.display().to_string());
+    let version = env!("CARGO_PKG_VERSION");
+    let candidate = format!("net:{net_name}@{version}");
+    let incumbent = format!("baseline@{version}");
+
+    let records: Vec<GameRecord> = result
+        .played
+        .iter()
+        .zip(&result.games)
+        .map(|(game, entry)| {
+            let (black, white) = match entry.candidate_color {
+                Color::Black => (&candidate, &incumbent),
+                Color::White => (&incumbent, &candidate),
+            };
+            GameRecord::from_game_with_evaluators(game, black, white)
+        })
+        .collect();
+
+    write_corpus(&records, dir, 1000)
+        .map_err(|error| format!("failed to write the arena corpus: {error}"))?;
+    eprintln!("Recorded {} games to {}", records.len(), dir.display());
     Ok(())
 }
 
@@ -232,6 +276,32 @@ mod tests {
         assert_eq!(args.games, 10);
         assert_eq!(args.sims, 200);
         assert_eq!(args.seed_base, 1000);
+    }
+
+    #[test]
+    fn parses_the_record_flag() {
+        let args = parse_args(
+            [
+                "--net",
+                "runs/x",
+                "--openings",
+                "list.txt",
+                "--record",
+                "arena-out",
+            ]
+            .map(ToOwned::to_owned)
+            .into_iter(),
+        )
+        .expect("parses");
+        assert_eq!(args.record, Some(PathBuf::from("arena-out")));
+
+        let args = parse_args(
+            ["--net", "runs/x", "--openings", "list.txt"]
+                .map(ToOwned::to_owned)
+                .into_iter(),
+        )
+        .expect("parses");
+        assert_eq!(args.record, None);
     }
 
     #[test]

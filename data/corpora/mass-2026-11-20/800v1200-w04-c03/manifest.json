@@ -1,0 +1,106 @@
+{
+  "format_version": 1,
+  "seeds": [
+    4003000,
+    4003001,
+    4003002,
+    4003003,
+    4003004,
+    4003005,
+    4003006,
+    4003007,
+    4003008,
+    4003009,
+    4003010,
+    4003011,
+    4003012,
+    4003013,
+    4003014,
+    4003015,
+    4003016,
+    4003017,
+    4003018,
+    4003019,
+    4003020,
+    4003021,
+    4003022,
+    4003023,
+    4003024,
+    4003025,
+    4003026,
+    4003027,
+    4003028,
+    4003029,
+    4003030,
+    4003031,
+    4003032,
+    4003033,
+    4003034,
+    4003035,
+    4003036,
+    4003037,
+    4003038,
+    4003039,
+    4003040,
+    4003041,
+    4003042,
+    4003043,
+    4003044,
+    4003045,
+    4003046,
+    4003047,
+    4003048,
+    4003049
+  ],
+  "pairing": {
+    "black": {
+      "simulations": 800,
+      "c_puct": 1.5,
+      "temperature": 0.0,
+      "noise_epsilon": 0.0,
+      "noise_alpha": 0.3,
+      "tss_probe": {
+        "enabled": true,
+        "max_nodes": 10000,
+        "max_depth": 30
+      },
+      "guard": {
+        "enabled": false,
+        "max_nodes": 1000,
+        "max_depth": 10
+      },
+      "resign": false,
+      "candidate_checks": 10
+    },
+    "white": {
+      "simulations": 1200,
+      "c_puct": 1.5,
+      "temperature": 0.0,
+      "noise_epsilon": 0.0,
+      "noise_alpha": 0.3,
+      "tss_probe": {
+        "enabled": true,
+        "max_nodes": 10000,
+        "max_depth": 30
+      },
+      "guard": {
+        "enabled": false,
+        "max_nodes": 1000,
+        "max_depth": 10
+      },
+      "resign": false,
+      "candidate_checks": 10
+    },
+    "exploration": {
+      "plies": 10,
+      "temperature": 1.0,
+      "noise_epsilon": 0.25,
+      "noise_alpha": 0.3
+    }
+  },
+  "game_count": 50,
+  "shards": [
+    "shard-000.bin"
+  ],
+  "workspace_version": "0.1.0"
+}
