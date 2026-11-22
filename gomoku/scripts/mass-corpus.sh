@@ -23,11 +23,12 @@
 #             (~3.5-5 min/game; CYCLES default 8 ≈ 40h ≈ 7200 games;
 #             the distillation profile: strong-search labels for a
 #             net that will play much cheaper)
-#   net       champion self-play: NET seats both colors; 80% 1600/1600,
-#             20% asymmetric 800/2400 + 2400/800 (color-balanced value
-#             signal). Open-ended (CYCLES default 999 — kill and rerun
-#             to resume; sealed chunks are never touched). ~20 min/game
-#             under 8-way load; snapshot exports any time via
+#   net       champion self-play: NET seats both colors; 60% asymmetric
+#             400/800 + 800/400 (the strength gradient is the signal),
+#             40% symmetric 400/400 + 800/800 anchors. Measured ~60-100
+#             games/h at 8-10 workers. Open-ended (CYCLES default 999 —
+#             kill and rerun to resume; sealed chunks are never
+#             touched). Snapshot exports any time via
 #             scripts/corpus-export.sh.
 #
 # Knobs: WORKERS (12; 8 for net), CYCLES, CHUNK_GAMES (25; 10 for net),
@@ -66,17 +67,19 @@ case "$PROFILE" in
             echo "NET '$NET' holds no model.mpk" >&2
             exit 2
         fi
-        # 80% equal-sims anchor, 20% asymmetric (color-balanced).
-        SPECS="1600 1600
-1600 1600
-1600 1600
-1600 1600
-1600 1600
-1600 1600
-1600 1600
-1600 1600
-800 2400
-2400 800"
+        # 60% asymmetric pairs (the strength gradient carries the value
+        # signal), 40% symmetric anchors. Measured 2026-11-22: ~60-100
+        # games/h at 8-10 workers on the Mac17,6.
+        SPECS="400 400
+400 400
+800 800
+800 800
+400 800
+400 800
+400 800
+800 400
+800 400
+800 400"
         DEFAULT_OUT=../data/corpora/selfplay-v1-$(basename "$NET")
         DEFAULT_CYCLES=999
         DEFAULT_WORKERS=8

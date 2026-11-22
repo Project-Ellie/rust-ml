@@ -1,0 +1,96 @@
+{
+  "format_version": 1,
+  "seeds": [
+    0,
+    0,
+    1,
+    1,
+    2,
+    2,
+    3,
+    3,
+    4,
+    4,
+    5,
+    5,
+    6,
+    6,
+    7,
+    7,
+    8,
+    8,
+    9,
+    9,
+    10,
+    10,
+    11,
+    11,
+    12,
+    12,
+    13,
+    13,
+    14,
+    14,
+    15,
+    15,
+    16,
+    16,
+    17,
+    17,
+    18,
+    18,
+    19,
+    19
+  ],
+  "pairing": {
+    "black": {
+      "simulations": 4000,
+      "c_puct": 1.5,
+      "temperature": 0.0,
+      "noise_epsilon": 0.0,
+      "noise_alpha": 0.3,
+      "tss_probe": {
+        "enabled": true,
+        "max_nodes": 10000,
+        "max_depth": 30
+      },
+      "guard": {
+        "enabled": true,
+        "max_nodes": 1000,
+        "max_depth": 10
+      },
+      "resign": true,
+      "candidate_checks": 10
+    },
+    "white": {
+      "simulations": 4000,
+      "c_puct": 1.5,
+      "temperature": 0.0,
+      "noise_epsilon": 0.0,
+      "noise_alpha": 0.3,
+      "tss_probe": {
+        "enabled": true,
+        "max_nodes": 10000,
+        "max_depth": 30
+      },
+      "guard": {
+        "enabled": true,
+        "max_nodes": 1000,
+        "max_depth": 10
+      },
+      "resign": true,
+      "candidate_checks": 10
+    },
+    "exploration": {
+      "plies": 0,
+      "temperature": 0.0,
+      "noise_epsilon": 0.0,
+      "noise_alpha": 0.3
+    }
+  },
+  "game_count": 40,
+  "shards": [
+    "shard-000.bin"
+  ],
+  "workspace_version": "0.1.0"
+}
