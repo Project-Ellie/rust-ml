@@ -13,7 +13,7 @@
 #
 # Usage:
 #   scripts/mass-corpus.sh                  # balanced profile (default)
-#   PROFILE=deep scripts/mass-corpus.sh     # deep-search profile
+#   NET=<RUN_DIR> PROFILE=net scripts/mass-corpus.sh   # champion self-play
 #   nohup ... &                             # detached
 #
 # Profiles:
@@ -23,8 +23,15 @@
 #             (~3.5-5 min/game; CYCLES default 8 ≈ 40h ≈ 7200 games;
 #             the distillation profile: strong-search labels for a
 #             net that will play much cheaper)
+#   net       champion self-play: NET seats both colors; 80% 1600/1600,
+#             20% asymmetric 800/2400 + 2400/800 (color-balanced value
+#             signal). Open-ended (CYCLES default 999 — kill and rerun
+#             to resume; sealed chunks are never touched). ~20 min/game
+#             under 8-way load; snapshot exports any time via
+#             scripts/corpus-export.sh.
 #
-# Knobs: WORKERS (default 12), CYCLES, CHUNK_GAMES (25), OUT, OPENINGS.
+# Knobs: WORKERS (12; 8 for net), CYCLES, CHUNK_GAMES (25; 10 for net),
+# OUT, OPENINGS.
 
 set -u
 
@@ -36,6 +43,7 @@ fi
 # Resolve paths from the script location: gomoku/scripts/ -> gomoku/.
 cd "$(dirname "$0")/.." || exit 1
 
+NET=${NET:-}
 PROFILE=${PROFILE:-balanced}
 case "$PROFILE" in
     deep)
@@ -44,8 +52,37 @@ case "$PROFILE" in
 4000 4000"
         DEFAULT_OUT=../data/corpora/deep-2026-11-21
         DEFAULT_CYCLES=8
+        DEFAULT_WORKERS=12
+        DEFAULT_CHUNK_GAMES=25
         # Deep seeds live in their own range, clear of the balanced runs.
         SEED_OFFSET=100000000
+        ;;
+    net)
+        if [ -z "$NET" ]; then
+            echo "PROFILE=net requires NET=<RUN_DIR> (a nettrain run directory)" >&2
+            exit 2
+        fi
+        if [ ! -f "$NET/model.mpk" ]; then
+            echo "NET '$NET' holds no model.mpk" >&2
+            exit 2
+        fi
+        # 80% equal-sims anchor, 20% asymmetric (color-balanced).
+        SPECS="1600 1600
+1600 1600
+1600 1600
+1600 1600
+1600 1600
+1600 1600
+1600 1600
+1600 1600
+800 2400
+2400 800"
+        DEFAULT_OUT=../data/corpora/selfplay-v1-$(basename "$NET")
+        DEFAULT_CYCLES=999
+        DEFAULT_WORKERS=8
+        DEFAULT_CHUNK_GAMES=10
+        # Net self-play seeds live in their own range.
+        SEED_OFFSET=200000000
         ;;
     balanced)
         SPECS="800 800
@@ -55,20 +92,28 @@ case "$PROFILE" in
 1600 1600"
         DEFAULT_OUT=../data/corpora/mass-2026-11-20
         DEFAULT_CYCLES=4
+        DEFAULT_WORKERS=12
+        DEFAULT_CHUNK_GAMES=25
         SEED_OFFSET=0
         ;;
     *)
-        echo "unknown PROFILE '$PROFILE' (balanced|deep)" >&2
+        echo "unknown PROFILE '$PROFILE' (balanced|deep|net)" >&2
         exit 2
         ;;
 esac
 
-WORKERS=${WORKERS:-12}
+WORKERS=${WORKERS:-$DEFAULT_WORKERS}
 CYCLES=${CYCLES:-$DEFAULT_CYCLES}
-CHUNK_GAMES=${CHUNK_GAMES:-25}
+CHUNK_GAMES=${CHUNK_GAMES:-$DEFAULT_CHUNK_GAMES}
 OUT=${OUT:-$DEFAULT_OUT}
 OPENINGS=${OPENINGS:-../data/openings/gomocup-2024-freestyle15.txt}
 EXPORT_OUT=${EXPORT_OUT:-$OUT-samples}
+
+# Seat flags: net self-play seats the champion on both colors.
+NET_ARGS=()
+if [ -n "$NET" ]; then
+    NET_ARGS=(--black-net "$NET" --white-net "$NET")
+fi
 
 echo "mass-corpus: building selfplaygen (release)..."
 cargo build --release -p selfplay || exit 1
@@ -93,6 +138,7 @@ run_chunk() {
     local started
     started=$(date +%s)
     ./target/release/selfplaygen \
+        ${NET_ARGS[@]+"${NET_ARGS[@]}"} \
         --games "$CHUNK_GAMES" \
         --seed-base "$seed" \
         --black-sims "$sb" \
