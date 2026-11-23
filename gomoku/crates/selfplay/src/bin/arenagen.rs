@@ -1,4 +1,5 @@
-//! The promotion gate: a trained-net candidate vs the baseline incumbent.
+//! The promotion gate: a trained-net candidate vs an incumbent — the
+//! baseline by default, or the reigning champion net (--incumbent-net).
 //!
 //! Plays color-swapped pairs at an equal simulation budget with no
 //! exploration, and reports the candidate's score with a Wilson 95%
@@ -21,7 +22,8 @@ use selfplay::opening::TournamentOpenings;
 use selfplay::record::GameRecord;
 
 const USAGE: &str = "arenagen --net <RUN_DIR> --openings <PATH> [--openings <PATH> ...]
-            [--games <N>] [--sims <N>] [--seed-base <N>] [--record <DIR>]
+            [--games <N>] [--sims <N>] [--seed-base <N>]
+            [--incumbent-net <RUN_DIR>] [--record <DIR>]
 
 Play a trained-net candidate against the baseline incumbent in
 color-swapped pairs at an equal simulation budget, with no exploration.
@@ -38,6 +40,9 @@ accepted):
   --sims <N>            MCTS simulations per move for BOTH seats
                         (default: 400)
   --seed-base <N>       base seed of pair 0 (default: 0)
+  --incumbent-net <RUN_DIR>
+                        seat a trained net as the incumbent instead of the
+                        baseline (the AlphaZero gate: candidate vs champion)
   --record <DIR>        also write the games as a corpus (browsable in the
                         GUI's Lab Explorer)
 
@@ -59,6 +64,7 @@ struct Args {
     games: usize,
     sims: u32,
     seed_base: u64,
+    incumbent_net: Option<PathBuf>,
     record: Option<PathBuf>,
 }
 
@@ -68,6 +74,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut games: usize = 20;
     let mut sims: u32 = 400;
     let mut seed_base: u64 = 0;
+    let mut incumbent_net: Option<PathBuf> = None;
     let mut record: Option<PathBuf> = None;
 
     while let Some(arg) = args.next() {
@@ -97,6 +104,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map_err(|error| format!("invalid --seed-base '{text}': {error}"))?;
             }
             "--record" => record = Some(PathBuf::from(value(&arg)?)),
+            "--incumbent-net" => incumbent_net = Some(PathBuf::from(value(&arg)?)),
             other => return Err(format!("unknown flag: {other}")),
         }
     }
@@ -111,6 +119,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         games,
         sims,
         seed_base,
+        incumbent_net,
         record,
     })
 }
@@ -153,7 +162,26 @@ fn run(args: &Args) -> Result<(), String> {
         Box::new(NetEvaluator::load(&candidate_dir).expect("checkpoint loaded once at startup"))
             as Box<dyn Evaluator>
     };
-    let incumbent = || Box::new(BaselineEvaluator::new(Device::flex())) as Box<dyn Evaluator>;
+    // The incumbent defaults to the baseline; --incumbent-net seats the
+    // reigning champion instead (the round-2+ gate).
+    if let Some(dir) = &args.incumbent_net {
+        NetEvaluator::load(dir).map_err(|error| {
+            format!(
+                "failed to load incumbent checkpoint {}: {error}",
+                dir.display()
+            )
+        })?;
+    }
+    let incumbent_dir = args.incumbent_net.clone();
+    let incumbent = move || match &incumbent_dir {
+        Some(dir) => Box::new(NetEvaluator::load(dir).expect("checkpoint loaded once at startup"))
+            as Box<dyn Evaluator>,
+        None => Box::new(BaselineEvaluator::new(Device::flex())) as Box<dyn Evaluator>,
+    };
+    let incumbent_desc = match &args.incumbent_net {
+        Some(dir) => run_descriptor(dir),
+        None => format!("baseline@{}", env!("CARGO_PKG_VERSION")),
+    };
 
     let base_options = PlayerOptions {
         resign: true,
@@ -168,8 +196,9 @@ fn run(args: &Args) -> Result<(), String> {
     };
 
     eprintln!(
-        "Arena: {} vs baseline, {} games at {} sims, pairs from seed {}",
+        "Arena: {} vs {}, {} games at {} sims, pairs from seed {}",
         args.net.display(),
+        incumbent_desc,
         args.games,
         args.sims,
         args.seed_base
@@ -210,23 +239,31 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     if let Some(dir) = &args.record {
-        record_corpus(&result, &args.net, dir)?;
+        record_corpus(&result, &args.net, &incumbent_desc, dir)?;
     }
 
     Ok(())
 }
 
+/// `net:<dir-name>@<version>` — the provenance string for a net seat.
+fn run_descriptor(dir: &Path) -> String {
+    let name = dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| dir.display().to_string());
+    format!("net:{name}@{}", env!("CARGO_PKG_VERSION"))
+}
+
 /// Write the arena's games as a corpus: per-record evaluator strings carry
 /// the seat pairing (the candidate's color flips per game), and the
 /// manifest's seat block stays empty rather than averaging into a lie.
-fn record_corpus(result: &ArenaResult, net: &Path, dir: &Path) -> Result<(), String> {
-    let net_name = net
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| net.display().to_string());
-    let version = env!("CARGO_PKG_VERSION");
-    let candidate = format!("net:{net_name}@{version}");
-    let incumbent = format!("baseline@{version}");
+fn record_corpus(
+    result: &ArenaResult,
+    net: &Path,
+    incumbent: &str,
+    dir: &Path,
+) -> Result<(), String> {
+    let candidate = run_descriptor(net);
 
     let records: Vec<GameRecord> = result
         .played
@@ -234,8 +271,8 @@ fn record_corpus(result: &ArenaResult, net: &Path, dir: &Path) -> Result<(), Str
         .zip(&result.games)
         .map(|(game, entry)| {
             let (black, white) = match entry.candidate_color {
-                Color::Black => (&candidate, &incumbent),
-                Color::White => (&incumbent, &candidate),
+                Color::Black => (candidate.as_str(), incumbent),
+                Color::White => (incumbent, candidate.as_str()),
             };
             GameRecord::from_game_with_evaluators(game, black, white)
         })
@@ -302,6 +339,32 @@ mod tests {
         )
         .expect("parses");
         assert_eq!(args.record, None);
+    }
+
+    #[test]
+    fn parses_the_incumbent_flag() {
+        let args = parse_args(
+            [
+                "--net",
+                "runs/x",
+                "--openings",
+                "list.txt",
+                "--incumbent-net",
+                "runs/champ",
+            ]
+            .map(ToOwned::to_owned)
+            .into_iter(),
+        )
+        .expect("parses");
+        assert_eq!(args.incumbent_net, Some(PathBuf::from("runs/champ")));
+
+        let args = parse_args(
+            ["--net", "runs/x", "--openings", "list.txt"]
+                .map(ToOwned::to_owned)
+                .into_iter(),
+        )
+        .expect("parses");
+        assert_eq!(args.incumbent_net, None);
     }
 
     #[test]

@@ -23,15 +23,16 @@
 #             (~3.5-5 min/game; CYCLES default 8 ≈ 40h ≈ 7200 games;
 #             the distillation profile: strong-search labels for a
 #             net that will play much cheaper)
-#   net       champion self-play: NET seats both colors; 60% asymmetric
+#   net       champion self-play: NET seats both colors; 70% asymmetric
 #             400/800 + 800/400 (the strength gradient is the signal),
-#             40% symmetric 400/400 + 800/800 anchors. Measured ~60-100
+#             30% symmetric 400/400 + 800/800 anchors. Measured ~60-100
 #             games/h at 8-10 workers. Open-ended (CYCLES default 999 —
-#             kill and rerun to resume; sealed chunks are never
-#             touched). Snapshot exports any time via
+#             kill and rerun the SAME command to resume: sealed chunks
+#             are skipped, interrupted ones redone; the corpus only
+#             grows). Snapshot exports any time via
 #             scripts/corpus-export.sh.
 #
-# Knobs: WORKERS (12; 8 for net), CYCLES, CHUNK_GAMES (25; 10 for net),
+# Knobs: WORKERS (12; 14 for net), CYCLES, CHUNK_GAMES (25; 10 for net),
 # OUT, OPENINGS.
 
 set -u
@@ -46,6 +47,9 @@ cd "$(dirname "$0")/.." || exit 1
 
 NET=${NET:-}
 PROFILE=${PROFILE:-balanced}
+# Chunk id = cycle * IDX_BASE + spec-index; 10 fits balanced/deep, the
+# net profile's 20-spec cycle needs 100.
+IDX_BASE=10
 case "$PROFILE" in
     deep)
         SPECS="3000 3000
@@ -67,25 +71,38 @@ case "$PROFILE" in
             echo "NET '$NET' holds no model.mpk" >&2
             exit 2
         fi
-        # 60% asymmetric pairs (the strength gradient carries the value
-        # signal), 40% symmetric anchors. Measured 2026-11-22: ~60-100
-        # games/h at 8-10 workers on the Mac17,6.
+        # 70% asymmetric pairs (the strength gradient carries the value
+        # signal), 30% symmetric anchors — a 20-spec cycle, color-
+        # balanced. Measured 2026-11-22: ~60-100 games/h at 8-10
+        # workers on the Mac17,6.
         SPECS="400 400
+400 400
 400 400
 800 800
 800 800
+800 800
 400 800
 400 800
 400 800
+400 800
+400 800
+400 800
+400 800
+800 400
+800 400
+800 400
+800 400
 800 400
 800 400
 800 400"
         DEFAULT_OUT=../data/corpora/selfplay-v1-$(basename "$NET")
         DEFAULT_CYCLES=999
-        DEFAULT_WORKERS=8
+        DEFAULT_WORKERS=14
         DEFAULT_CHUNK_GAMES=10
         # Net self-play seeds live in their own range.
         SEED_OFFSET=200000000
+        # 20 specs per cycle need two digits of index in the chunk id.
+        IDX_BASE=100
         ;;
     balanced)
         SPECS="800 800
@@ -126,7 +143,7 @@ mkdir -p "$OUT/logs"
 run_chunk() {
     # worker, black sims, white sims, cycle, spec index
     local w=$1 sb=$2 sw=$3 cycle=$4 idx=$5
-    local c=$(( cycle * 10 + idx ))
+    local c=$(( cycle * IDX_BASE + idx ))
     local seed=$(( SEED_OFFSET + w * 1000000 + c * 1000 ))
     local dir
     dir=$(printf '%s/%dv%d-w%02d-c%02d' "$OUT" "$sb" "$sw" "$w" "$c")
