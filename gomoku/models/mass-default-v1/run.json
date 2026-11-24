@@ -1,0 +1,28 @@
+{
+  "seed": 0,
+  "model_config": {
+    "channels": 128,
+    "num_blocks": 10
+  },
+  "train_config": {
+    "steps": 20000,
+    "batch_size": 256,
+    "eval_interval": 0,
+    "seed": 0,
+    "lr_warmup_steps": 2000,
+    "lr_max": 0.0003,
+    "lr_min": 3e-6,
+    "lr_cosine_steps": 20000,
+    "weight_decay": 0.0001,
+    "dataloader_workers": 8
+  },
+  "final_step_metrics": {
+    "step": 20000,
+    "loss": 2.7263591,
+    "policy_loss": 2.2198687,
+    "value_loss": 0.50649047,
+    "lr": 3.000001832045321e-6
+  },
+  "final_eval_metrics": null,
+  "stop_reason": "Completed"
+}
