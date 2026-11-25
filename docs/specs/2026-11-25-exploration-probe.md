@@ -53,6 +53,14 @@ Fixed across all configs: `mass-default-v1` both seats, **800/800 sims
 mirror** (removes the strength gradient), the same 12-opening pool,
 same resignation/TSS settings, same seed protocol.
 
+**Ply cap**: every probe game aborts after **50 post-ceremony plies**
+(`--max-plies 50`), recorded as a draw with the cap named in the
+manifest. We hope games get longer; we do not want to wait for 222
+plies to find out. The cap also bounds worst-case chunk time, which
+makes the 8-hour budget schedulable. Capped games are *not* counted as
+draws in the analysis — they are their own termination category
+("capped"), and their last root_value says who was winning.
+
 | Config | Plies | Temp | ε | Role |
 |--------|-------|------|---|------|
 | A0 | 0 | — | — | control: fully deterministic |
@@ -68,29 +76,37 @@ sampling only jitters between moves the search already likes. If
 F10-pure preserves diversity without shortening games, it is the ideal
 production explorer.
 
-## Implementation prerequisites (small, ~1h with gates)
+## Implementation prerequisites (~1.5h with gates)
 
 1. **Two flags**: `selfplaygen --exploration-temperature <T>` and
    `--exploration-epsilon <E>`. The `ExplorationSchedule` struct already
    carries all four fields and records them in every corpus header —
-   the binary just never exposed them. Defaults unchanged (1.0 / 0.25),
+   the binary just never exposes them. Defaults unchanged (1.0 / 0.25),
    so existing corpora and profiles are untouched.
-2. **`scripts/exploration-probe.sh`**: reuses the mass-corpus
+2. **The ply cap**: `selfplaygen --max-plies <N>` (default 0 =
+   uncapped; production semantics unchanged). At the cap the game ends
+   and is recorded with outcome draw. Provenance: the cap is named in
+   the **manifest** (JSON, serde-defaulted — old corpora read back
+   unchanged). The bincode record layout does **not** change (the
+   positional-format lesson).
+3. **A committed stats example** `crates/selfplay/examples/corpusstats.rs`
+   (the throwaway plystats/colorsplit pattern, made permanent): per
+   corpus — length distribution, color split, termination mix,
+   decision ply, TSS share, diversity. Committing it makes the probe
+   reproducible — and it doubles as the v1 reference-arm reader.
+4. **`scripts/exploration-probe.sh`**: reuses the mass-corpus
    discipline (chunks of 5 games, manifest-last, disjoint seed ranges —
    offset 400M, config-scoped), partitioning 12 workers as 2 per
    config, output `../data/corpora/probe-exploration/<config>-wNN-cNN/`.
-3. **A committed stats example** `crates/selfplay/examples/corpusstats.rs`
-   (the throwaway plystats/colorsplit pattern, made permanent): per
-   corpus — length distribution, color split, termination mix, decision
-   ply, TSS share, diversity. Committing it makes the probe
-   reproducible — and it doubles as the v1 reference-arm reader.
+   Passes `--max-plies 50` to every chunk.
 
 ## Metrics (computed from records; no training, no extra games)
 
 1. **Length distribution** per config: median / p95 / max. Headline.
    The v1 baseline (median 10, avg 16.5) is the bar to beat.
 2. **Color split** per config (H2 watch; v1 baseline: 80% Black).
-3. **Termination mix**: five-in-a-row vs resignation vs board-fill draw.
+3. **Termination mix**: five-in-a-row vs resignation vs **capped** vs
+   true board-fill draw.
 4. **Decision ply**: first ply where |root_value| ≥ 0.9 and stays there.
    Clustering inside/right after the window exposes the H1 mechanism.
 5. **TSS-decided share**: plies with `root_value = None` mark where
@@ -99,9 +115,26 @@ production explorer.
    opening. The floor that configs A0 and F10-pure must not fall
    through.
 
+## Action plan
+
+| # | Step | Who | Effort |
+|---|------|-----|--------|
+| 1 | `--exploration-temperature` / `--exploration-epsilon` flags + parse tests | assistant | ~20 min |
+| 2 | `--max-plies` flag: cap in the play loop, draw outcome, manifest provenance, tests | assistant | ~30 min |
+| 3 | `examples/corpusstats.rs`: lengths, color split, termination mix, decision ply, TSS share, diversity | assistant | ~30 min |
+| 4 | `scripts/exploration-probe.sh`: 6 configs × 2 workers, seed map, chunk discipline | assistant | ~20 min |
+| 5 | Gates (`cargo test`, clippy, fmt) + end-to-end smoke on the tiny checkpoint in /tmp | assistant | ~15 min |
+| 6 | Baseline arm: run corpusstats over the sealed v1 corpus (the free T=1.0 numbers) | assistant | ~5 min |
+| 7 | **Launch the probe** (`nohup scripts/exploration-probe.sh &`), ≤ 8h | Wolfie | bedtime |
+| 8 | Analysis: corpusstats per config vs the v1 baseline, read against the pre-registered criteria | assistant | ~30 min |
+| 9 | Decision: pick the v2 production mix | together | — |
+| 10 | Extend `mass-corpus.sh` net-profile spec lines with exploration settings; launch v2 production | assistant + Wolfie | ~30 min |
+
 ## Protocol
 
-- 12 workers, 2 per config, chunks of 5 games, ≤ 8 hours.
+- 12 workers, 2 per config, chunks of 5 games, `--max-plies 50`, ≤ 8 hours.
+- With the cap, a chunk's worst case is bounded (50 plies × 800 sims),
+  so the budget holds even if games lengthen as hoped.
 - Expected yield: 60–100 games/h aggregate under mixed lengths →
   roughly 80–150 games per config. Thin but sufficient for median
   length and outcome-split comparisons; we are probing dynamics, not
