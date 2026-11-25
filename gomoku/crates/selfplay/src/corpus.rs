@@ -55,6 +55,14 @@ pub struct Manifest {
     /// byte-identical and lets older manifests parse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluators: Option<SeatEvaluators>,
+    /// Hard cap on post-ceremony plies; `None` for uncapped corpora.
+    ///
+    /// Capped games abort as draws once the limit is reached. The cap is
+    /// recorded only in the manifest — never in the bincode record — so the
+    /// shard layout stays compatible with older corpora. Skipping the absent
+    /// field keeps pre-cap manifests parsing unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_plies: Option<usize>,
 }
 
 /// The explicit choice for handling a non-empty output directory.
@@ -81,6 +89,9 @@ pub struct CorpusWriteOptions {
     /// Per-seat evaluator identities recorded into the manifest; `None` for
     /// pure-baseline corpora.
     pub evaluators: Option<SeatEvaluators>,
+    /// Hard cap on post-ceremony plies recorded into the manifest; `None`
+    /// for uncapped corpora.
+    pub max_plies: Option<usize>,
 }
 
 /// Preflight the overwrite gate of [`write_corpus_with_options`] without
@@ -184,6 +195,7 @@ pub fn write_corpus_with_options(
         shards,
         workspace_version: env!("CARGO_PKG_VERSION").to_owned(),
         evaluators: options.evaluators.clone(),
+        max_plies: options.max_plies,
     };
     let file = File::options()
         .write(true)
@@ -216,6 +228,7 @@ pub fn write_corpus(
             shard_capacity,
             overwrite: OverwritePolicy::Refuse,
             evaluators: None,
+            max_plies: None,
         },
     )
 }

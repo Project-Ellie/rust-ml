@@ -1,7 +1,7 @@
 use engine::{Color, Move};
 use player::PlayerOptions;
 use selfplay::corpus::{
-    CorpusWriteOptions, OverwritePolicy, SeatEvaluators, check_writable, read_corpus,
+    CorpusWriteOptions, Manifest, OverwritePolicy, SeatEvaluators, check_writable, read_corpus,
     read_manifest, write_corpus, write_corpus_with_options,
 };
 use selfplay::game::{Game, Outcome, PlyRecord, PlySearch, WinReason};
@@ -261,6 +261,7 @@ fn explicit_overwrite_replaces_the_previous_corpus() {
             shard_capacity: 2,
             overwrite: OverwritePolicy::Allow,
             evaluators: None,
+            max_plies: None,
         },
     )
     .expect("explicit overwrite");
@@ -285,6 +286,7 @@ fn invalid_explicit_overwrite_preserves_the_existing_corpus() {
             shard_capacity: 0,
             overwrite: OverwritePolicy::Allow,
             evaluators: None,
+            max_plies: None,
         },
     )
     .expect_err("zero shard capacity is invalid");
@@ -379,6 +381,7 @@ fn manifest_records_seat_evaluators_only_when_declared() {
                 black: "net:first-corpus@0.1.0".to_owned(),
                 white: "baseline@0.1.0".to_owned(),
             }),
+            max_plies: None,
         },
     )
     .expect("net corpus writes");
@@ -391,6 +394,69 @@ fn manifest_records_seat_evaluators_only_when_declared() {
     assert_eq!(read_back, plain);
     let read_back = read_manifest(net_dir.path()).expect("net manifest reads");
     assert_eq!(read_back, manifest);
+}
+
+#[test]
+fn manifest_records_max_plies_and_omits_it_when_uncapped() {
+    let records: Vec<GameRecord> = (0..2)
+        .map(|seed| GameRecord::from_game(&minimal_game(seed)))
+        .collect();
+
+    // Uncapped corpora keep their previous manifest bytes: no new keys.
+    let uncapped_dir = TestDir::new("manifest-uncapped");
+    let uncapped = write_corpus(&records, uncapped_dir.path(), 1).expect("uncapped corpus writes");
+    assert_eq!(uncapped.max_plies, None);
+    let json =
+        std::fs::read_to_string(uncapped_dir.path().join("manifest.json")).expect("manifest");
+    assert!(!json.contains("max_plies"));
+
+    // Capped corpora declare the limit in the manifest.
+    let capped_dir = TestDir::new("manifest-capped");
+    let manifest = write_corpus_with_options(
+        &records,
+        capped_dir.path(),
+        CorpusWriteOptions {
+            shard_capacity: 1,
+            overwrite: OverwritePolicy::Refuse,
+            evaluators: None,
+            max_plies: Some(50),
+        },
+    )
+    .expect("capped corpus writes");
+    assert_eq!(manifest.max_plies, Some(50));
+    let json = std::fs::read_to_string(capped_dir.path().join("manifest.json")).expect("manifest");
+    assert!(json.contains("max_plies"));
+
+    // Older manifests without the field still parse.
+    let read_back = read_manifest(uncapped_dir.path()).expect("uncapped manifest reads");
+    assert_eq!(read_back, uncapped);
+}
+
+#[test]
+fn old_manifest_without_max_plies_field_parses_as_none() {
+    let dir = TestDir::new("old-manifest");
+    std::fs::create_dir_all(dir.path()).expect("dir exists");
+
+    // Build a manifest identical to those written before the cap existed:
+    // the field is omitted during serialization.
+    let record = GameRecord::from_game(&minimal_game(4));
+    let manifest = Manifest {
+        format_version: record.header.format_version,
+        seeds: vec![record.header.seed],
+        pairing: record.header.config,
+        game_count: 1,
+        shards: vec!["shard-000.bin".to_owned()],
+        workspace_version: env!("CARGO_PKG_VERSION").to_owned(),
+        evaluators: None,
+        max_plies: None,
+    };
+    let json = serde_json::to_string_pretty(&manifest).expect("serialize manifest");
+    assert!(!json.contains("max_plies"));
+    std::fs::write(dir.path().join("manifest.json"), json).expect("write legacy manifest");
+
+    let read_back = read_manifest(dir.path()).expect("legacy manifest parses");
+    assert_eq!(read_back.max_plies, None);
+    assert_eq!(read_back.game_count, 1);
 }
 
 #[test]

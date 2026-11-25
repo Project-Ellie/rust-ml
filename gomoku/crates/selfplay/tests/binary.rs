@@ -115,6 +115,10 @@ fn selfplaygen_help_documents_corpus_and_grading_flags() {
         "--shard-capacity",
         "--out",
         "--openings",
+        "--exploration-plies",
+        "--exploration-temperature",
+        "--exploration-epsilon",
+        "--max-plies",
     ] {
         assert!(text.contains(flag), "help text missing '{flag}'");
     }

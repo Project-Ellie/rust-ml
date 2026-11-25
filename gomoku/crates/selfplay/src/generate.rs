@@ -127,10 +127,11 @@ where
 ///
 /// Both seats run the baseline evaluator under the default exploration
 /// schedule; use [`generate_games_with_seats`] to inject evaluator
-/// factories or a custom schedule. Each accepted game's actual seed — base
-/// or derived — is preserved in the returned [`Game`] and therefore in the
-/// record header and corpus manifest. Deduplication covers the full ordered
-/// move list, opening placements included, and is scoped to this single run.
+/// factories or a custom schedule, or to cap game length. Each accepted
+/// game's actual seed — base or derived — is preserved in the returned
+/// [`Game`] and therefore in the record header and corpus manifest.
+/// Deduplication covers the full ordered move list, opening placements
+/// included, and is scoped to this single run.
 ///
 /// # Errors
 /// Returns [`GenerateError::Game`] when the runner fails, or
@@ -150,6 +151,7 @@ where
         black_options,
         white_options,
         ExplorationSchedule::default(),
+        None,
         opening_source,
         || Box::new(BaselineEvaluator::new(Device::flex())),
         || Box::new(BaselineEvaluator::new(Device::flex())),
@@ -161,7 +163,9 @@ where
 /// The factories build one fresh evaluator per candidate game, mirroring
 /// the per-game player construction of
 /// [`play_game_with_seats`](crate::game::play_game_with_seats); a factory
-/// may simply reload its model from disk. Everything else — seed
+/// may simply reload its model from disk. `max_plies` aborts each game as a
+/// draw once that many post-ceremony plies have been played, bounding
+/// worst-case chunk time for probe corpora. Everything else — seed
 /// derivation, Zobrist-walk deduplication, attempt budget — is identical to
 /// [`generate_games`].
 ///
@@ -169,11 +173,13 @@ where
 /// Returns [`GenerateError::Game`] when a candidate game fails, or
 /// [`GenerateError::DuplicateExhausted`] when a base seed cannot produce a
 /// unique game within the attempt budget.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_games_with_seats<I, B, W>(
     base_seeds: I,
     black_options: PlayerOptions,
     white_options: PlayerOptions,
     schedule: ExplorationSchedule,
+    max_plies: Option<usize>,
     opening_source: &mut impl OpeningSource,
     mut black_factory: B,
     mut white_factory: W,
@@ -189,6 +195,7 @@ where
             black_options,
             white_options,
             schedule,
+            max_plies,
             opening_source,
             black_factory(),
             white_factory(),

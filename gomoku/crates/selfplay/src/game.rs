@@ -186,6 +186,7 @@ pub fn play_game_with_opening(
         black_options,
         white_options,
         ExplorationSchedule::default(),
+        None,
         opening_source,
         Box::new(BaselineEvaluator::new(Device::flex())),
         Box::new(BaselineEvaluator::new(Device::flex())),
@@ -201,14 +202,20 @@ pub fn play_game_with_opening(
 /// provenance; callers should record their identity through
 /// [`crate::record::GameRecord::from_game_with_evaluators`].
 ///
+/// `max_plies` aborts the game as a draw once that many post-ceremony plies
+/// have been played. Probe games can run long, so a hard cap bounds chunk
+/// time and gives the analysis a clean "capped" termination category.
+///
 /// # Errors
 /// Returns an error if the opening, a player decision, or a selected move is
 /// rejected by the engine.
+#[allow(clippy::too_many_arguments)]
 pub fn play_game_with_seats(
     seed: u64,
     black_options: PlayerOptions,
     white_options: PlayerOptions,
     schedule: ExplorationSchedule,
+    max_plies: Option<usize>,
     opening_source: &mut impl OpeningSource,
     black_evaluator: Box<dyn Evaluator>,
     white_evaluator: Box<dyn Evaluator>,
@@ -253,7 +260,10 @@ pub fn play_game_with_seats(
                 })?;
                 tracker.observe(mv);
 
-                plies.push(PlyRecord { mv, search })
+                plies.push(PlyRecord { mv, search });
+                if max_plies == Some(plies.len()) {
+                    break Outcome::Draw;
+                }
             }
             DecisionAction::Resign(reason) => {
                 break Outcome::Won {

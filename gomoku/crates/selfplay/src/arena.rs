@@ -192,6 +192,7 @@ where
                 options,
                 options,
                 ARENA_SCHEDULE,
+                None,
                 opening_source,
                 black,
                 white,

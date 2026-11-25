@@ -117,6 +117,7 @@ fn injected_baseline_seats_reproduce_the_default_game() {
         options(1),
         options(1),
         ExplorationSchedule::default(),
+        None,
         &mut selfplay::opening::GeneratedOpening,
         baseline_evaluator(),
         baseline_evaluator(),
@@ -137,6 +138,7 @@ fn a_custom_exploration_window_is_applied_and_recorded() {
         options(1),
         options(1),
         schedule,
+        None,
         &mut selfplay::opening::GeneratedOpening,
         baseline_evaluator(),
         baseline_evaluator(),
@@ -153,12 +155,31 @@ fn a_custom_exploration_window_is_applied_and_recorded() {
         options(1),
         options(1),
         schedule,
+        None,
         &mut selfplay::opening::GeneratedOpening,
         baseline_evaluator(),
         baseline_evaluator(),
     )
     .expect("replay completes");
     assert_eq!(replay, game);
+}
+
+#[test]
+fn max_plies_caps_a_game_at_the_limit_as_a_draw() {
+    let game = play_game_with_seats(
+        11,
+        options(1),
+        options(1),
+        ExplorationSchedule::default(),
+        Some(2),
+        &mut selfplay::opening::GeneratedOpening,
+        baseline_evaluator(),
+        baseline_evaluator(),
+    )
+    .expect("capped game completes");
+
+    assert_eq!(game.plies.len(), 2);
+    assert_eq!(game.outcome, Outcome::Draw);
 }
 
 #[test]

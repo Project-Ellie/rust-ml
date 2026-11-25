@@ -24,7 +24,8 @@ const USAGE: &str = "selfplaygen --out <DIR> --openings <PATH> [--openings <PATH
             [--black-sims <N>] [--white-sims <N>] [--games <N>]
             [--seed-base <N>] [--shard-capacity <N>]
             [--black-net <RUN_DIR>] [--white-net <RUN_DIR>]
-            [--exploration-plies <N>] [--overwrite]
+            [--exploration-plies <N>] [--exploration-temperature <T>]
+            [--exploration-epsilon <E>] [--max-plies <N>] [--overwrite]
 
 Generate a corpus of self-play games, baseline or trained-net seated.
 
@@ -41,6 +42,12 @@ accepted; a repeated numeric flag takes its last value):
   --shard-capacity <N>  maximum games per shard (default: 1000, >0)
   --exploration-plies <N>  plies with temperature + root noise (default: 10;
                         0 disables exploration)
+  --exploration-temperature <T>  move-selection temperature during the
+                        exploration window (default: 1.0)
+  --exploration-epsilon <E>  Dirichlet noise mix fraction at the root
+                        (default: 0.25)
+  --max-plies <N>       hard cap on post-ceremony plies; 0 means uncapped
+                        (default: 0)
   --overwrite           replace a non-empty output directory (default: refuse)
 
 Seat flags:
@@ -64,6 +71,9 @@ struct Args {
     seed_base: u64,
     shard_capacity: usize,
     exploration_plies: usize,
+    exploration_temperature: f32,
+    exploration_epsilon: f32,
+    max_plies: usize,
     black_net: Option<PathBuf>,
     white_net: Option<PathBuf>,
     overwrite: bool,
@@ -89,6 +99,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut seed_base: u64 = 0;
     let mut shard_capacity: usize = 1000;
     let mut exploration_plies: usize = EXPLORATION_PLIES;
+    let mut exploration_temperature: f32 = 1.0;
+    let mut exploration_epsilon: f32 = 0.25;
+    let mut max_plies: usize = 0;
     let mut black_net: Option<PathBuf> = None;
     let mut white_net: Option<PathBuf> = None;
     let mut overwrite = false;
@@ -104,6 +117,15 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--shard-capacity" => shard_capacity = parse_value(&arg, args.next().as_deref())?,
             "--exploration-plies" => {
                 exploration_plies = parse_value(&arg, args.next().as_deref())?;
+            }
+            "--exploration-temperature" => {
+                exploration_temperature = parse_value(&arg, args.next().as_deref())?;
+            }
+            "--exploration-epsilon" => {
+                exploration_epsilon = parse_value(&arg, args.next().as_deref())?;
+            }
+            "--max-plies" => {
+                max_plies = parse_value(&arg, args.next().as_deref())?;
             }
             "--overwrite" => overwrite = true,
             "--black-net" => {
@@ -152,6 +174,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         seed_base,
         shard_capacity,
         exploration_plies,
+        exploration_temperature,
+        exploration_epsilon,
+        max_plies,
         black_net,
         white_net,
         overwrite,
@@ -261,7 +286,14 @@ fn run_with_opening_source(
 
     let schedule = ExplorationSchedule {
         plies: args.exploration_plies,
-        ..ExplorationSchedule::default()
+        temperature: args.exploration_temperature,
+        noise_epsilon: args.exploration_epsilon,
+        noise_alpha: ExplorationSchedule::default().noise_alpha,
+    };
+    let max_plies = if args.max_plies == 0 {
+        None
+    } else {
+        Some(args.max_plies)
     };
     let black_factory = seat_factory(args.black_net.as_deref())?;
     let white_factory = seat_factory(args.white_net.as_deref())?;
@@ -282,6 +314,7 @@ fn run_with_opening_source(
         black_options,
         white_options,
         schedule,
+        max_plies,
         opening_source,
         black_factory,
         white_factory,
@@ -321,6 +354,7 @@ fn run_with_opening_source(
                 black: black_descriptor.clone(),
                 white: white_descriptor.clone(),
             }),
+            max_plies,
         },
     )
     .map_err(|error| format!("failed to write corpus: {error}"))?;
@@ -428,6 +462,9 @@ mod tests {
         assert_eq!(args.black_net, Some(PathBuf::from("runs/first-corpus")));
         assert_eq!(args.white_net, Some(PathBuf::from("runs/second")));
         assert_eq!(args.exploration_plies, 30);
+        assert_eq!(args.exploration_temperature, 1.0);
+        assert_eq!(args.exploration_epsilon, 0.25);
+        assert_eq!(args.max_plies, 0);
     }
 
     #[test]
@@ -446,6 +483,9 @@ mod tests {
         assert_eq!(args.black_net, None);
         assert_eq!(args.white_net, None);
         assert_eq!(args.exploration_plies, EXPLORATION_PLIES);
+        assert_eq!(args.exploration_temperature, 1.0);
+        assert_eq!(args.exploration_epsilon, 0.25);
+        assert_eq!(args.max_plies, 0);
         assert!(!args.overwrite);
     }
 
@@ -518,6 +558,65 @@ mod tests {
     }
 
     #[test]
+    fn parses_exploration_temperature_epsilon_and_max_plies() {
+        let args = parse_args(
+            [
+                "--out",
+                "corpus",
+                "--openings",
+                "list.txt",
+                "--exploration-plies",
+                "5",
+                "--exploration-temperature",
+                "0.5",
+                "--exploration-epsilon",
+                "0.1",
+                "--max-plies",
+                "50",
+            ]
+            .map(ToOwned::to_owned)
+            .into_iter(),
+        )
+        .expect("parses");
+
+        assert_eq!(args.exploration_plies, 5);
+        assert_eq!(args.exploration_temperature, 0.5);
+        assert_eq!(args.exploration_epsilon, 0.1);
+        assert_eq!(args.max_plies, 50);
+    }
+
+    #[test]
+    fn last_exploration_flag_value_wins() {
+        let args = parse_args(
+            [
+                "--out",
+                "corpus",
+                "--openings",
+                "list.txt",
+                "--exploration-temperature",
+                "0.2",
+                "--exploration-temperature",
+                "0.3",
+                "--exploration-epsilon",
+                "0.0",
+                "--exploration-epsilon",
+                "0.05",
+                "--max-plies",
+                "10",
+                "--max-plies",
+                "20",
+            ]
+            .map(ToOwned::to_owned)
+            .into_iter(),
+        )
+        .expect("parses");
+
+        assert_eq!(args.exploration_temperature, 0.3);
+        assert_eq!(args.exploration_epsilon, 0.05);
+        assert_eq!(args.max_plies, 20);
+    }
+
+    #[test]
     fn rejects_missing_required_flags_and_zero_counts() {
         let error = parse_args(["--openings".to_owned(), "list.txt".to_owned()].into_iter())
             .expect_err("missing --out must fail");
@@ -565,6 +664,9 @@ mod tests {
             seed_base: 11,
             shard_capacity: 1,
             exploration_plies: EXPLORATION_PLIES,
+            exploration_temperature: 1.0,
+            exploration_epsilon: 0.25,
+            max_plies: 0,
             black_net: None,
             white_net: None,
             overwrite: false,
@@ -622,6 +724,9 @@ mod tests {
             seed_base: 11,
             shard_capacity: 1,
             exploration_plies: EXPLORATION_PLIES,
+            exploration_temperature: 1.0,
+            exploration_epsilon: 0.25,
+            max_plies: 0,
             black_net: None,
             white_net: None,
             overwrite: false,
@@ -644,5 +749,49 @@ mod tests {
         assert_eq!(records[0].header.config.white.simulations, 1);
         assert_eq!(records[0].header.opening, opening);
         assert!(!records[0].plies.is_empty());
+    }
+
+    #[test]
+    fn max_plies_caps_the_game_as_a_draw_and_records_the_cap() {
+        let opening = Opening::new(
+            [mv(5, 8), mv(5, 10), mv(7, 9)],
+            OpeningAnswer::AddTwo {
+                stones: [mv(9, 8), mv(9, 10)],
+                final_choice: Color::White,
+            },
+            OpeningProvenance::Listed {
+                list: "fixed-test".to_owned(),
+                index: 0,
+            },
+        );
+        let dir = TestDir::new("cap");
+
+        let args = Args {
+            black_sims: 1,
+            white_sims: 1,
+            games: 1,
+            seed_base: 11,
+            shard_capacity: 1,
+            exploration_plies: EXPLORATION_PLIES,
+            exploration_temperature: 1.0,
+            exploration_epsilon: 0.25,
+            max_plies: 2,
+            black_net: None,
+            white_net: None,
+            overwrite: false,
+            own_tss: OwnTssConfig::disabled(),
+            out_dir: dir.path().to_owned(),
+            opening_paths: vec![PathBuf::from("unused.txt")],
+        };
+
+        run_with_opening_source(&args, &mut FixedOpening(opening)).expect("run succeeds");
+
+        let records = read_corpus(dir.path()).expect("corpus reads back");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].plies.len(), 2);
+        assert_eq!(records[0].outcome, selfplay::game::Outcome::Draw);
+
+        let manifest = read_manifest(dir.path()).expect("manifest reads back");
+        assert_eq!(manifest.max_plies, Some(2));
     }
 }
