@@ -23,13 +23,14 @@
 #             (~3.5-5 min/game; CYCLES default 8 ≈ 40h ≈ 7200 games;
 #             the distillation profile: strong-search labels for a
 #             net that will play much cheaper)
-#   net       champion self-play: NET seats both colors; 70% asymmetric
-#             400/800 + 800/400 (the strength gradient is the signal),
-#             30% symmetric 400/400 + 800/800 anchors. Measured ~60-100
-#             games/h at 8-10 workers. Open-ended (CYCLES default 999 —
-#             kill and rerun the SAME command to resume: sealed chunks
-#             are skipped, interrupted ones redone; the corpus only
-#             grows). Snapshot exports any time via
+#   net       champion self-play: NET seats both colors. v2 mixture
+#             (probe-informed, 2026-11-25): per 20 chunks — 10 without
+#             exploration, 5 gentle 5-ply window (T=0.2, eps=0.10),
+#             5 temperature-only 10-ply whisper (T=0.2, eps=0); sims
+#             ~65% asymmetric 400/800 + 800/400. No ply cap: honest
+#             labels (capped games record as false draws). Open-ended
+#             (CYCLES default 999 — kill and rerun the SAME command to
+#             resume; the corpus only grows). Snapshot exports via
 #             scripts/corpus-export.sh.
 #
 # Knobs: WORKERS (12; 14 for net), CYCLES, CHUNK_GAMES (25; 10 for net),
@@ -71,36 +72,40 @@ case "$PROFILE" in
             echo "NET '$NET' holds no model.mpk" >&2
             exit 2
         fi
-        # 70% asymmetric pairs (the strength gradient carries the value
-        # signal), 30% symmetric anchors — a 20-spec cycle, color-
-        # balanced. Measured 2026-11-22: ~60-100 games/h at 8-10
-        # workers on the Mac17,6.
-        SPECS="400 400
-400 400
-400 400
-800 800
-800 800
-800 800
-400 800
-400 800
-400 800
-400 800
-400 800
-400 800
-400 800
-800 400
-800 400
-800 400
-800 400
-800 400
-800 400
-800 400"
-        DEFAULT_OUT=../data/corpora/selfplay-v1-$(basename "$NET")
+        # The v2 mixture (probe 2026-11-25, docs/specs/2026-11-25-exploration-probe.md):
+        # exploration noise was the mine-stepper — T=1.0 games ended fatally
+        # at ply ~10; gentle/no exploration tripled game length and balanced
+        # colors. Per 20 chunks: 10 without exploration (the backbone),
+        # 5 with a gentle 5-ply window (T=0.2, eps=0.10), 5 with a
+        # temperature-only 10-ply whisper (T=0.2, eps=0). Sims stay ~65%
+        # asymmetric for the value gradient. Fields: black-sims white-sims
+        # exploration-plies temperature epsilon.
+        SPECS="800 800 0 0 0
+800 800 0 0 0
+400 400 0 0 0
+400 800 0 0 0
+400 800 0 0 0
+400 800 0 0 0
+400 800 0 0 0
+800 400 0 0 0
+800 400 0 0 0
+800 400 0 0 0
+800 800 5 0.2 0.10
+800 800 5 0.2 0.10
+400 800 5 0.2 0.10
+800 400 5 0.2 0.10
+800 400 5 0.2 0.10
+800 800 10 0.2 0
+400 400 10 0.2 0
+400 800 10 0.2 0
+400 800 10 0.2 0
+800 400 10 0.2 0"
+        DEFAULT_OUT=../data/corpora/selfplay-v2-$(basename "$NET")
         DEFAULT_CYCLES=999
         DEFAULT_WORKERS=14
         DEFAULT_CHUNK_GAMES=10
-        # Net self-play seeds live in their own range.
-        SEED_OFFSET=200000000
+        # v2 self-play seeds live in their own range (v1 used 200M).
+        SEED_OFFSET=300000000
         # 20 specs per cycle need two digits of index in the chunk id.
         IDX_BASE=100
         ;;
@@ -142,7 +147,7 @@ mkdir -p "$OUT/logs"
 
 run_chunk() {
     # worker, black sims, white sims, cycle, spec index
-    local w=$1 sb=$2 sw=$3 cycle=$4 idx=$5
+    local w=$1 sb=$2 sw=$3 cycle=$4 idx=$5 plies=$6 temp=$7 eps=$8
     local c=$(( cycle * IDX_BASE + idx ))
     local seed=$(( SEED_OFFSET + w * 1000000 + c * 1000 ))
     local dir
@@ -157,8 +162,15 @@ run_chunk() {
 
     local started
     started=$(date +%s)
+    # Exploration flags ride only when the spec line carries them;
+    # two-field spec lines (balanced/deep) keep the binary defaults.
+    local exp_args=()
+    if [ -n "$plies" ]; then
+        exp_args=(--exploration-plies "$plies" --exploration-temperature "$temp" --exploration-epsilon "$eps")
+    fi
     ./target/release/selfplaygen \
         ${NET_ARGS[@]+"${NET_ARGS[@]}"} \
+        ${exp_args[@]+"${exp_args[@]}"} \
         --games "$CHUNK_GAMES" \
         --seed-base "$seed" \
         --black-sims "$sb" \
@@ -179,8 +191,8 @@ worker() {
     local cycle idx
     for ((cycle = 0; cycle < CYCLES; cycle++)); do
         idx=0
-        echo "$SPECS" | while read -r sb sw; do
-            run_chunk "$w" "$sb" "$sw" "$cycle" "$idx"
+        echo "$SPECS" | while read -r sb sw plies temp eps; do
+            run_chunk "$w" "$sb" "$sw" "$cycle" "$idx" "$plies" "$temp" "$eps"
             idx=$(( idx + 1 ))
         done
     done
